@@ -1,0 +1,19 @@
+{
+  "name": "burn-calendar",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Burn Calendar: one consistent fire-hotspot record for New York and California, 2001 to 2025",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=app.js",
+    "watch": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=app.js --watch",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "check": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/three": "0.128.0",
+    "esbuild": "0.28.2",
+    "prettier": "3.10.1",
+    "typescript": "5.9.3"
+  }
+}
