@@ -61,6 +61,7 @@ The copy was made on 14 November 2026 from files NASA last updated on 10 October
 
 ```text
 <sensor>/<year>/<sensor>_<year>_<Country>.parquet
+summary/v1/<Country>.json and summary/v1/index.json   (derived; see Country summaries)
 manifest.csv
 firms_index.csv
 AttributesReadme.txt
@@ -138,6 +139,31 @@ modis = load_dataset("rogeryzd/firms-active-fire-by-country", "modis", split="tr
 ```
 
 From a web page, fetch the file URL shown under Layout. As of November 2026, Hugging Face allows cross-origin requests and byte-range requests on these URLs, and limits anonymous visitors to 3,000 file requests per five minutes per IP address.
+
+## Country summaries
+
+`summary/v1/` holds one small JSON file per country, `summary/v1/<Country>.json`, and a list of them, `summary/v1/index.json`. They exist so a web page can show a country's fire history from one request of a few kB to 1.4 MB (median 66 kB) instead of hundreds of MB of Parquet.
+
+Unlike the rest of this dataset, these files are derived and harmonized: they are counts and estimates computed from the raw files, not a copy of them.
+
+**What is counted.** Vegetation fires only (`type` 0) at nominal or high confidence: MODIS `confidence` of 30 or more, VIIRS `n` or `h`. January 2001 to December 2025.
+
+**What each file holds.**
+
+- `monthly`: counts per month for Terra (`T`), Aqua (`A`), Suomi NPP VIIRS (`V`) and NOAA-20 VIIRS (`N20`), 300 values each. Month index is `(year - 2001) * 12 + (month - 1)`.
+- `r_ta`, `r_t`: a VIIRS-per-MODIS exchange rate for each calendar month, for Terra and Aqua together and for Terra alone, with a 90% range for `r_ta` (`r_ta_lo`, `r_ta_hi`) and the all-months rate `r_all`.
+- `pi`, `zero_hi`: 90% range multipliers for converted values, by size (bins up to 10, 100, 1000 and above), and the top of the range when a converted month is zero.
+- `val`: leave-one-year-out validation, 2012 to 2025, per year and in summary.
+- `cell`, `cells`, `cell_rows`: a grid of 0.1, 0.25, 0.5 or 1 degree cells (the finest that keeps the file under about 1.5 MB). Each row is cell, year, harmonized count, raw MODIS Terra+Aqua count, raw Suomi NPP count. A cell's indices are `floor(lat / cell)` and `floor(lon / cell)`.
+- `bbox`, `totals`, `source`, and a display `name`. `bbox` is the extent of the counted detections; for countries that cross the 180th meridian it runs from about -180 to 180.
+
+**Harmonization.** VIIRS sees several times more detections than MODIS for the same burning, so the two records cannot be joined directly. On the overlap, February 2012 to December 2025, each country gets one exchange rate per calendar month: Suomi NPP detections divided by MODIS detections. From February 2012 the Suomi NPP count is used as observed. Before that, the MODIS count is multiplied by the rate, with a Terra-only rate before July 2002, when Aqua had not yet started. The harmonized grid values apply the same rule month by month and are then summed per year.
+
+**Small countries.** A country with few detections cannot support twelve rates of its own. Each monthly rate is shrunk toward the country's all-months rate with a pseudo-count of 30 MODIS detections, and the all-months rate toward the global rate (4.10) with a pseudo-count of 3,000. These values were chosen by leave-one-year-out error across the 206 countries with at least 50 Suomi NPP detections on the overlap: they bring the mean held-out monthly error from 0.57 with almost no pooling to 0.41, within 1% of the best pair tried. Each file's `rate_note` says how much of its rates came from its own data.
+
+**Ranges.** The 90% range multipliers are the 5th and 95th percentiles of observed divided by predicted over held-out months, for the country as a whole and for its 1 degree cells. A size bin with fewer than 30 such months uses the value pooled over all countries, and every range includes the estimate itself.
+
+**Limits.** FIRMS's `type` flag stands in for a hand-made mask of industrial sites. Converted months are estimates, and a converted zero can hide real burning. A change of method would be published under a new folder, such as `summary/v2/`, rather than by rewriting `v1`.
 
 ## Before you use it
 
