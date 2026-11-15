@@ -194,6 +194,16 @@ Unlike the rest of this dataset, these files are derived and harmonized: they ar
 
 **MODIS in 2026.** `monthly.T` and `monthly.A` for 2026 are shown, not used: from February 2012 the record is VIIRS. Near-real-time MODIS from September has no `type`, so it uses the 2026 VIIRS mask plus the squares of 2026 MODIS detections flagged type 1-3.
 
+## Monthly cells (cells/v1)
+
+`cells/v1/<Country>.json` gives the harmonized count for every grid cell and every month, January 2001 to 14 November 2026, so a page can sum any drawn area month by month. `cells/v1/index.json` lists the 238 files with their grid size and bytes.
+
+**Format.** `cell` (degrees), `cells` (flat pairs `floor(lat / cell)`, `floor(lon / cell)`), and `rows`, flat triples of cell index, month index (`(year - 2001) * 12 + month - 1`) and value. Values are harmonized hotspots in Suomi NPP terms, to one decimal; only nonzero values are written, sorted by cell, then month. `n_months` (311) and `partial` (November 2026 is days 1-14) are the same as in summary/v3. For 235 countries the grid is summary/v3's, with the same cell indexes. In 63 of them a few cells are appended after v3's (245 in all): squares that only have NOAA-20 detections on past Suomi NPP outage days. Brazil and the United States (0.5 to 1 degree) and the Democratic Republic of the Congo (0.25 to 0.5) are on a 2x2 coarser grid to keep each file under 4 MB; `same_grid_as_v3` and `note` say so. An appended cell can lie just outside v3's `bbox`, so map bounds should come from the file's own `cells`.
+
+**Method.** Each cell uses the country series' rule: MODIS times the country's monthly rate to January 2012 (Terra alone before July 2002), Suomi NPP from February 2012, and 2026 by v3's day rule. In the months in `y2026.hist_gaps`, the outage days are filled per cell the way v3 fills the country: the cell's Suomi NPP detections on those days are replaced by its NOAA-20 detections times the country's NOAA-20 rate. The site's monthly value uses these filled values. Each month is rounded so that its cell total keeps the rounded country total; no value moves by 0.1 or more. Before February 2012 a cell's value is a whole MODIS count times the rate, so a small area moves in steps of the rate.
+
+**Checks.** For every country-month, the cell sums of raw Terra, Aqua and Suomi NPP equal v3's `monthly` values exactly for 2001-2025. The cell sums of the harmonized values equal the site's monthly value within 0.9 hotspots, the remainder coming from v3's own rounding to whole numbers. Per cell and year, the unrounded values without the outage fill equal v3 `cell_rows` within 0.05. Files are 740 bytes to 3.8 MB (median 91 kB, 138 MB in all). Built by `scripts/build_cells_monthly.py`.
+
 ## Forecast
 
 `forecast/v1/` holds a 2026-2027 fire forecast for every country: one file per country, `forecast/v1/<Country>.json` (median 15 kB, at most 280 kB), and `forecast/v1/index.json` (55 kB), one line per country, small enough to colour a map. They are made from `summary/v2` alone by `build_world_forecast.py` in the project repository.
