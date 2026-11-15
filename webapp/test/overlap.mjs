@@ -1,0 +1,11 @@
+import { readFile } from "node:fs/promises";
+import { measure, worldSeries, loadRegion } from "../src/data.js";
+import { seriesOfMany, seriesOf } from "../src/tools.js";
+const env = { ASSETS: { async fetch(req) { try { return new Response(await readFile("public" + new URL(req.url).pathname)); } catch { return new Response("", { status: 404 }); } } } };
+const mk = () => { const mem = new Map(); return { env, ctx: {}, store: { get: async k => mem.get(k), put: async (k, v) => void mem.set(k, v) }, measure: s => measure(env, s), world: () => worldSeries(env) }; };
+const y = (s, yr) => { let t = 0; for (let m = 0; m < 12; m++) t += s[(yr - 2000) * 12 + m]; return Math.round(t); };
+const ps = await Promise.all(["IND", "IND.28", "IND.20"].map(id => loadRegion(env, id)));
+const together = await seriesOfMany(mk(), ps), T2 = mk();
+console.log("together:", together.map(s => y(s, 2024)).join(", "));
+console.log("alone, same resolution:", (await Promise.all(ps.slice(1).map(async p => y((await measure(env, [ps[0], p])).series[1], 2024)))).join(", "));
+console.log("alone, fine cells:", (await Promise.all(ps.slice(1).map(async p => y(await seriesOf(T2, p), 2024)))).join(", "));

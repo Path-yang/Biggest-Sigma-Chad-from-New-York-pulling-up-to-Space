@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HotSpotters: fire observability for emergency response</title>
+<meta name="description" content="Fire observability for emergency response teams: pick any area on Earth and see when it burns, how this season compares with a usual year, and 26 years of trends.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="copilot.css">
+</head>
+<body>
+<div id="app">
+  <div id="mapwrap">
+    <div id="map"></div>
+
+    <div id="brand">
+      <h1><span class="mark" aria-hidden="true"></span>HotSpotters</h1>
+      <p>Fire observability for emergency response teams, anywhere on Earth</p>
+    </div>
+
+    <div id="maptools" class="card">
+      <div class="toolhead">
+        <span class="lbl strong">Select an area</span>
+        <span class="hint" id="toolHint">Choose a shape, then drag on the map</span>
+      </div>
+      <div class="tools" role="group" aria-label="Area tools">
+        <div class="split" id="toolSplit">
+          <button id="toolMain" class="tool-main" title="Drag a rectangle on the map">
+            <span id="toolIcon" class="ico"></span><span id="toolName">Rectangle</span>
+          </button>
+          <button id="toolMore" class="tool-more" aria-haspopup="menu" aria-expanded="false" title="More shapes">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 8l4.5 4.5L14.5 8"/></svg>
+          </button>
+          <div id="toolMenu" class="menu" role="menu" hidden>
+            <button role="menuitemradio" data-tool="rect"><span class="ico"></span><span><b>Rectangle</b><small>Drag a box</small></span></button>
+            <button role="menuitemradio" data-tool="circle"><span class="ico"></span><span><b>Circle</b><small>Centre, then drag the radius</small></span></button>
+            <button role="menuitemradio" data-tool="poly"><span class="ico"></span><span><b>Pencil</b><small>Draw any shape freehand</small></span></button>
+          </div>
+        </div>
+        <button id="worldBtn" title="Go back to the whole world">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2.4 2.2 2.4 11.8 0 14M10 3c-2.4 2.2-2.4 11.8 0 14"/></svg>Whole world
+        </button>
+      </div>
+      <details id="coordBox">
+        <summary>Type coordinates instead</summary>
+        <form id="coords" autocomplete="off" novalidate>
+          <select id="coordShape" aria-label="Shape">
+            <option value="rect">Rectangle: west, south, east, north</option>
+            <option value="circle">Circle: centre and radius</option>
+          </select>
+          <div class="row coords" id="rectFields">
+            <label>W <input id="cw" type="number" step="any" min="-180" max="180" placeholder="lon"></label>
+            <label>S <input id="cs" type="number" step="any" min="-90" max="90" placeholder="lat"></label>
+            <label>E <input id="ce" type="number" step="any" min="-180" max="180" placeholder="lon"></label>
+            <label>N <input id="cn" type="number" step="any" min="-90" max="90" placeholder="lat"></label>
+          </div>
+          <div class="row coords" id="circFields" hidden>
+            <label>Lat <input id="clat" type="number" step="any" min="-90" max="90" placeholder="38.5"></label>
+            <label>Lon <input id="clon" type="number" step="any" min="-180" max="180" placeholder="-121.5"></label>
+            <label>km <input id="cr" type="number" step="any" min="15" max="5000" placeholder="100"></label>
+          </div>
+          <div class="row"><span class="hint" id="coordMsg"></span><span class="spacer"></span><button type="submit" class="primary">Show area</button></div>
+        </form>
+      </details>
+    </div>
+
+    <div id="layerbar" class="card">
+      <div class="row">
+        <span class="lbl">Map shows</span>
+        <select id="layerYear" aria-label="Map year"></select>
+        <select id="layerMonth" aria-label="Map month"></select>
+        <button id="playBtn" title="Play through the months">Play</button>
+      </div>
+      <div class="legend">
+        <span id="legendLo">1</span>
+        <div id="legendBar"></div>
+        <span id="legendHi"></span>
+      </div>
+      <div class="hint" id="layerHint">Fire hotspots per square</div>
+      <div class="cellrow" title="The orange square is one map cell at its real size on your screen">
+        <span class="cellwrap"><span id="cellSq"></span></span>
+        <span id="cellTxt"></span>
+      </div>
+    </div>
+    <div id="mapToast" hidden></div>
+    <div id="drawHint" hidden>Click and drag on the map to draw a box. Esc to cancel.</div>
+    <button id="clearChip" hidden title="Clear the selection and go back to the whole world">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+      Clear selection <kbd>Esc</kbd>
+    </button>
+  </div>
+
+  <button id="panelTab" title="Hide the side panel" aria-label="Hide the side panel" aria-expanded="true">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg>
+  </button>
+  <aside id="panel">
+    <header>
+      <div>
+        <div class="eyebrow">Selected area</div>
+        <h2 id="areaRow"><span id="areaName">Whole world</span>
+          <button id="clearBtn" class="xbtn" hidden title="Clear the selection (Esc)" aria-label="Clear the selection">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6l8 8M14 6l-8 8"/></svg>
+          </button>
+        </h2>
+        <div class="sub" id="areaSub"></div>
+      </div>
+      <div class="row">
+        <button id="pinBtn" class="ghost" title="Keep this area, then select another to compare the two">Pin to compare</button>
+        <button id="shareBtn" class="ghost" title="Copy a link to this area">Copy link</button>
+        <button id="aboutBtn" class="ghost">About the data</button>
+      </div>
+    </header>
+
+    <section class="controls"><span id="loadState" class="hint"></span></section>
+
+    <section id="status" class="status"></section>
+    <section id="kpis" class="kpis"></section>
+
+    <section class="block" id="cmpBlock" hidden>
+      <div class="blockhead"><h3>Compare two areas</h3><button id="unpinBtn" class="ghost small">Stop comparing</button></div>
+      <div id="cmpBody"></div>
+    </section>
+
+    <section class="block">
+      <div class="blockhead">
+        <h3>Burning activity calendar</h3>
+        <div class="seg small" id="calSeg">
+          <button data-cal="count" class="on" title="How many hotspots each month had">How much fire</button>
+          <button data-cal="anom" title="Whether each month had more or less fire than is usual for that time of year">More or less than usual</button>
+        </div>
+      </div>
+      <div id="calendar" class="calendar"></div>
+      <div class="legend cal-legend">
+        <span id="calLo"></span><div id="calBar"></div><span id="calHi"></span>
+      </div>
+      <p class="hint" id="calNote"></p>
+      <p class="hint">Click a month to show it on the map. Hatched: no data, or an incomplete month. The "Usual" row is the middle value for each month across all years.</p>
+    </section>
+
+    <section class="block">
+      <div class="blockhead">
+        <h3>This season against a usual one</h3>
+        <span class="row"><select id="cmpYear" aria-label="Year to show"></select><select id="cmpYear2" aria-label="Second year to compare"></select></span>
+      </div>
+      <div id="seasonal" class="chart"></div>
+      <p class="hint" id="seasonHint"></p>
+    </section>
+
+    <section class="block">
+      <div class="blockhead"><h3>Hotspots per year</h3><span class="hint" id="trendNote"></span></div>
+      <div id="annual" class="chart"></div>
+    </section>
+
+    <section class="block">
+      <div class="blockhead"><h3>Download</h3></div>
+      <div class="row wrap">
+        <button id="dlMonthly">Monthly series (CSV)</button>
+        <button id="dlCells">Hotspot counts by cell (CSV)</button>
+        <button id="dlPng">Calendar (PNG)</button>
+      </div>
+      <p class="hint" id="dlHint"></p>
+    </section>
+
+    <footer>
+      Data: satellite fire detections from NASA FIRMS, 2000 to today. Not a NASA product.
+      A hotspot is a satellite pixel flagged as burning, not a count of fires.
+    </footer>
+  </aside>
+</div>
+
+<div id="tip" hidden></div>
+
+<dialog id="about">
+  <form method="dialog"><button class="ghost close" aria-label="Close">Close</button></form>
+  <h2>How this works</h2>
+  <p><b>The problem.</b> MODIS has watched fires since November 2000 with 1 km pixels. VIIRS, flying since January 2012, has 375 m pixels and reports several times more hotspots for the same fires. Put side by side, the record seems to jump in 2012 although nothing changed on the ground.</p>
+  <p><b>The data.</b> <span id="aboutTotals"></span> from NASA FIRMS, counted per month in 0.25 degree cells. The three VIIRS satellites are merged first: sightings in the same 390 m square on the same date and day/night pass count once.</p>
+  <p><b>The harmonized series</b> is expressed in "one VIIRS satellite" units:</p>
+  <ul>
+    <li><b>From February 2012:</b> hotspots seen by S-NPP (NOAA-20 after S-NPP stopped on 2 Nov 2026). Using one satellite keeps the count from rising just because more satellites were launched.</li>
+    <li><b>Up to January 2012:</b> MODIS counts multiplied by a local factor: how many S-NPP hotspots there were per MODIS hotspot in that 5 degree region while both flew (Feb 2012 to Dec 2025). World average: <span id="aboutK"></span>.</li>
+    <li><b>Before July 2002</b> only Terra was flying, so those months are also scaled by the local (Terra + Aqua) / Terra ratio. World average: <span id="aboutA"></span>.</li>
+  </ul>
+  <p><b>How well it holds.</b> <span id="aboutVal"></span></p>
+  <p><b>Limits.</b> Areas are matched to 0.25 degree cells (about 28 km), so small boxes are approximate. Years up to 2025 come from NASA's per-country files, which leave out detections outside any country's borders; 2026 includes them. The most recent months are near-real-time data and may change. November 2026 covers 7 days.</p>
+  <p class="hint">Built for the 2026 NASA Space Apps Challenge, "Harmonization of MODIS and VIIRS Hot Spots". Base map: CARTO, OpenStreetMap contributors.</p>
+</dialog>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="copilot.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

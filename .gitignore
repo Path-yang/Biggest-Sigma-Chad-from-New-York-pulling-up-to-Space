@@ -4,3 +4,5 @@ data/fires_combined.csv
 .env
 .DS_Store
 __pycache__/
+node_modules/
+.wrangler/

@@ -1,0 +1,32 @@
+{
+  "_about": "Place-name lookup for the copilot: turns a name like 'Delhi' into an outline (GeoJSON) that the fire data can be queried with. Use it for places that are not in the geoBoundaries files (data/boundaries).",
+  "provider": "OpenStreetMap Nominatim",
+  "search_url": "https://nominatim.openstreetmap.org/search",
+  "default_params": {
+    "format": "jsonv2",
+    "polygon_geojson": 1,
+    "polygon_threshold": 0.01,
+    "limit": 1
+  },
+  "example": "https://nominatim.openstreetmap.org/search?q=Delhi&format=jsonv2&polygon_geojson=1&polygon_threshold=0.01&limit=1",
+  "response_fields_used": {
+    "display_name": "full place name, e.g. 'Delhi, Old Delhi, Delhi, India'",
+    "geojson": "the outline (Polygon or MultiPolygon), simplified by polygon_threshold (degrees)",
+    "boundingbox": "[south, north, west, east] as strings"
+  },
+  "headers": {
+    "User-Agent": "HotSpotters/0.1 (NASA Space Apps hackathon prototype)"
+  },
+  "usage_policy": {
+    "url": "https://operations.osmfoundation.org/policies/nominatim/",
+    "max_requests_per_second": 1,
+    "rules": [
+      "Send a User-Agent that identifies the app (set above).",
+      "Cache results; do not look up the same name twice.",
+      "No bulk or automated mass lookups.",
+      "Show the attribution: (c) OpenStreetMap contributors."
+    ]
+  },
+  "attribution": "Place outlines (c) OpenStreetMap contributors, ODbL",
+  "tested": "2026-11-15: 'Delhi' returned a Polygon, OSM relation 21180767"
+}
