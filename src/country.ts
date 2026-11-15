@@ -9,6 +9,7 @@ import { olClose, olEventsWorld, olOpen } from "./wolui";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
 import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
+import { areasReset, areasStart } from "./areas";
 
 /* =====================================================================
    COUNTRY VIEW: one country's summary, fetched from Hugging Face when the reader opens it, laid out as a
@@ -150,6 +151,7 @@ function monthRun(ms: number[]) {
 export const countryOpen = () => CV.k !== null;
 export function openCountry(k: string) {
   if (CV.k === k && CV.d) return;
+  areasReset();
   CV.k = k;
   CV.d = CV.R = null;
   CV.mapKey = "";
@@ -167,6 +169,7 @@ export function closeCountry() {
   if (CV.k === null) return;
   CV.k = null;
   CV.mapKey = "";
+  areasReset();
   olClose();
   destroyMap();
   const el = $("country");
@@ -177,6 +180,7 @@ export function closeCountry() {
 export function countryMissing(slug: string) {
   CV.k = "";
   CV.d = CV.R = null;
+  areasReset();
   olClose();
   destroyMap();
   loadFonts();
@@ -241,6 +245,7 @@ function start(d: CountrySummary) {
   $("cBody").hidden = $("cCtl").hidden = false;
   $("cName").textContent = d.name;
   renderCountry();
+  areasStart(d);
 }
 
 const FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
