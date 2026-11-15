@@ -469,6 +469,70 @@ th{color:var(--muted);font-weight:400}
   #bigYear{font-size:56px;top:120px}
 }
 @media (prefers-reduced-motion:reduce){#hero,#app,#country{transition:none}#sheet{animation:none}}
+/* ---------- country map view (#g/...): the dark middle step between the globe and the full record ---------- */
+#glance{position:fixed;inset:0;background:#05070c;opacity:0;transition:opacity .45s ease;z-index:4}
+#glance.in{opacity:1}
+#gMap{position:absolute;inset:0}
+.gMapMsg{position:absolute;left:16px;right:16px;top:45%;text-align:center;color:var(--ink2);margin:0}
+.gTop{right:auto}
+#gCard{position:absolute;right:16px;top:16px;width:368px;max-height:calc(100% - 32px);overflow:auto;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;z-index:2}
+/* firmer glass here than elsewhere: the card and the bar sit over bright squares */
+#glance .glass{background:rgba(9,13,22,.86)}
+/* the way on stays in reach however far the card scrolls */
+#gOpen{position:sticky;bottom:0;z-index:1;box-shadow:0 -10px 18px rgba(9,13,22,.9)}
+#gCard .gPick{scroll-margin-bottom:64px}
+#gCard>*{flex-shrink:0}
+#gCard h2{font:800 34px/1 var(--font-d);letter-spacing:-.025em;margin:4px 0 0;overflow-wrap:anywhere}
+#gCard .mini dt small,#gCard .mini dd small{display:block;font:400 11.5px var(--font-b);color:var(--muted)}
+#gCard .mini dd small{text-align:right}
+#gRetry{align-self:flex-start}
+.gPick{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.03)}
+.gPick h3{margin:0;font:700 18px/1.2 var(--font-d)}
+.gPickHead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gPickHead .link{font-size:13px}
+.gNames{margin:0;font-size:14.5px;line-height:1.5}
+.gTone{display:inline-block;width:12px;height:12px;border:2px dashed var(--t);border-radius:2px;margin-right:6px;vertical-align:-1px}
+.gTone.solid{border-style:solid}
+.gGap{display:inline-block;font:600 11px var(--font-m);letter-spacing:.08em;text-transform:uppercase;color:var(--ember-ink);background:var(--hot);border-radius:999px;padding:1px 7px;margin-left:4px;vertical-align:1px}
+.gStates .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.gBar{position:absolute;left:16px;bottom:16px;width:min(440px,calc(100% - 432px));min-width:280px;border-radius:14px;padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.gYearHead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font:700 16px var(--font-d)}
+.gYearHead .link{font:500 13px var(--font-b)}
+#gYear{width:100%;accent-color:var(--ember);margin:2px 0;min-height:24px}
+.gBar.all #gYear{opacity:.55}
+.gLeg{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.gLegT{font-weight:600;color:var(--ink)}
+.gKey{display:flex;align-items:flex-start;min-width:0;padding-right:10px}
+.gStep{display:flex;flex-direction:column;gap:3px;width:30px;flex:0 0 auto}
+.gStep i{display:block;height:8px}
+.gStep small{font:500 10.5px/1 var(--font-m);color:var(--ink2);white-space:nowrap;transform:translateX(-50%)}
+.gStep:first-child small{transform:none}
+.gStep.gEnd{width:1px}
+#glance .maplibregl-ctrl-top-right{top:72px}
+@media (min-width:761px){#glance .maplibregl-ctrl-top-right{top:0;right:392px}}
+#glance .maplibregl-ctrl-group{background:rgba(9,13,22,.86);border:1px solid var(--line);box-shadow:none}
+#glance .maplibregl-ctrl-group button+button{border-top-color:var(--line)}
+#glance .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1)}
+#glance .maplibregl-ctrl-attrib{background:rgba(9,13,22,.7);color:var(--muted);font-size:11px}
+#glance .maplibregl-ctrl-attrib a{color:var(--ink2)}
+#glance .maplibregl-ctrl-attrib-button{filter:invert(1)}
+/* the map credit (OpenStreetMap's licence asks for it) sits above the copilot's button, clear of the card */
+#glance .maplibregl-ctrl-bottom-right{bottom:50px}
+body[data-ask-view="glance"] #gCard{max-height:calc(100% - 104px)}
+/* the same test as isSheet() in src/glance.ts: phones, and tablets held upright */
+@media (max-width:760px), (max-width:900px) and (orientation:portrait){
+  #gCard{left:0;right:0;top:auto;bottom:0;width:auto;max-height:46dvh;border-radius:18px 18px 0 0;padding:14px 16px 18px;border-left:0;border-right:0;border-bottom:0}
+  #gCard::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto -4px}
+  #gCard h2{font-size:28px}
+  .gBar{left:12px;right:12px;top:64px;bottom:auto;width:auto;min-width:0;padding:8px 12px 10px}
+  .gLeg{gap:2px 10px}
+  .gLegT{flex:1 1 100%;font-size:11.5px}
+  #glance .maplibregl-ctrl-top-right{display:none}
+  #glance .maplibregl-ctrl-bottom-right{bottom:calc(var(--gSheet,0px) + 50px)}
+  body[data-ask-view="glance"] #gCard{max-height:46dvh}
+  body[data-ask-view="glance"] .askLaunch{bottom:calc(var(--gSheet,0px) + 12px)}
+}
+@media (prefers-reduced-motion:reduce){#glance{transition:none}}
 /* ---------- the fire copilot: a launcher and a chat window, dark glass over the maps, paper on country pages ---------- */
 .askLaunch,.ask{
   --a-bg:rgba(10,14,23,.94); --a-ink:var(--ink); --a-ink2:var(--ink2); --a-muted:var(--muted); --a-line:var(--line); --a-field:#131a28; --a-soft:rgba(255,255,255,.055);
@@ -687,7 +751,8 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
 
 <section id="country" hidden>
   <header class="cpTop">
-    <button class="cpBack" id="cBack" type="button">← Globe</button>
+    <button class="cpBack" id="cUp" type="button">← Map view</button>
+    <button class="cpBack" id="cBack" type="button">Globe</button>
     <span class="cpBrand">Burn Calendar</span>
     <div class="cpYears" id="cCtl" hidden><label for="cFrom">Years</label> <select id="cFrom" aria-label="From year"></select> <span>to</span> <select id="cTo" aria-label="To year"></select></div>
   </header>
@@ -838,6 +903,27 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
       </footer>
     </div>
   </main>
+</section>
+
+<section id="glance" hidden aria-label="Country map">
+  <div id="gMap"></div>
+  <div class="ov tl gTop"><button class="btn" id="gBack" type="button">← Globe</button></div>
+  <div class="gBar glass all" id="gBar" hidden>
+    <div class="gYearHead"><span id="gYearLabel"></span><button class="link" id="gAll" type="button" hidden>All years</button></div>
+    <input type="range" id="gYear" min="2001" max="2026" step="1" value="2026" aria-label="Year shown on the map">
+    <div class="gLeg" id="gLeg"></div>
+  </div>
+  <aside id="gCard" class="glass" aria-labelledby="gName">
+    <div><p class="eyebrow" id="gCrumb">Country</p><h2 id="gName"></h2></div>
+    <p class="lead" id="gLead"></p>
+    <button class="link" id="gRetry" type="button" hidden>Try again</button>
+    <dl class="mini" id="gRows"></dl>
+    <div class="gPick" id="gNote" hidden></div>
+    <div class="gPick" id="gPick" hidden></div>
+    <div class="gStates" id="gStates" hidden><p class="hint">New York and California have county-by-county maps:</p><div class="row"><button class="btn" type="button" data-st="NY"></button><button class="btn" type="button" data-st="CA"></button></div></div>
+    <button class="btn primary big" id="gOpen" type="button">Open the full record</button>
+    <p class="hint" id="gHint"></p>
+  </aside>
 </section>
 
 <section id="app" hidden>
@@ -1034,6 +1120,6 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

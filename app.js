@@ -41,9 +41,9 @@
   var FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
   var dayRun = (days, m) => (days.length > 1 && days[days.length - 1] - days[0] === days.length - 1 ? `${days[0]}\u2013${days[days.length - 1]}` : days.join(", ")) + ` ${MON[m]}`;
   function fillDays(i, st) {
-    const s2 = D.states[st], y = Y0 + Math.floor(i / 12), pre = `${y}-${String(i % 12 + 1).padStart(2, "0")}-`, pick = (a) => (a ?? []).filter((d) => d.startsWith(pre)).map((d) => +d.slice(8));
+    const s2 = D.states[st], y = Y0 + Math.floor(i / 12), pre = `${y}-${String(i % 12 + 1).padStart(2, "0")}-`, pick2 = (a) => (a ?? []).filter((d) => d.startsWith(pre)).map((d) => +d.slice(8));
     if (y >= 2026)
-      return { n20: pick(s2.y2026?.n20_dates ?? D.meta.viirs_2026?.n20_dates), interp: pick(s2.y2026?.interp_dates) };
+      return { n20: pick2(s2.y2026?.n20_dates ?? D.meta.viirs_2026?.n20_dates), interp: pick2(s2.y2026?.interp_dates) };
     const g = s2.hist_gaps?.find((x) => x.i === i);
     return { n20: g ? g.days : [], interp: [] };
   }
@@ -234,10 +234,10 @@
         V4[i] += rows[p + 4];
       }
     }
-    const G2 = new Float64Array(NM), grows = (byCounty ? s2.gap_county_rows : s2.gap_hex_rows) ?? [];
+    const G3 = new Float64Array(NM), grows = (byCounty ? s2.gap_county_rows : s2.gap_hex_rows) ?? [];
     for (let p = 0; p < grows.length; p += 3) {
       const k = grows[p];
-      if (byCounty ? sel.type === "state" || k === sel.ci : mask[k]) G2[grows[p + 1]] += grows[p + 2];
+      if (byCounty ? sel.type === "state" || k === sel.ci : mask[k]) G3[grows[p + 1]] += grows[p + 2];
     }
     const gaps = new Map((s2.hist_gaps ?? []).map((g) => [g.i, g])), m26 = new Map((s2.y2026?.months ?? []).map((m) => [m.i, m]));
     const filled = (i, t, a, v) => {
@@ -245,7 +245,7 @@
       if (i < VI0) return x;
       const f = fillDays(i, st);
       if (!f.n20.length && !f.interp.length) return x;
-      const h2 = Math.max(0, v + G2[i]);
+      const h2 = Math.max(0, v + G3[i]);
       let lo = h2, hi = h2;
       const g = gaps.get(i), m = m26.get(i);
       if (sel.type === "state" && g) {
@@ -370,15 +370,15 @@
     for (let y = o.yFrom; y <= o.yTo; y++) {
       const rr = ser.filter((r) => r.y === y), sum2 = (k) => rr.reduce((a, r) => a + r[k], 0);
       if (!rr.length) continue;
-      const row = {
+      const row2 = {
         y,
         h: sum2("h"),
         lo: sum2("lo"),
         hi: sum2("hi"),
         naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0)
       };
-      if (!fullYear(y)) row.part = true;
-      years.push(row);
+      if (!fullYear(y)) row2.part = true;
+      years.push(row2);
     }
     const counts = years.filter((y) => counted(y.y)), total2 = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = counts.slice().sort((a, b) => b.h - a.h);
     return {
@@ -1330,10 +1330,10 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     return h2;
   }
   function focusHtml(st, mo) {
-    const i = RT.focusStn, hx = hexState(st), row = cur().staff.rows.find((r) => r.i === i), risk = cur().risk, n = risk.n;
+    const i = RT.focusStn, hx = hexState(st), row2 = cur().staff.rows.find((r) => r.i === i), risk = cur().risk, n = risk.n;
     if (risk.fc)
-      return `<div class="rh"><span>${esc(hx.stn.names[i][0])}</span><button class="link" type="button" data-act="clearStn">Clear</button></div><p class="hint"><i class="sk"></i>${row ? `First to reach ${pct(row.share)} of ${NAME[st]}'s forecast fire risk for ${mo} ${risk.fc}, across the ${row.hexes} outlined ${row.hexes === 1 ? "hexagon" : "hexagons"}. The likeliest has a ${pctP(row.top || 0)} chance of fire.` : `None of the forecast fire risk for ${mo} ${risk.fc} falls in the area this station reaches first.`}</p>`;
-    return `<div class="rh"><span>${esc(hx.stn.names[i][0])}</span><button class="link" type="button" data-act="clearStn">Clear</button></div><p class="hint"><i class="sk"></i>${row ? `First by road to ${pct(row.share)} of ${NAME[st]}'s ${mo} fire: about ${row.e < 10 ? row.e.toFixed(1) : fmt(row.e)} of the ${row.hexes} outlined ${row.hexes === 1 ? "hexagon" : "hexagons"} have fire in an average ${mo}. Fire there in ${row.k} of ${n} years, about ${fmt(row.hot || 0)} hotspots in an average ${mo}.` : `No fire in ${mo} falls in the area this station reaches first.`}</p>`;
+      return `<div class="rh"><span>${esc(hx.stn.names[i][0])}</span><button class="link" type="button" data-act="clearStn">Clear</button></div><p class="hint"><i class="sk"></i>${row2 ? `First to reach ${pct(row2.share)} of ${NAME[st]}'s forecast fire risk for ${mo} ${risk.fc}, across the ${row2.hexes} outlined ${row2.hexes === 1 ? "hexagon" : "hexagons"}. The likeliest has a ${pctP(row2.top || 0)} chance of fire.` : `None of the forecast fire risk for ${mo} ${risk.fc} falls in the area this station reaches first.`}</p>`;
+    return `<div class="rh"><span>${esc(hx.stn.names[i][0])}</span><button class="link" type="button" data-act="clearStn">Clear</button></div><p class="hint"><i class="sk"></i>${row2 ? `First by road to ${pct(row2.share)} of ${NAME[st]}'s ${mo} fire: about ${row2.e < 10 ? row2.e.toFixed(1) : fmt(row2.e)} of the ${row2.hexes} outlined ${row2.hexes === 1 ? "hexagon" : "hexagons"} have fire in an average ${mo}. Fire there in ${row2.k} of ${n} years, about ${fmt(row2.hot || 0)} hotspots in an average ${mo}.` : `No fire in ${mo} falls in the area this station reaches first.`}</p>`;
   }
   function goHex(k) {
     const hx = hexState(S.st);
@@ -2249,7 +2249,7 @@ Usual for these dates: ${pct2(o.base)}
         setCounty(+b.dataset.ci);
       }
     );
-    const sh = S.show, ys = R.years, xs = ys.map((y) => y.y), pick = (show) => {
+    const sh = S.show, ys = R.years, xs = ys.map((y) => y.y), pick2 = (show) => {
       stopPlay();
       S.layer = "count";
       S.show = show;
@@ -2268,7 +2268,7 @@ Usual for these dates: ${pct2(o.base)}
         tip: (m) => `${MONL[m]}
 Typical: ${fmt(R.stats[m].med)} hotspots
 Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
-        click: (m) => pick(sh.t === "cmonth" && sh.m === m ? { t: "all" } : { t: "cmonth", m })
+        click: (m) => pick2(sh.t === "cmonth" && sh.m === m ? { t: "all" } : { t: "cmonth", m })
       }
     );
     const top = [];
@@ -2295,7 +2295,7 @@ The year is not over, so it is not set against whole years` + (ytd ? `
 ${ytd.span}: ${rankWords(ytd.rank, ytd.n)} for the same dates` : "") : `${xs[i]}: ${fmt(ys[i].h)} hotspots
 ${R.mean > 0 ? (ys[i].h >= R.mean ? "+" : "") + Math.round((ys[i].h / R.mean - 1) * 100) + "% against the average year" : ""}` + (xs[i] < 2012 ? `
 Converted from MODIS, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "\nSeen by VIIRS"),
-        click: (i) => pick(sh.t === "year" && sh.y === xs[i] ? { t: "all" } : { t: "year", y: xs[i] })
+        click: (i) => pick2(sh.t === "year" && sh.y === xs[i] ? { t: "all" } : { t: "year", y: xs[i] })
       }
     );
     calendarInto($("cal"), R, {
@@ -2617,9 +2617,9 @@ Raw counts: ${fmt(fy[i].naive)}`
     const same = [fcSame(st, "any") && "hexagons", fcSame(st, "any", true) && "counties"].filter(Boolean);
     $("fcNote").textContent = `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L2 ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone, to December 2025: no weather, fuel or ignitions, and none of the 2026 data now on the calendar. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.` : "");
     $("dlFcNote").textContent = "The forecast for every month of 2026 and 2027, for the area chosen above, with past odds alongside. Chances run from 0 to 1; 0 means under 0.0005." + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, the 2027 rows repeat 2026's any-fire chances.` : "") + " The county file gives a county at least its likeliest hexagon's chance, as the page does.";
-    const row = (u, m) => `<tr><td class="u">${u}</td><td>${br(m.model.brier)}</td><td>${br(m.history_alone.brier)}</td><td class="em">${pctGain(m.brier_skill_vs_history)}</td><td>${auc(m.model.auc)}</td><td>${auc(m.history_alone.auc)}</td><td>${m.years_model_better_brier}</td><td>${pctGain(m.horizon2.brier_skill_vs_history)}</td></tr>`;
+    const row2 = (u, m) => `<tr><td class="u">${u}</td><td>${br(m.model.brier)}</td><td>${br(m.history_alone.brier)}</td><td class="em">${pctGain(m.brier_skill_vs_history)}</td><td>${auc(m.model.auc)}</td><td>${auc(m.history_alone.auc)}</td><td>${m.years_model_better_brier}</td><td>${pctGain(m.horizon2.brier_skill_vs_history)}</td></tr>`;
     const lrow = (u, b) => `<tr><td class="u">${u}</td><td>${br(b.horizon_1y.model.brier)}</td><td>${br(b.horizon_1y.history_alone.brier)}</td><td class="em">${pctGain(b.horizon_1y.brier_skill_vs_history_alone)}</td><td>${auc(b.horizon_1y.model.auc)}</td><td>${auc(b.horizon_1y.history_alone.auc)}</td><td>\u2013</td><td>${pctGain(largeSkill2(b.horizon_2y))}</td></tr>`;
-    $("fcTable").innerHTML = `<tr><th>Tested on 2018\u20132025</th><th>Brier, forecast</th><th>Brier, past odds</th><th>Lower by</th><th>AUC, forecast</th><th>AUC, past odds</th><th>Years better</th><th>2 years ahead, lower by</th></tr><tr class="grp"><td colspan="8">Any fire: at least one hotspot</td></tr>` + row("Hexagons", h2) + row("Counties", c) + (L2 ? `<tr class="grp"><td colspan="8">Large fires: 1,000+ acres, CAL FIRE perimeters</td></tr>` + lrow("Hexagons", L2.backtest.hex) + lrow("Counties", L2.backtest.county) : "");
+    $("fcTable").innerHTML = `<tr><th>Tested on 2018\u20132025</th><th>Brier, forecast</th><th>Brier, past odds</th><th>Lower by</th><th>AUC, forecast</th><th>AUC, past odds</th><th>Years better</th><th>2 years ahead, lower by</th></tr><tr class="grp"><td colspan="8">Any fire: at least one hotspot</td></tr>` + row2("Hexagons", h2) + row2("Counties", c) + (L2 ? `<tr class="grp"><td colspan="8">Large fires: 1,000+ acres, CAL FIRE perimeters</td></tr>` + lrow("Hexagons", L2.backtest.hex) + lrow("Counties", L2.backtest.county) : "");
     $("fcKey").textContent = "Brier score: the average squared gap between the chance given and what happened; lower is better. AUC: how often a place that burned was given a higher chance than one that did not; 0.5 is a coin toss, 1 is perfect. Past odds: the share of earlier years with fire in that place and month, which is what the map shows under Past odds. 2 years ahead is the 2027 case: trained on years up to two before the test year." + (L2 ? " Large fires have no per-year Brier table, so that column is blank." : "");
     const anyRel = relChart(`Any fire, hexagons`, norm(h2.model.reliability || []), norm(h2.history_alone.reliability || []));
     const largeRel = L2 && lh ? relChart(
@@ -3053,11 +3053,11 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     }
   }
   function drawLabels(c, hx) {
-    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad2 = Math.max(5, 15 - 2.5 * zr), cap3 = Math.round(12 + 5 * zr), boxes = [];
+    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad2 = Math.max(5, 15 - 2.5 * zr), cap4 = Math.round(12 + 5 * zr), boxes = [];
     c.textAlign = "left";
     c.textBaseline = "middle";
     c.lineJoin = "round";
-    for (let i = 0; i < K && boxes.length < cap3; i++) {
+    for (let i = 0; i < K && boxes.length < cap4; i++) {
       const t = hx.towns[i], x = sx(t.X), y = sy(t.Y);
       if (x < 4 || y < 12 || x > V.W - 30 || y > V.H - 12) continue;
       const big2 = t.pop >= 1e5, w = (big2 ? 7.6 : 6.6) * t.n.length, hit = (b2) => boxes.some((o) => b2[0] < o[2] && b2[2] > o[0] && b2[1] < o[3] && b2[3] > o[1]);
@@ -3800,9 +3800,9 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     return snapP;
   }
   function fromSnap(O2, s2, ri) {
-    const row = s2.r[ri];
-    if (!row) return null;
-    const [p, zMax, off] = row, today = addDays2(s2.today, off), hm = halfMonth(today), base2 = O2.base[ri * 24 + hm] / 1e3;
+    const row2 = s2.r[ri];
+    if (!row2) return null;
+    const [p, zMax, off] = row2, today = addDays2(s2.today, off), hm = halfMonth(today), base2 = O2.base[ri * 24 + hm] / 1e3;
     if (!(base2 > 0 && base2 < 1)) return null;
     const norm2 = 1 / (1 + Math.exp(-(O2.norm_coef[0] + O2.norm_coef[1] * Math.log(base2 / (1 - base2)))));
     return { p, base: base2, ratio: p / base2, norm: norm2, wxRatio: p / norm2, thr: O2.thr[ri * 24 + hm], hm, today, zMax };
@@ -4185,8 +4185,8 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       return `<rect ${rect} fill="${fill}" class="olCell" data-i="${i}"/>` + (c.noSkill && c.r ? `<rect ${rect} fill="url(#olHatch)" pointer-events="none"/>` : "");
     }).join("");
     $("cOlMap").innerHTML = `<svg viewBox="${x0.toFixed(1)} ${y0.toFixed(1)} ${(x1 - x0).toFixed(1)} ${(y1 - y0).toFixed(1)}" role="img" aria-label="Map of ${esc4(poss(theName(nameOf(k))))} regions, coloured by how much the forecast weather changes the chance of a busier fortnight than usual"><defs><pattern id="olHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#55524c" stroke-width="1.2" vector-effect="non-scaling-stroke"/></pattern></defs><path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/><g stroke="#fffefa" stroke-width="1" vector-effect="non-scaling-stroke">${cells}</g><path d="${lines2}" fill="none" stroke="#1b1b1b" stroke-opacity=".75" stroke-width="1.1" vector-effect="non-scaling-stroke" pointer-events="none"/></svg>`;
-    const pick = $("cOlPick"), idle = (coarseP() ? "Tap" : "Point at") + " a square for its numbers." + (missing ? ` ${missing} region${missing === 1 ? "" : "s"} had gaps in the forecast and show white.` : "");
-    pick.textContent = idle;
+    const pick2 = $("cOlPick"), idle = (coarseP() ? "Tap" : "Point at") + " a square for its numbers." + (missing ? ` ${missing} region${missing === 1 ? "" : "s"} had gaps in the forecast and show white.` : "");
+    pick2.textContent = idle;
     const svg = $("cOlMap").querySelector("svg");
     let on = null;
     const show = (e) => {
@@ -4195,7 +4195,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       if (on) on.classList.remove("on");
       on = t;
       t.classList.add("on");
-      pick.innerHTML = cellText(L2, L2.cells[Number(t.dataset.i)]);
+      pick2.innerHTML = cellText(L2, L2.cells[Number(t.dataset.i)]);
     };
     svg.onpointerover = show;
     svg.onclick = show;
@@ -4203,7 +4203,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       if (coarseP()) return;
       if (on) on.classList.remove("on");
       on = null;
-      pick.textContent = idle;
+      pick2.textContent = idle;
     };
   }
   var coarseP = () => matchMedia("(pointer: coarse)").matches;
@@ -4609,9 +4609,9 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     live.ready = true;
     live.next = null;
     const host = map2.getContainer();
-    const fold3 = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
-    fold3();
-    map2.once("idle", fold3);
+    const fold4 = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    fold4();
+    map2.once("idle", fold4);
     const clear = () => {
       if (live.hover != null) map2.setFeatureState({ source: "cells", id: live.hover }, { hover: false });
       live.hover = null;
@@ -5788,10 +5788,10 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
       return;
     }
     const all = Array.from({ length: n }, (_, c) => c), cls = (v, breaks) => breaks.filter((b) => v >= b).length, seen = C ? burned2026(d) : null, cm = F2.metrics.cell, enough = !!cm && cm.cell_years * cm.rate >= MIN_POSITIVES, dp = d.cell === 0.25 ? 3 : 2;
-    let layers, tested = "";
+    let layers2, tested = "";
     if (V2.mode === "p") {
       const cols = classColours(P_BREAKS);
-      layers = cols.map((fill, i) => ({ fill, cells: all.filter((c) => cls(p[c], P_BREAKS) === i), edge: n < 400 }));
+      layers2 = cols.map((fill, i) => ({ fill, cells: all.filter((c) => cls(p[c], P_BREAKS) === i), edge: n < 400 }));
       $("cFcLegend").innerHTML = legend3("Chance of at least one hotspot in 2026, as forecast", cols, [
         ...P_BREAKS.map((b) => Math.round(b * 100) + "%"),
         "100%"
@@ -5808,7 +5808,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
         tested = !enough ? " Too few squares burned in 2018\u20132025 to test these chances." : ` Tested on 2018\u20132025, these chances told squares that burned from squares that did not with an AUC of ${cm.auc.toFixed(2)} (history alone ${cm.auc_base.toFixed(2)}; 0.5 is a coin toss, 1 is perfect).` + (cm.auc < 0.5 ? " Here that is worse than a coin toss, so do not read the map as a guide." : Math.abs(cm.auc - cm.auc_base) < 0.01 ? " That is no better than history alone." : cm.auc < 0.65 ? " That is weak." : "");
     } else {
       const { breaks, max } = classBreaks(Array.from(ex)), cols = classColours(breaks);
-      layers = cols.map((fill, i) => ({ fill, cells: all.filter((c) => ex[c] > 0 && cls(ex[c], breaks) === i), edge: n < 400 }));
+      layers2 = cols.map((fill, i) => ({ fill, cells: all.filter((c) => ex[c] > 0 && cls(ex[c], breaks) === i), edge: n < 400 }));
       $("cFcLegend").innerHTML = legend3("Expected hotspots in 2026, as forecast", cols, [...breaks.map((b) => short(b)), short(max)]);
       const vals = Array.from(ex).sort((a, b) => b - a), tot = vals.reduce((a, b) => a + b, 0);
       let acc = 0, k50 = 0;
@@ -5824,7 +5824,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
         tested = cm.mae > cm.mae_base ? " Tested on 2018\u20132025, these per-square numbers were further off than history alone." : cm.mae < cm.mae_base * 0.99 ? ` Tested on 2018\u20132025, these per-square numbers were ${size(1 - cm.mae / cm.mae_base)} closer than history alone.` : " Tested on 2018\u20132025, these per-square numbers were about as close as history alone.";
     }
     drawMini(host, d, {
-      layers,
+      layers: layers2,
       label: `Map of ${tn} in squares, coloured by ${V2.mode === "p" ? "the chance of at least one hotspot" : "the expected hotspots"} in 2026, as forecast`,
       caption: $("cFcPick"),
       idle: (matchMedia("(pointer: coarse)").matches ? "Tap" : "Point at") + " a square for its numbers." + tested,
@@ -5882,6 +5882,44 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     );
     $("cFcDl").onclick = csv;
   }
+  var fcLoad = (k) => loadChecked(forecastPath(k), (x) => isForecast(x, k));
+  function relExpected(cur2, exp) {
+    const r = cur2 / exp;
+    if (r < 0.1) return "Far fewer than expected";
+    const t = rel(cur2, exp);
+    return r >= 2 ? `${t} what was expected` : `${t.charAt(0).toUpperCase()}${t.slice(1)} expected`;
+  }
+  function fcGlance(F2, d) {
+    if (F2.hist.annual_mean === 0 && F2.year["2026"].mean === 0) return null;
+    const C = checkOf(F2, d), skill2 = skilled(F2), m = C ? C.mon : (d.partial?.m ?? (/* @__PURE__ */ new Date()).getMonth() + 1) - 1, next = C ? m + 1 : m, pAny = skill2 ? F2.month.p_any[next] : F2.hist.p_any[next % 12];
+    const soFar = C ? {
+      label: `${MONL[m]} so far`,
+      value: C.obs[C.full] > 0 ? nHot(C.obs[C.full]) : "None yet",
+      title: `1\u2013${C.day} ${MONL[m]} 2026, as the satellites saw it`
+    } : null;
+    const vs = C ? {
+      value: C.exp >= 5 ? relExpected(C.cur, C.exp) : `${nHot(C.cur)} <small>expected ${C.exp < 1 ? "fewer than 1" : `about ${about(C.exp)}`}</small>`,
+      /* where the forecast had no skill, say so where phones can see it, not only in a hover title */
+      note: skill2 ? "" : "No better than a typical year here",
+      title: `By ${C.to} 2026: ${nHot(C.cur)}; the forecast expected ${C.exp < 1 ? "fewer than 1" : `about ${about(C.exp)}`}.` + (skill2 ? "" : " This forecast did no better than the typical year here, so read it loosely.")
+    } : null;
+    return {
+      vs,
+      soFar,
+      chance: {
+        label: `Chance of fire in ${MONL[next % 12]}${next >= 12 ? " 2027" : ""}`,
+        value: pc(pAny),
+        title: skill2 ? "From the 2026 forecast" : "From 2001\u20132025: the forecast did no better here"
+      }
+    };
+  }
+  var fcCellOk = (F2, d, c) => F2.cell === d.cell && c >= 0 && c < F2.ncell && mapUseful(F2);
+  function fcCell(F2, c) {
+    const r = F2.cell_rows;
+    for (let i = 0; i + 3 < r.length; i += 4) if (r[i] === c) return { p: r[i + 1], share: r[i + 2], exp: r[i + 3] };
+    return null;
+  }
+  var fcPc = pc;
 
   // src/cstn.ts
   var LEVELS = ["fair", "patchy", "thin", "unpopulated", "no_data"];
@@ -6070,7 +6108,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     const S3 = V3.S, d = V3.d, F2 = facts(S3, d), tn = theName(S3.name), lv = S3.completeness.level, gapsOn = F2.show === "yes" || F2.show === "ask" && V3.reveal, byCell = new Map(F2.burn.map((p) => [p.c, p])), top = gapsOn ? F2.gaps.slice(0, 10) : [], marks = top.map((p, i) => {
       const pos = posOf(d, p.c);
       return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: F2.show !== "yes", keep: solarCell(pos.lat, pos.lon) };
-    }), layers = [
+    }), layers2 = [
       { fill: STEADY, cells: [...F2.steady.keys()] },
       { fill: REG, cells: F2.burn.filter((p) => !(gapsOn && F2.gapSet.has(p.c))).map((p) => p.c), over: true },
       { fill: F2.show === "yes" ? GAP : GAP_MUTED, cells: gapsOn ? F2.gaps.map((p) => p.c) : [], over: true }
@@ -6086,7 +6124,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     fig.hidden = $("cStLegend").hidden = empty;
     if (!empty) {
       const listed = S3.stations.length, coarse3 = matchMedia("(pointer: coarse)").matches, idle = `${coarse3 ? "Tap" : "Point at"} a square for its numbers.` + (S3.stations_subset ? ` The dots are the ${fmt(listed)} stations nearest to some square, of ${fmt(S3.stations_total)} mapped.` : ""), paint = () => drawMini(box2, d, {
-        layers,
+        layers: layers2,
         points: S3.stations.map((s2) => [s2[0], s2[1]]),
         marks,
         label: `Map of ${tn}: fire stations mapped in OpenStreetMap and the squares with regular fire`,
@@ -6185,6 +6223,29 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
       V3.reveal = !V3.reveal;
       figures2(V3.S, V3.d, facts(V3.S, V3.d));
       draw2();
+    };
+  }
+  var stLoad = (k) => loadChecked(stationsPath(k), (x) => isStations(x, k));
+  function stGlance(S3, d) {
+    const F2 = facts(S3, d), nb = F2.burn.length, ng = F2.gaps.length, lv = S3.completeness.level, tn = theName(S3.name);
+    return {
+      stations: fmt(S3.stations_total),
+      gaps: nb === 0 ? "No regular fire" : F2.show === "yes" ? `${fmt(ng)} of ${fmt(nb)} places` : F2.show === "ask" ? "Map patchy" : lv === "unpopulated" ? "Few people live here" : "Map too thin",
+      gapsTitle: nb === 0 ? "No place burned in 4 or more of the 14 years." : F2.show === "yes" ? `Places with fire in 4 or more of 2012\u20132025 and no fire station mapped in OpenStreetMap within 15 km. A gap means none is mapped, not that none exists.` + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? " In the desert some may be industrial heat." : "") : F2.show === "ask" ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain; the full record lists them on request.` : lv === "unpopulated" ? "Few people live here, so the full record does not look for gaps." : `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing.`,
+      facts: F2
+    };
+  }
+  function stCell(S3, d, c, F2 = facts(S3, d)) {
+    if (c >= F2.n) return null;
+    const km12 = S3.cell_rows[8 * c + 4], s1 = S3.cell_rows[8 * c + 1], gap = F2.show === "yes" && F2.gapSet.has(c), has = km12 >= 0 && s1 >= 0, pos = posOf(d, c), lv = S3.completeness.level;
+    return {
+      burnYears: S3.cell_rows[8 * c + 7],
+      km: has ? gap && km12 < 15.5 ? "just over 15 km" : km(km12) : null,
+      station: has ? stationName(S3, s1) : "",
+      gap,
+      steady: F2.steady.has(c),
+      note: !has ? "" : F2.show === "ask" ? "OpenStreetMap's stations look patchy here, so this distance partly measures the map." : F2.show === "no" && lv !== "unpopulated" ? "With this little mapped, the distance mostly measures the map, not the fire service." : "",
+      flag: gap && desert(S3.country, pos.lat, pos.lon) ? DESERT_FLAG : solarCell(pos.lat, pos.lon) ? SOLAR_FLAG : ""
     };
   }
 
@@ -6307,7 +6368,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     el.classList.remove("in");
     el.hidden = true;
   }
-  function countryMissing(slug) {
+  function countryMissing(slug, at = "#c/") {
     CV.k = "";
     CV.d = CV.R = null;
     olClose();
@@ -6323,7 +6384,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     $("cBody").hidden = $("cCtl").hidden = true;
     $("cStatus").hidden = false;
     $("cBar").parentElement.hidden = $("cRetry").hidden = true;
-    $("cMsg").textContent = `Nothing lives at "#c/${slug}". Go back to the globe and pick a country there, or search for one by name.`;
+    $("cMsg").textContent = `Nothing lives at "${at}${slug}". Go back to the globe and pick a country there, or search for one by name.`;
   }
   function load3() {
     const k = CV.k, name = nameOf(k);
@@ -6538,7 +6599,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
       );
       return;
     }
-    const N20 = d.monthly.N20, y26 = d.y2026 && d.partial ? d.y2026 : null, vy = viirsYear(d), pick = (y, m) => {
+    const N20 = d.monthly.N20, y26 = d.y2026 && d.partial ? d.y2026 : null, vy = viirsYear(d), pick2 = (y, m) => {
       CV.focus = [y, m];
       renderCountry();
     };
@@ -6557,9 +6618,9 @@ Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(obs)} (its complete da
 Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])}${cn ? " (used only for the days Suomi NPP missed)" : " (not used)"}`) + `
 Click to test this month`;
       },
-      click: (r) => pick(r.y, r.m)
+      click: (r) => pick2(r.y, r.m)
     });
-    seasonal($("cMonths"), R, CV.focus[0], (m) => pick(CV.focus[0], m));
+    seasonal($("cMonths"), R, CV.focus[0], (m) => pick2(CV.focus[0], m));
     annual($("cYears"), R, {
       viirsYear: vy,
       focusYear: CV.focus[0],
@@ -6576,7 +6637,7 @@ ${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the 
 Estimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") + `
 Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       },
-      click: (y) => pick(y, CV.focus[1])
+      click: (y) => pick2(y, CV.focus[1])
     });
     const pp = partOf(d);
     cumulative($("cCum"), R, CV.focus[0], pp && d.partial ? { frac: pp.day / d.partial.days_in_month, label: `${pp.day} ${MON[pp.m]}` } : null);
@@ -6647,8 +6708,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     $("cLimits").textContent = p ? `Limits. The record runs to ${longDate(d.last_date)}, the last complete day; ${p.y} is a partial year, counted \u201Cso far\u201D and compared only with the same dates in past years, and ${MONL[p.m]} ${p.y} covers days 1\u2013${p.day}. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Suomi NPP outages from 2018 on are filled from NOAA-20 the same way as in ${p.y} (the published file keeps the archive's Suomi NPP count and gives the filled one alongside); earlier gaps and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.` : `Limits. The record ends in December ${d.y1}. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.`;
     $("cFilter").textContent = d.filter;
     $("cCell").textContent = `${d.cell}\xB0`;
-    const row = (label, a) => `<tr><td>${label}</td>${a.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
-    $("cRates").innerHTML = `<tr><th>VIIRS per MODIS hotspot</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr>` + row("Terra+Aqua", d.r_ta) + row("90% low", d.r_ta_lo) + row("90% high", d.r_ta_hi) + row("Terra only", d.r_t);
+    const row2 = (label, a) => `<tr><td>${label}</td>${a.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
+    $("cRates").innerHTML = `<tr><th>VIIRS per MODIS hotspot</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr>` + row2("Terra+Aqua", d.r_ta) + row2("90% low", d.r_ta_lo) + row2("90% high", d.r_ta_hi) + row2("Terra only", d.r_t);
     $("cLoyo").innerHTML = `<tr><th>Held-out year</th><th>Seen by VIIRS</th><th>Predicted from MODIS</th><th>Raw MODIS</th><th>Error</th></tr>` + val.loyo.map(
       (r) => `<tr><td>${Number(r.y)}</td><td>${fmt(r.obs)}</td><td>${fmt(r.pred)}</td><td>${fmt(r.modis)}</td><td>${r.obs > 0 ? (r.pred >= r.obs ? "+" : "") + Math.round((r.pred / r.obs - 1) * 100) + "%" : "n/a"}</td></tr>`
     ).join("");
@@ -6759,6 +6820,760 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     return loading;
   }
 
+  // src/glance.ts
+  var STYLE3 = "https://tiles.openfreemap.org/styles/dark";
+  var FALLBACK2 = { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#05070c" } }] };
+  var RAMP2 = ["#5c1420", "#8e1c1f", "#c2301b", "#e8531b", "#fd8d3c", "#feb24c", "#ffe08a"];
+  var TONES = ["#6fa8ff", "#c9a3ff", "#7fd1ae", "#ffd166"];
+  var DROP2 = /^(highway_name|road_oneway|aeroway|railway)/;
+  var LATIN2 = ["coalesce", ["get", "name:latin"], ["get", "name_en"], ["get", "name"]];
+  var esc9 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  var cap3 = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  var deg5 = (v, p, n) => `${Math.abs(v).toFixed(2)}\xB0${v < 0 ? n : p}`;
+  var row = (dt, dd, title = "") => `<div${title ? ` title="${esc9(title)}"` : ""}><dt>${dt}</dt><dd>${dd}</dd></div>`;
+  var nHot3 = (n) => `${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}`;
+  var SHEET_Q = "(max-width: 760px), (max-width: 900px) and (orientation: portrait)";
+  var isSheet = () => matchMedia(SHEET_Q).matches;
+  var EST = "* estimated from the older satellite";
+  var G = {
+    k: null,
+    d: null,
+    R: null,
+    F: null,
+    S: null,
+    fcMsg: "",
+    stMsg: "",
+    year: null,
+    sel: -1,
+    marks: [],
+    map: null,
+    ready: false,
+    byKey: null,
+    lon0: 0,
+    yearScale: null
+  };
+  var mapSeq = 0;
+  var glanceKey = () => G.k || null;
+  function openGlance(k) {
+    const el = $("glance");
+    if (G.k === k) {
+      el.hidden = false;
+      G.map?.resize();
+      return;
+    }
+    closeGlance();
+    mapSeq++;
+    G.k = k;
+    G.year = null;
+    G.sel = -1;
+    G.marks = [];
+    G.lon0 = shapeOf(k)?.c[0] ?? 0;
+    el.hidden = false;
+    $("gName").textContent = nameOf(k);
+    $("gCrumb").textContent = "Country";
+    $("gLead").textContent = `Fetching ${theName(nameOf(k))}'s record from Hugging Face\u2026`;
+    $("gRows").innerHTML = "";
+    $("gPick").hidden = $("gNote").hidden = true;
+    $("gBar").hidden = true;
+    $("gRetry").hidden = true;
+    $("gStates").hidden = k !== "United_States";
+    $("gHint").textContent = "";
+    $("gCard").scrollTop = 0;
+    requestAnimationFrame(() => el.classList.add("in"));
+    trackSheet();
+    startMap(k);
+    load4(k);
+  }
+  function closeGlance() {
+    if (G.k === null) return;
+    mapSeq++;
+    G.k = null;
+    G.d = G.R = G.F = G.S = null;
+    G.byKey = null;
+    G.yearScale = null;
+    G.ready = false;
+    try {
+      G.map?.remove();
+    } catch {
+    }
+    G.map = null;
+    $("gMap").innerHTML = "";
+    const el = $("glance");
+    el.classList.remove("in");
+    el.hidden = true;
+  }
+  function load4(k) {
+    $("gRetry").hidden = true;
+    loadSummary(k, (got, total2) => {
+      if (G.k !== k || G.d) return;
+      const mb = (n) => (n / 1e6).toFixed(n < 1e5 ? 2 : 1) + " MB";
+      $("gLead").textContent = `Fetching ${theName(nameOf(k))}'s record from Hugging Face\u2026 ${mb(got)}${total2 && got <= total2 ? ` of ${mb(total2)}` : ""}`;
+    }).then((d) => {
+      if (G.k !== k) return;
+      G.d = d;
+      G.byKey = /* @__PURE__ */ new Map();
+      const { la, lo } = cellIndexes(d);
+      for (let c = 0; c < la.length; c++) G.byKey.set(la[c] + "|" + lo[c], c);
+      G.lon0 = centreLon(d, lo);
+      const one = [];
+      for (let r = 2; r < d.cell_rows.length; r += 5) one.push(d.cell_rows[r]);
+      G.yearScale = classBreaks(one);
+      G.R = analyse(d);
+      $("gName").textContent = d.name;
+      setupYears(d);
+      renderCard2();
+      drawCells(true);
+      extras(k);
+    }).catch((e) => {
+      if (G.k !== k) return;
+      $("gLead").textContent = `${nameOf(k)}'s record did not arrive from Hugging Face. ${e instanceof Error ? e.message : String(e)}.`;
+      $("gRetry").hidden = false;
+    });
+  }
+  function extras(k) {
+    G.fcMsg = G.stMsg = "Loading\u2026";
+    fcLoad(k).then(
+      (F2) => {
+        if (G.k !== k) return;
+        G.F = F2;
+        renderCard2();
+      },
+      () => {
+        if (G.k !== k) return;
+        G.fcMsg = "Did not load";
+        renderCard2();
+      }
+    );
+    stLoad(k).then(
+      (S3) => {
+        if (G.k !== k) return;
+        G.S = S3;
+        renderCard2();
+      },
+      () => {
+        if (G.k !== k) return;
+        G.stMsg = "Did not load";
+        renderCard2();
+      }
+    );
+  }
+  function analyse(d) {
+    const ep = epochs(d);
+    return analyseSeries({
+      T: d.monthly.T,
+      A: d.monthly.A,
+      V: d.monthly.V,
+      y0: d.y0,
+      yFrom: d.y0,
+      yTo: d.y1,
+      vi0: ep.vi0,
+      nm: nMonths(d),
+      partI: partOf(d)?.i ?? -1,
+      partMed: sameDays(d)?.med ?? null,
+      harm: harmFilled(d, ep)
+    });
+  }
+  function spanWords(d) {
+    const p = partOf(d);
+    return p ? `${d.y0}\u2013${p.day} ${MON[p.m]} ${p.y}` : `${d.y0}\u2013${d.y1}`;
+  }
+  var yearWords = (d, y) => {
+    if (y == null) return spanWords(d);
+    const p = partOf(d);
+    return p && y === p.y ? `${y} to ${p.day} ${MON[p.m]}` : String(y);
+  };
+  function soFarWords(t, unsure) {
+    if (t.cur === 0 && t.med === 0) return `None so far in ${t.y}, as in a typical year to the same date.`;
+    const busier2 = !unsure && t.rank <= t.n / 3 && t.lo > t.med, quieter = !unsure && t.rank > 2 * t.n / 3 && t.hi < t.med;
+    return `${t.y} so far: ${nHot3(t.cur)}, ${rankWords(t.rank, t.n)} for the same dates (typical ${fmt(t.med)})` + (busier2 ? ", busier than typical." : quieter ? ", quieter than typical." : ".");
+  }
+  function renderCard2() {
+    const d = G.d, R = G.R;
+    if (!d || !R) return;
+    const name = theName(d.name), t2 = R.partYear ? ytdOf(d) : null, est = (y) => y < d.viirs_from[0];
+    $("gCrumb").textContent = `Country \xB7 ${spanWords(d)}`;
+    const top = R.order.slice(0, 3).filter((o) => o.sum > 0), w = R.ranked[0];
+    let lead2;
+    const jc = d.y2026?.join_check_2025;
+    if (R.any === 0) lead2 = `No vegetation fire hotspots were counted in ${name}, ${spanWords(d)}.`;
+    else {
+      lead2 = R.total === 0 ? `No vegetation fire hotspots were counted in ${name} in the complete years.` : `${cap3(name)} burns most in ${MONL[R.order[0].m]}; its worst complete year was ${w.y}.`;
+      if (t2) lead2 += " " + soFarWords(t2, !!jc?.warn);
+      if (t2 && jc?.warn)
+        lead2 += ` Read ${t2.y} here with care: run on 2025, the method used for ${t2.y} came out ${Math.abs(jc.V_pct).toFixed(0)}% ${jc.V_pct > 0 ? "higher" : "lower"} than the archive.`;
+      if (VOLCANIC.has(d.country)) lead2 += " Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.";
+    }
+    $("gLead").textContent = lead2;
+    const rows = [];
+    rows.push(row("Busiest months", top.length ? monthRun(top.map((o) => o.m)) : "None"));
+    rows.push(
+      row(
+        `Worst complete year${w && w.h > 0 && est(w.y) ? ` <small>${EST}</small>` : ""}`,
+        w && w.h > 0 ? `${w.y}${est(w.y) ? "*" : ""} \xB7 ${short(w.h)}` : "None",
+        w ? `${fmt(w.h)} hotspots in ${w.y}${est(w.y) ? ", estimated from the older MODIS satellite" : ""}` : ""
+      )
+    );
+    if (t2)
+      rows.push(
+        row(
+          `${t2.y} so far <small>${t2.span}</small>`,
+          `${short(t2.cur)} <small>typical ${short(t2.med)}</small>`,
+          `${nHot3(t2.cur)}${t2.hi - t2.lo >= 1 ? `, likely ${fmt(t2.lo)} to ${fmt(t2.hi)}` : ""}, ${rankWords(t2.rank, t2.n)} for the same dates`
+        )
+      );
+    if (G.F) {
+      const f = fcGlance(G.F, d);
+      if (!f) rows.push(row("Forecast for 2026", "Nothing to forecast", "No fire on record from 2001 to 2025"));
+      else {
+        if (f.soFar) rows.push(row(f.soFar.label, f.soFar.value, f.soFar.title));
+        rows.push(row(f.chance.label, f.chance.value, f.chance.title));
+        if (f.vs) rows.push(row(`2026 against the forecast${f.vs.note ? ` <small>${f.vs.note}</small>` : ""}`, f.vs.value, f.vs.title));
+      }
+    } else rows.push(row("Forecast for 2026", G.fcMsg || "Loading\u2026"));
+    if (G.S) {
+      const s2 = stGlance(G.S, d);
+      rows.push(row("Fire stations mapped", s2.stations, "Fire stations in OpenStreetMap"));
+      rows.push(row("No station within 15 km", s2.gaps, s2.gapsTitle));
+    } else rows.push(row("Fire stations", G.stMsg || "Loading\u2026"));
+    $("gRows").innerHTML = rows.join("");
+    $("gHint").textContent = (matchMedia("(pointer: coarse)").matches ? "Tap" : "Click") + " a square for its numbers. Move the slider to see one year.";
+    pickCard();
+    noteCard();
+  }
+  function pickCard() {
+    const d = G.d, c = G.sel;
+    if (!d || c < 0) {
+      $("gPick").hidden = true;
+      return;
+    }
+    const { la, lo } = cellIndexes(d), s2 = la[c] * d.cell, w = lo[c] * d.cell, p = partOf(d), full = p ? p.y - 1 : d.y1;
+    let all = 0, inYear = 0, best = -1, bestN = 0, burned = 0, n26 = 0;
+    for (let r = 0; r < d.cell_rows.length; r += 5) {
+      if (d.cell_rows[r] !== c) continue;
+      const y = d.y0 + d.cell_rows[r + 1], n = d.cell_rows[r + 2];
+      all += n;
+      if (G.year === y) inYear += n;
+      if (y === 2026) n26 += n;
+      if (y <= full) {
+        if (n > 0) burned++;
+        if (n > bestN) {
+          bestN = n;
+          best = y;
+        }
+      }
+    }
+    const rows = [];
+    if (G.year != null) rows.push(row(`Hotspots, ${yearWords(d, G.year)}`, fmt(inYear)));
+    rows.push(row(`Hotspots, ${spanWords(d)}`, fmt(all)));
+    const est = best > 0 && best < d.viirs_from[0];
+    if (best > 0) rows.push(row(`Worst year here${est ? ` <small>${EST}</small>` : ""}`, `${best}${est ? "*" : ""} \xB7 ${fmt(bestN)}`));
+    rows.push(row("Years with fire", `${burned} of ${full - d.y0 + 1}`, `Complete years ${d.y0}\u2013${full}`));
+    const fc = G.F && fcCellOk(G.F, d, c) ? fcCell(G.F, c) : null, has26 = !!p && p.y === 2026;
+    if (fc) {
+      if (has26 && n26 > 0)
+        rows.push(
+          row(
+            "2026 so far",
+            `${nHot3(n26)} <small>forecast gave it ${fcPc(fc.p)}</small>`,
+            `Made before 2026 from 2001\u20132025, the forecast gave this square a ${fcPc(fc.p)} chance of a hotspot in 2026; fire came in ${fcPc(fc.share)} of 2001\u20132025.`
+          )
+        );
+      else
+        rows.push(
+          row(
+            `Forecast chance of fire in 2026 <small>made before 2026${has26 ? "; none so far" : ""}</small>`,
+            fcPc(fc.p),
+            `Fire came in ${fcPc(fc.share)} of 2001\u20132025.`
+          )
+        );
+    }
+    const st = G.S ? stCell(G.S, d, c) : null;
+    if (st)
+      rows.push(
+        row(
+          "Nearest mapped fire station",
+          st.km ? `${st.km}${st.gap ? ' <span class="gGap">gap</span>' : ""}` : "None mapped",
+          st.station ? `Nearest: ${st.station}${st.gap ? ". No station is mapped in OpenStreetMap within 15 km; that does not mean none exists." : ""}` : ""
+        )
+      );
+    const notes = [st?.note, st?.flag].filter(Boolean).join(" ");
+    $("gPick").innerHTML = `<div class="gPickHead"><p class="eyebrow">Square you picked</p><button class="link" type="button" id="gPickX">Clear</button></div><h3>${deg5(s2 + d.cell / 2, "N", "S")}, ${deg5(w + d.cell / 2, "E", "W")}</h3><p class="hint">A ${d.cell}\xB0 square, about ${Math.round(d.cell * 111)} km across.${st?.steady ? " Its heat looks like flares or industry, not fire." : ""}</p><dl class="mini">${rows.join("")}</dl>` + (notes ? `<p class="hint">${esc9(notes)}</p>` : "");
+    $("gPick").hidden = false;
+    $("gPickX").onclick = () => pick(-1);
+  }
+  function noteCard() {
+    const d = G.d, box2 = $("gNote");
+    if (!G.marks.length) {
+      box2.hidden = true;
+      return;
+    }
+    const names = G.marks.map(
+      (m, i) => `<span class="gTone${m.geometry ? " solid" : ""}" style="--t:${TONES[i % TONES.length]}"></span><b>${esc9(m.name)}</b>`
+    );
+    let sum2 = "";
+    const one = G.marks.length === 1 ? G.marks[0] : null, b = one ? one.box : null;
+    if (d && one && b) {
+      const nb = boxNear2(b), off = nb[0] - b[0], rings = one.geometry ? ringsOf(one.geometry.coordinates) : [], { la, lo } = cellIndexes(d);
+      let n = 0, k = 0;
+      const inside = new Uint8Array(la.length);
+      for (let c = 0; c < la.length; c++) {
+        const y = (la[c] + 0.5) * d.cell, x = near((lo[c] + 0.5) * d.cell, G.lon0);
+        if (x >= nb[0] && x <= nb[2] && y >= nb[1] && y <= nb[3] && (!rings.length || inRings(rings, x - off, y))) {
+          inside[c] = 1;
+          k++;
+        }
+      }
+      for (let r = 0; r < d.cell_rows.length; r += 5) {
+        if (!inside[d.cell_rows[r]]) continue;
+        if (G.year != null && d.y0 + d.cell_rows[r + 1] !== G.year) continue;
+        n += d.cell_rows[r + 2];
+      }
+      if (k)
+        sum2 = `<p class="hint">${rings.length ? `Squares whose middle is in ${esc9(one.name)}` : "Squares inside the frame"}: ${nHot3(n)}, ${yearWords(d, G.year)}.</p>`;
+    }
+    box2.innerHTML = `<div class="gPickHead"><p class="eyebrow">From the copilot</p><button class="link" type="button" id="gNoteX">Clear</button></div><p class="gNames">${names.join(", ")}</p>${sum2}`;
+    box2.hidden = false;
+    $("gNoteX").onclick = () => glanceMarks([]);
+  }
+  function setupYears(d) {
+    const r = $("gYear");
+    r.min = String(d.y0);
+    r.max = String(d.y1);
+    r.value = String(d.y1);
+    $("gBar").hidden = false;
+    yearLabel();
+  }
+  function yearLabel() {
+    const d = G.d;
+    if (!d) return;
+    $("gYearLabel").textContent = G.year == null ? `All years \xB7 ${spanWords(d)}` : yearWords(d, G.year);
+    $("gAll").hidden = G.year == null;
+    $("gBar").classList.toggle("all", G.year == null);
+    $("gYear").setAttribute("aria-valuetext", G.year == null ? "All years" : String(G.year));
+  }
+  function setYear(y) {
+    if (y === G.year) return;
+    G.year = y;
+    yearLabel();
+    drawCells(false);
+    pickCard();
+    noteCard();
+  }
+  function tidy(st) {
+    st.layers = st.layers.filter((l) => !DROP2.test(l.id)).map((l) => {
+      if (l.layout && l.layout["text-field"] && /name/.test(JSON.stringify(l.layout["text-field"])))
+        l.layout = { ...l.layout, "text-field": LATIN2 };
+      if (l.type === "symbol" && /^place/.test(l.id))
+        l.paint = { ...l.paint, "text-color": "#e4e9f1", "text-halo-color": "rgba(5,7,12,.88)", "text-halo-width": 1.4 };
+      if (l.layout && l.layout["icon-image"]) {
+        const { "icon-image": _icon, ...rest } = l.layout;
+        l.layout = rest;
+      }
+      return l;
+    });
+    return st;
+  }
+  var styleP2 = null;
+  function getStyle2() {
+    if (!styleP2)
+      styleP2 = Promise.race([
+        fetch(STYLE3).then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        }),
+        new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 8e3))
+      ]).then(tidy, () => {
+        styleP2 = null;
+        return FALLBACK2;
+      });
+    return styleP2;
+  }
+  function shapeBox(k) {
+    const s2 = shapeOf(k);
+    if (!s2) return [-170, -60, 170, 75];
+    const span3 = lonSpan(s2);
+    if (s2.b[2] - s2.b[0] <= span3 + 1) return s2.b;
+    return [s2.c[0] - span3 / 2, s2.b[1], s2.c[0] + span3 / 2, s2.b[3]];
+  }
+  function padding() {
+    syncSheet();
+    const host = $("gMap"), W = host.clientWidth, H = host.clientHeight, card2 = $("gCard").getBoundingClientRect(), bar = $("gBar").hidden ? null : $("gBar").getBoundingClientRect(), launch = document.querySelector(".askLaunch"), lr = launch && !launch.hidden ? launch.getBoundingClientRect() : null;
+    const p = isSheet() ? {
+      top: Math.max(112, bar ? bar.bottom + 12 : 0),
+      left: 16,
+      right: 16,
+      /* above the sheet, and above the copilot's button that sits on it */
+      bottom: Math.min(H * 0.6, Math.max(0, H - Math.min(card2.top, lr && lr.height ? lr.top : H))) + 12
+    } : { top: 76, left: 64, right: Math.max(16, W - card2.left + 16), bottom: bar && bar.height ? Math.max(24, H - bar.top + 12) : 24 };
+    if (p.left + p.right > W - 80) p.left = p.right = 16;
+    if (p.top + p.bottom > H - 80) p.bottom = Math.max(16, H - 80 - p.top);
+    return p;
+  }
+  function startMap(k) {
+    const seq2 = mapSeq;
+    Promise.all([loadMapLib(), getStyle2()]).then(
+      ([, style2]) => {
+        if (G.k !== k || seq2 !== mapSeq || G.map) return;
+        const ml = window.maplibregl, host = $("gMap"), b = shapeBox(k);
+        let map2;
+        try {
+          map2 = new ml.Map({
+            container: host,
+            style: style2,
+            bounds: [b.slice(0, 2), b.slice(2)],
+            fitBoundsOptions: { padding: padding() },
+            maxZoom: 10,
+            dragRotate: false,
+            pitchWithRotate: false,
+            touchPitch: false,
+            attributionControl: { compact: true },
+            fadeDuration: 0
+          });
+        } catch {
+          $("gMap").innerHTML = `<p class="gMapMsg">This browser could not start the map (WebGL is off). The card still has the numbers.</p>`;
+          return;
+        }
+        G.map = map2;
+        host._map = map2;
+        map2.touchZoomRotate.disableRotation();
+        map2.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
+        let swapped = style2 === FALLBACK2;
+        map2.on("error", () => {
+          setTimeout(() => {
+            if (swapped || G.ready || G.map !== map2) return;
+            swapped = true;
+            map2.setStyle(FALLBACK2);
+          }, 4e3);
+        });
+        map2.on("style.load", () => {
+          if (G.map !== map2 || G.ready) return;
+          layers(map2);
+        });
+      },
+      () => {
+        if (G.k === k && seq2 === mapSeq)
+          $("gMap").innerHTML = `<p class="gMapMsg">The map did not load (cdnjs did not answer). The card still has the numbers.</p>`;
+      }
+    );
+  }
+  var EMPTY = { type: "FeatureCollection", features: [] };
+  function layers(map2) {
+    const under = map2.getLayer("boundary_state") ? "boundary_state" : void 0, labels = map2.getLayer("place_other") ? "place_other" : void 0;
+    map2.addSource("cells", { type: "geojson", data: EMPTY, tolerance: 0, buffer: 2, generateId: true });
+    map2.addSource("outline", { type: "geojson", data: EMPTY });
+    map2.addSource("sel", { type: "geojson", data: EMPTY });
+    map2.addSource("ask", { type: "geojson", data: EMPTY });
+    map2.addLayer(
+      { id: "cells", type: "fill", source: "cells", paint: { "fill-color": RAMP2[3], "fill-opacity": 0.92, "fill-antialias": false } },
+      under
+    );
+    map2.addLayer(
+      {
+        id: "cells-edge",
+        type: "line",
+        source: "cells",
+        /* a hairline that closes the seams between squares without bleeding into the next one */
+        paint: { "line-color": RAMP2[3], "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.8, 7, 0.5, 9, 0] }
+      },
+      under
+    );
+    map2.addLayer(
+      {
+        id: "cells-hover",
+        type: "line",
+        source: "cells",
+        paint: { "line-color": "#fff", "line-width": 1.2, "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 0.9, 0] }
+      },
+      labels
+    );
+    map2.addLayer(
+      { id: "outline", type: "line", source: "outline", paint: { "line-color": "#dfe6f2", "line-width": 1.1, "line-opacity": 0.7 } },
+      labels
+    );
+    map2.addLayer(
+      {
+        id: "sel",
+        type: "line",
+        source: "sel",
+        filter: ["==", ["geometry-type"], "LineString"],
+        paint: { "line-color": "#fff", "line-width": 2.5 }
+      },
+      labels
+    );
+    map2.addLayer(
+      {
+        id: "sel-ring",
+        type: "circle",
+        source: "sel",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: { "circle-radius": 13, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#fff", "circle-stroke-width": 2 }
+      },
+      labels
+    );
+    const isFrame = (v) => ["==", ["get", "frame"], v];
+    map2.addLayer(
+      { id: "ask-fill", type: "fill", source: "ask", filter: isFrame(0), paint: { "fill-color": ["get", "tone"], "fill-opacity": 0.12 } },
+      labels
+    );
+    map2.addLayer(
+      { id: "ask-line", type: "line", source: "ask", filter: isFrame(0), paint: { "line-color": ["get", "tone"], "line-width": 2.4 } },
+      labels
+    );
+    map2.addLayer(
+      {
+        id: "ask-frame",
+        type: "line",
+        source: "ask",
+        filter: isFrame(1),
+        paint: { "line-color": ["get", "tone"], "line-width": 2.2, "line-dasharray": [3, 2] }
+      },
+      labels
+    );
+    G.ready = true;
+    const host = map2.getContainer(), fold4 = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    fold4();
+    map2.once("idle", fold4);
+    let hover = null;
+    const clear = () => {
+      if (hover != null) map2.setFeatureState({ source: "cells", id: hover }, { hover: false });
+      hover = null;
+    };
+    map2.on("mousemove", "cells", (e) => {
+      const f = e.features && e.features[0];
+      if (!f || f.id === hover) return;
+      clear();
+      hover = f.id;
+      map2.setFeatureState({ source: "cells", id: f.id }, { hover: true });
+      map2.getCanvas().style.cursor = "pointer";
+    });
+    map2.on("mouseleave", "cells", () => {
+      clear();
+      map2.getCanvas().style.cursor = "";
+    });
+    map2.on("click", (e) => {
+      const f = map2.queryRenderedFeatures(e.point, { layers: ["cells"] })[0];
+      if (!f || !G.d || !G.byKey) return;
+      const p = f.properties, c = G.byKey.get(Math.round(p.s / G.d.cell) + "|" + Math.round(p.w / G.d.cell));
+      if (c != null) pick(c === G.sel ? -1 : c);
+    });
+    drawCells(true);
+    drawMarks();
+  }
+  function drawCells(frame2) {
+    const d = G.d;
+    if (!d) return;
+    const data = mapData(d, G.year ?? d.y0, G.year ?? d.y1), sc = G.year != null && G.yearScale ? G.yearScale : data, cols = classColours(sc.breaks, RAMP2);
+    legend4(sc.breaks, sc.max, cols, data.n);
+    if (!G.ready || !G.map) return;
+    const map2 = G.map, fill = sc.breaks.length ? ["step", ["get", "n"], cols[0], ...sc.breaks.flatMap((b, i) => [b, cols[i + 1]])] : cols[0];
+    map2.getSource("cells").setData(data.cells);
+    map2.getSource("outline").setData(data.outline);
+    map2.setPaintProperty("cells", "fill-color", fill);
+    map2.setPaintProperty("cells-edge", "line-color", fill);
+    if (frame2 && !G.marks.length) {
+      const b = G.year == null ? data.bounds : mapData(d, d.y0, d.y1).bounds;
+      map2.fitBounds([b.slice(0, 2), b.slice(2)], { padding: padding(), duration: 700 });
+    }
+  }
+  function legend4(breaks, max, cols, n) {
+    if (!n) {
+      $("gLeg").innerHTML = `<span class="gLegT">No hotspots ${G.year == null ? "in these years" : "this year"}</span>`;
+      return;
+    }
+    const steps = breaks.length ? cols.map((c, i) => `<span class="gStep"><i style="background:${c}"></i><small>${i ? short(breaks[i - 1]) : ""}</small></span>`).join("") + `<span class="gStep gEnd"><i></i><small>${short(max)}</small></span>` : `<span class="gStep"><i style="background:${cols[0]}"></i><small>${short(max)}</small></span>`;
+    $("gLeg").innerHTML = `<span class="gLegT">${G.year == null ? "Hotspots per square, all years" : "Hotspots per square in a year, same scale for every year"}</span><span class="gKey">${steps}</span>`;
+  }
+  function pick(c) {
+    G.sel = c;
+    pickCard();
+    if (c >= 0) $("gPick").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!G.ready || !G.map || !G.d) return;
+    const d = G.d, feats = [];
+    if (c >= 0) {
+      const { la, lo } = cellIndexes(d), s2 = la[c] * d.cell, w = near(lo[c] * d.cell + d.cell / 2, G.lon0) - d.cell / 2, e = w + d.cell, n = s2 + d.cell;
+      feats.push({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [w, s2],
+            [e, s2],
+            [e, n],
+            [w, n],
+            [w, s2]
+          ]
+        }
+      });
+      feats.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [w + d.cell / 2, s2 + d.cell / 2] } });
+    }
+    G.map.getSource("sel").setData({ type: "FeatureCollection", features: feats });
+  }
+  var r22 = (x) => Math.round(x * 100) / 100;
+  var boxNear2 = (b) => {
+    const off = near((b[0] + b[2]) / 2, G.lon0) - (b[0] + b[2]) / 2;
+    return [b[0] + off, b[1], b[2] + off, b[3]];
+  };
+  function shiftCoords2(c, off) {
+    if (!Array.isArray(c)) return c;
+    if (typeof c[0] === "number" && typeof c[1] === "number") return [c[0] + off, c[1], ...c.slice(2)];
+    return c.map((x) => shiftCoords2(x, off));
+  }
+  function ringsOf(c, out = []) {
+    if (!Array.isArray(c) || !c.length) return out;
+    if (Array.isArray(c[0]) && typeof c[0][0] === "number") out.push(c);
+    else for (const x of c) ringsOf(x, out);
+    return out;
+  }
+  function inRings(rings, x, y) {
+    let inside = false;
+    for (const r of rings)
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        const [xi, yi] = r[i], [xj, yj] = r[j];
+        if (yi > y !== yj > y && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+      }
+    return inside;
+  }
+  var glanceCountry = () => G.k && G.ready && G.d ? G.k : null;
+  function glanceView() {
+    if (!glanceCountry()) return null;
+    const m = G.map, c = m.getCenter(), b = m.getBounds(), shift = near(c.lng, 0) - c.lng;
+    return {
+      lat: r22(c.lat),
+      lon: r22(c.lng + shift),
+      zoom: r22(m.getZoom()),
+      bbox: [
+        r22(Math.max(-180, b.getWest() + shift)),
+        r22(Math.max(-85, b.getSouth())),
+        r22(Math.min(180, b.getEast() + shift)),
+        r22(Math.min(85, b.getNorth()))
+      ]
+    };
+  }
+  function glanceFocus(b, pad2, maxZoom = 9) {
+    if (!glanceCountry()) return false;
+    const nb = boxNear2(b), p = padding(), host = $("gMap"), W = host.clientWidth, H = host.clientHeight;
+    if (pad2.right < W / 2) p.right = Math.max(p.right, pad2.right + 24);
+    if (pad2.bottom < H / 2) p.bottom = Math.max(p.bottom, pad2.bottom + 24);
+    if (p.left + p.right > W - 60) p.left = p.right = 12;
+    if (p.top + p.bottom > H - 60) {
+      p.top = 12;
+      p.bottom = Math.max(12, H - 72);
+    }
+    G.map.fitBounds([nb.slice(0, 2), nb.slice(2)], { padding: p, duration: 900, maxZoom });
+    return true;
+  }
+  function glanceMarks(marks) {
+    if (!G.k) return false;
+    G.marks = marks;
+    noteCard();
+    if (!G.ready) return false;
+    drawMarks();
+    if (marks.length) $("gNote").scrollIntoView({ block: "nearest" });
+    return true;
+  }
+  function drawMarks() {
+    if (!G.ready || !G.map) return;
+    const off = (b) => near((b[0] + b[2]) / 2, G.lon0) - (b[0] + b[2]) / 2;
+    const features = G.marks.flatMap((mk, i) => {
+      const tone2 = TONES[i % TONES.length];
+      if (mk.geometry)
+        return [
+          {
+            type: "Feature",
+            properties: { name: mk.name, tone: tone2, frame: 0 },
+            geometry: {
+              type: mk.geometry.type,
+              coordinates: mk.box ? shiftCoords2(mk.geometry.coordinates, off(mk.box)) : mk.geometry.coordinates
+            }
+          }
+        ];
+      if (!mk.box) return [];
+      const [w, s2, e, n] = boxNear2(mk.box);
+      return [
+        {
+          type: "Feature",
+          properties: { name: mk.name, tone: tone2, frame: 1 },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [w, s2],
+              [e, s2],
+              [e, n],
+              [w, n],
+              [w, s2]
+            ]
+          }
+        }
+      ];
+    });
+    try {
+      G.map.getSource("ask").setData({ type: "FeatureCollection", features });
+    } catch {
+      G.map.getSource("ask").setData(EMPTY);
+    }
+  }
+  var sheetObs = null;
+  function syncSheet() {
+    const r = $("gCard").getBoundingClientRect();
+    document.body.style.setProperty("--gSheet", isSheet() && !$("glance").hidden ? Math.round(innerHeight - r.top) + "px" : "0px");
+  }
+  function trackSheet() {
+    if (sheetObs || typeof ResizeObserver === "undefined") return;
+    sheetObs = new ResizeObserver(syncSheet);
+    sheetObs.observe($("gCard"));
+    addEventListener("resize", syncSheet);
+    syncSheet();
+  }
+  var prevHash = null;
+  function glanceEvents() {
+    addEventListener("hashchange", (e) => {
+      try {
+        prevHash = new URL(e.oldURL).hash;
+      } catch {
+        prevHash = null;
+      }
+    });
+    const up = (to) => {
+      if (prevHash === to) history.back();
+      else location.hash = to;
+    };
+    $("gBack").onclick = () => up("");
+    $("gOpen").onclick = () => {
+      if (G.k) location.hash = "#c/" + slugOf(G.k);
+    };
+    $("gRetry").onclick = () => {
+      if (G.k) load4(G.k);
+    };
+    $("gAll").onclick = () => setYear(null);
+    const r = $("gYear");
+    let raf = 0;
+    r.oninput = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setYear(+r.value));
+    };
+    r.addEventListener("pointerup", () => {
+      if (G.year == null) setYear(+r.value);
+    });
+    r.addEventListener("keydown", (e) => {
+      if (G.year == null && ["Enter", " ", "ArrowRight", "ArrowUp", "End"].includes(e.key) && r.value === r.max) setYear(+r.value);
+    });
+    document.querySelectorAll("#gStates button").forEach((b) => {
+      const st = b.dataset.st;
+      b.textContent = NAME[st];
+      b.onclick = () => {
+        location.hash = SLUG[st];
+      };
+    });
+    const cUp = document.getElementById("cUp");
+    if (cUp)
+      cUp.onclick = () => {
+        const m = /^#c\/(.+)$/.exec(location.hash);
+        if (m) up("#g/" + m[1]);
+      };
+    addEventListener("resize", () => G.map?.resize());
+  }
+
   // src/views.ts
   function openState(st, fresh2) {
     closeCountry();
@@ -6776,7 +7591,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     S.focus = FOCUS0.slice();
     setDraw(false);
     $("hero").hidden = true;
-    G.stop && G.stop();
+    G2.stop && G2.stop();
     $("app").hidden = false;
     $("card").scrollTop = 0;
     scrollTo(0, 0);
@@ -6809,18 +7624,18 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     const h2 = $("hero");
     h2.hidden = false;
     h2.classList.remove("leaving");
-    if (G.ok) G.reset();
+    if (G2.ok) G2.reset();
   }
   function go(st) {
     if (location.hash !== "#" + SLUG[st]) {
-      G.pending = "#" + SLUG[st];
+      G2.pending = "#" + SLUG[st];
       location.hash = SLUG[st];
     }
   }
-  function goCountry(k) {
-    const h2 = "#c/" + slugOf(k);
+  function goCountry(k, full = false) {
+    const h2 = (full ? "#c/" : "#g/") + slugOf(k);
     if (location.hash !== h2) {
-      G.pending = h2;
+      G2.pending = h2;
       location.hash = h2;
     }
   }
@@ -6831,7 +7646,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     $("app").classList.remove("in");
     $("app").hidden = true;
     $("hero").hidden = true;
-    G.stop && G.stop();
+    G2.stop && G2.stop();
   }
   async function routeCountry(hash) {
     let raw = hash.slice(3);
@@ -6846,27 +7661,42 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       if (location.hash !== hash) return;
     }
     const shape = k ? shapeOf(k) : void 0;
-    if (k && shape && G.pending === hash && G.ok && !$("hero").hidden) {
+    if (k && shape && G2.pending === hash && G2.ok && !$("hero").hidden) {
       const key = k, b = shape.b;
-      G.pending = null;
-      G.flyTo(aimAt(shape.c[0], shape.c[1], Math.min(lonSpan(shape), 180) * Math.cos(shape.c[1] * Math.PI / 180) + (b[3] - b[1])), () => {
+      G2.pending = null;
+      G2.flyTo(aimAt(shape.c[0], shape.c[1], Math.min(lonSpan(shape), 180) * Math.cos(shape.c[1] * Math.PI / 180) + (b[3] - b[1])), () => {
         if (location.hash !== hash) return;
         leaveForCountry();
-        openCountry(key);
+        openOne(hash, key);
       });
       return;
     }
-    G.pending = null;
+    G2.pending = null;
     leaveForCountry();
-    if (k) openCountry(k);
-    else countryMissing(slug);
+    if (k) openOne(hash, k);
+    else {
+      closeGlance();
+      countryMissing(slug, hash.slice(0, 3));
+      $("cUp").hidden = true;
+    }
+  }
+  function openOne(hash, k) {
+    if (hash.startsWith("#g/")) {
+      closeCountry();
+      openGlance(k);
+    } else {
+      closeGlance();
+      $("cUp").hidden = false;
+      openCountry(k);
+    }
   }
   function route() {
-    if (location.hash.startsWith("#c/")) {
+    if (location.hash.startsWith("#c/") || location.hash.startsWith("#g/")) {
       routeCountry(location.hash);
       return;
     }
     closeCountry();
+    closeGlance();
     const st = STS.find((k) => "#" + SLUG[k] === location.hash);
     if (!st) {
       closeSheet(true);
@@ -6875,11 +7705,11 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       return;
     }
     loadExtras();
-    if (G.pending === location.hash && G.ok && !$("hero").hidden) {
-      G.pending = null;
-      G.flyTo({ ry: G.st[st].ry, rx: G.st[st].rx, z: 1.62 }, () => openState(st, true));
+    if (G2.pending === location.hash && G2.ok && !$("hero").hidden) {
+      G2.pending = null;
+      G2.flyTo({ ry: G2.st[st].ry, rx: G2.st[st].rx, z: 1.62 }, () => openState(st, true));
     } else {
-      G.pending = null;
+      G2.pending = null;
       openState(st, !$("hero").hidden);
     }
   }
@@ -6890,7 +7720,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     rx: lat * Math.PI / 180,
     z: 1.62 + Math.min(0.9, span3 / 90)
   });
-  var G = { ok: false, run: false };
+  var G2 = { ok: false, run: false };
   var loadImg = (src) => new Promise((res, rej) => {
     const im = new Image();
     im.onload = () => res(im);
@@ -7031,7 +7861,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       $("heroMode").hidden = false;
     });
     const tops = [], RT2 = 1.003;
-    G.st = {};
+    G2.st = {};
     for (const st of STS) {
       const topM = new T.MeshBasicMaterial({ color: 16777215, side: T.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
       topM.visible = false;
@@ -7056,7 +7886,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
         }
       }
       const cen = sum2.divideScalar(cnt).normalize(), lat = 90 - Math.acos(cen.y) * 180 / Math.PI, lon = Math.atan2(cen.z, -cen.x) * 180 / Math.PI - 180;
-      G.st[st] = {
+      G2.st[st] = {
         topM,
         cen: cen.clone().multiplyScalar(RT2 + 0.02),
         ry: aimAt(lon, lat).ry,
@@ -7132,7 +7962,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       off = { x: 0, y: wide ? 0.06 : 0.25 };
       camZ = wide ? 4.6 : 4.6 / Math.max(0.45, w / h2) * 1.02;
     }
-    const pick = (e) => {
+    const pick2 = (e) => {
       const r = cv.getBoundingClientRect();
       ndc.set((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, cam);
@@ -7181,9 +8011,9 @@ ${short(f.perYear)} hotspots a year` : c.n;
         return;
       }
       if (fly) return;
-      const st = pick(e), c = st ? null : pickCountry(e);
+      const st = pick2(e), c = st ? null : pickCountry(e);
       setHov(c);
-      for (const k in G.st) G.st[k].hover = k === st;
+      for (const k in G2.st) G2.st[k].hover = k === st;
       cv.style.cursor = st || c ? "pointer" : "grab";
       document.querySelectorAll(".pick").forEach((b) => b.classList.toggle("hover", b.dataset.st === st));
     };
@@ -7191,7 +8021,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       const d = drag;
       drag = null;
       if (d && !d.moved) {
-        const st = pick(e), c = st ? null : pickCountry(e);
+        const st = pick2(e), c = st ? null : pickCountry(e);
         if (st) go(st);
         else if (c) goCountry(c.k);
       }
@@ -7199,10 +8029,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
     cv.onpointerleave = (e) => {
       if (e.relatedTarget !== tagC) setHov(null);
     };
-    G.hover = (st) => {
-      for (const k in G.st) G.st[k].hover = k === st;
+    G2.hover = (st) => {
+      for (const k in G2.st) G2.st[k].hover = k === st;
     };
-    G.flyTo = (to, done) => {
+    G2.flyTo = (to, done) => {
       if (reduced) {
         done();
         return;
@@ -7217,24 +8047,24 @@ ${short(f.perYear)} hotspots a year` : c.n;
         done
       };
     };
-    G.reset = () => {
+    G2.reset = () => {
       fly = null;
       setHov(null);
       user.ry = user.rx = 0;
       size2();
       loadFire();
-      if (!G.run) {
-        G.run = true;
+      if (!G2.run) {
+        G2.run = true;
         last = 0;
         requestAnimationFrame(frame2);
       }
     };
-    G.stop = () => {
-      G.run = false;
+    G2.stop = () => {
+      G2.run = false;
     };
     const tmp = new T.Vector3();
     function frame2(now) {
-      if (!G.run) return;
+      if (!G2.run) return;
       const t = now / 1e3, dt = last ? Math.min(0.1, t - last) : 0;
       last = t;
       if (fly) {
@@ -7264,8 +8094,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
         stars.rotation.x += dt * 3e-3;
         starMat.uniforms.t.value = t;
       }
-      for (const k in G.st) {
-        const s2 = G.st[k];
+      for (const k in G2.st) {
+        const s2 = G2.st[k];
         s2.topM.visible = s2.hover;
         const tag = $("tag" + k);
         tmp.copy(s2.cen);
@@ -7294,8 +8124,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
     }
     addEventListener("resize", size2);
     cam.position.set(0, 0, camZ);
-    G.ok = true;
-    if (!$("hero").hidden) G.reset();
+    G2.ok = true;
+    if (!$("hero").hidden) G2.reset();
   }
   function showKey(lo, hi) {
     const cv = $("heroRamp"), g = cv.getContext("2d");
@@ -7346,6 +8176,31 @@ ${short(f.perYear)} hotspots a year` : c.n;
     $("heroKey").classList.add("ready");
   }
 
+  // src/drill.ts
+  var fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/^st\.? /, "saint ").replace(/[^a-z0-9]+/g, " ").trim();
+  function countyIndex(st, name) {
+    const f = fold(name.replace(/\s+County$/i, ""));
+    return f ? D.states[st].counties.findIndex((c) => fold(c.name) === f) : -1;
+  }
+  var job = 0;
+  function stateCounty(st, name, hash) {
+    const ci = countyIndex(st, name);
+    if (ci < 0) return "";
+    const mine = ++job, until = Date.now() + 15e3;
+    const tick = () => {
+      if (mine !== job || location.hash !== hash || Date.now() > until) return;
+      if (S.st === st && !$("app").hidden && $("app").classList.contains("in")) {
+        setTimeout(() => {
+          if (mine === job && location.hash === hash && S.st === st) setCounty(ci);
+        }, 250);
+        return;
+      }
+      setTimeout(tick, 150);
+    };
+    tick();
+    return D.states[st].counties[ci].name;
+  }
+
   // src/askproto.ts
   var isObj2 = (u) => typeof u === "object" && u !== null && !Array.isArray(u);
   var LIMIT = 2e3;
@@ -7354,8 +8209,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
   var list3 = (u, max = 200) => Array.isArray(u) ? u.slice(0, max) : [];
   var texts = (u, max = 200) => list3(u, max).map((x) => text(x, 300));
   var nums = (u, max = 400) => list3(u, max).map(num2);
-  var TONES = ["high", "up", "flat", "down"];
-  var tone = (u) => TONES.find((t) => t === u) ?? null;
+  var TONES2 = ["high", "up", "flat", "down"];
+  var tone = (u) => TONES2.find((t) => t === u) ?? null;
   function box(u) {
     const a = list3(u, 4).map(num2).filter((v) => v !== null);
     if (a.length !== 4) return null;
@@ -7370,7 +8225,34 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (!isObj2(u)) return null;
     const name = text(u.name, 200);
     if (!name) return null;
-    return { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num2(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
+    const p = { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num2(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
+    return p.b && p.b[2] - p.b[0] > 180 ? acrossDateLine(p) : p;
+  }
+  function eachPoint(c, f) {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === "number" && typeof c[1] === "number") f(c);
+    else for (const x of c) eachPoint(x, f);
+  }
+  function shiftWest(c) {
+    if (!Array.isArray(c)) return c;
+    if (typeof c[0] === "number" && typeof c[1] === "number") return [c[0] < 0 ? c[0] + 360 : c[0], ...c.slice(1)];
+    return c.map(shiftWest);
+  }
+  function acrossDateLine(p) {
+    if (!p.g) return { ...p, b: null };
+    let w = Infinity, e = -Infinity, w2 = Infinity, e2 = -Infinity, s2 = Infinity, n = -Infinity;
+    eachPoint(p.g.coordinates, ([x, y]) => {
+      const x2 = x < 0 ? x + 360 : x;
+      w = Math.min(w, x);
+      e = Math.max(e, x);
+      w2 = Math.min(w2, x2);
+      e2 = Math.max(e2, x2);
+      s2 = Math.min(s2, y);
+      n = Math.max(n, y);
+    });
+    if (!Number.isFinite(w) || !Number.isFinite(s2)) return { ...p, b: null };
+    if (e - w <= e2 - w2) return { ...p, b: [w, s2, e, n] };
+    return { ...p, b: [w2, s2, e2, n], g: { type: p.g.type, coordinates: shiftWest(p.g.coordinates) } };
   }
   var places = (u) => list3(u, 60).map(place2).filter((p) => p !== null);
   function badge(u) {
@@ -7564,14 +8446,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
     return svg;
   }
   function chartEl(c) {
-    const fig = h("figure", "askChart"), cap3 = h("figcaption");
-    cap3.appendChild(h("span", "", c.title));
+    const fig = h("figure", "askChart"), cap4 = h("figcaption");
+    cap4.appendChild(h("span", "", c.title));
     if (c.type === "bars" && (c.ref || c.refLine != null)) {
       const key = h("span", "askKey");
       key.append(h("i", c.ref ? "ln" : "dash"), c.refLabel);
-      cap3.appendChild(key);
+      cap4.appendChild(key);
     }
-    fig.appendChild(cap3);
+    fig.appendChild(cap4);
     fig.appendChild(c.type === "lines" ? linesSvg(c) : barsSvg(c));
     if (c.type === "lines") {
       const leg = h("div", "askLegend");
@@ -7608,10 +8490,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
       t.appendChild(h("thead")).appendChild(tr);
       const body = t.appendChild(h("tbody"));
       c.table.rows.forEach((r, k) => {
-        const row = body.appendChild(h("tr"));
+        const row2 = body.appendChild(h("tr"));
         r.forEach((x, i) => {
-          if (i) return row.appendChild(h("td", "", x));
-          const th = row.appendChild(h("th"));
+          if (i) return row2.appendChild(h("td", "", x));
+          const th = row2.appendChild(h("th"));
           if (c.table.plain) th.appendChild(h("span", "n", String(k + 1)));
           th.append(x);
         });
@@ -7623,23 +8505,23 @@ ${short(f.perYear)} hotspots a year` : c.n;
       card2.appendChild(h("p", "askRankT", c.rank.title));
       const ol = h("ol", "askRank");
       c.rank.items.forEach((it, i) => {
-        const li = ol.appendChild(h("li")), row = it.b ? h("button", "askRow") : h("div", "askRow");
-        if (it.b && row instanceof HTMLButtonElement) {
+        const li = ol.appendChild(h("li")), row2 = it.b ? h("button", "askRow") : h("div", "askRow");
+        if (it.b && row2 instanceof HTMLButtonElement) {
           const b = it.b;
-          row.type = "button";
-          row.title = `Show ${it.name} on the map`;
-          row.onclick = () => hooks2.focus(it.name, b);
+          row2.type = "button";
+          row2.title = `Show ${it.name} on the map`;
+          row2.onclick = () => hooks2.focus(it.name, b);
         }
         const who = h("span", "who");
         who.append(h("b", "", it.name));
         if (it.sub) who.appendChild(h("small", "", it.sub));
-        row.append(h("span", "n", String(i + 1)), who);
-        if (it.spark.length) row.appendChild(spark(it.spark));
+        row2.append(h("span", "n", String(i + 1)), who);
+        if (it.spark.length) row2.appendChild(spark(it.spark));
         const val = h("span", "val");
         val.appendChild(h("b", "", it.value));
         if (it.chip) val.appendChild(h("span", `askBadge ${it.chip.tone}`, it.chip.text));
-        row.appendChild(val);
-        li.appendChild(row);
+        row2.appendChild(val);
+        li.appendChild(row2);
       });
       card2.appendChild(ol);
     }
@@ -7706,15 +8588,16 @@ ${short(f.perYear)} hotspots a year` : c.n;
   var HONESTY = "Answers come from the HotSpotters copilot (DeepSeek), which counts all FIRMS heat detections, gas flares included. Its totals often run higher than this page's, so compare trends, not exact counts.";
   function here() {
     const hash = location.hash;
-    if (hash.startsWith("#c/")) {
+    if (hash.startsWith("#c/") || hash.startsWith("#g/")) {
+      const full = hash.startsWith("#c/");
       let slug = hash.slice(3);
       try {
         slug = slugOf(decodeURIComponent(slug));
       } catch {
         slug = slugOf(slug);
       }
-      const k = WORLD.find((c) => slugOf(c.k) === slug)?.k ?? countryKey();
-      return { kind: "country", k, name: k ? nameOf(k) : "" };
+      const k = WORLD.find((c) => slugOf(c.k) === slug)?.k ?? (full ? countryKey() : glanceKey());
+      return { kind: "country", k, name: k ? nameOf(k) : "", full };
     }
     const st = STS.find((s2) => "#" + SLUG[s2] === hash);
     if (st) return { kind: "state", st };
@@ -7734,7 +8617,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     return "";
   }
   var NOTE_RE = /\s*\(I'm (?:looking at|comparing) [^()]*\.\)$/;
-  var fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  var fold2 = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   var NOT_PLACES = new Set(
     [
       ...MONTHS,
@@ -7755,8 +8638,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
     ].map((w) => w.toLowerCase())
   );
   function namesAPlace(q) {
-    const f = ` ${fold(q)} `;
-    if (WORLD.some((c) => f.includes(` ${fold(c.n)} `))) return true;
+    const f = ` ${fold2(q)} `;
+    if (WORLD.some((c) => f.includes(` ${fold2(c.n)} `))) return true;
     const words2 = q.split(/\s+/);
     return words2.some((w, i) => {
       const bare = w.replace(/^[^A-Za-z]+|[^A-Za-z']+$/g, "");
@@ -7786,13 +8669,13 @@ ${short(f.perYear)} hotspots a year` : c.n;
     bahamas: "Bahamas"
   };
   function countryNamed(name) {
-    const f = fold(name).replace(/^the /, "");
+    const f = fold2(name).replace(/^the /, "");
     if (!f) return null;
-    return WORLD.find((c) => fold(c.n).replace(/^the /, "") === f || fold(c.k) === f)?.k ?? COUNTRY_ALIAS[f] ?? null;
+    return WORLD.find((c) => fold2(c.n).replace(/^the /, "") === f || fold2(c.k) === f)?.k ?? COUNTRY_ALIAS[f] ?? null;
   }
   function destOf(p) {
     const parts = p.label.split(",").map((t) => t.trim()), country = p.level === 0 ? p.name : parts.length > 1 ? parts[parts.length - 1] : "";
-    const k = countryNamed(country) ?? (p.b ? countryAt((p.b[0] + p.b[2]) / 2, (p.b[1] + p.b[3]) / 2)?.k ?? null : null);
+    const k = countryNamed(country) ?? (p.b ? countryAt(near((p.b[0] + p.b[2]) / 2, 0), (p.b[1] + p.b[3]) / 2)?.k ?? null : null);
     if (k === "United_States" && p.level >= 1) {
       const stName = p.level === 1 ? p.name : parts[parts.length - 2] ?? "";
       const st = STS.find((s2) => NAME[s2] === stName);
@@ -7881,7 +8764,11 @@ ${short(f.perYear)} hotspots a year` : c.n;
     ws?.send(JSON.stringify(msg));
   }
   function context() {
-    return { selection: null, view: here().kind === "country" ? mapView() : null, layer: null };
+    return { selection: null, view: here().kind === "country" ? onMap().view() : null, layer: null };
+  }
+  function onMap() {
+    const at = here();
+    return at.kind === "country" && !at.full ? { host: "gMap", country: glanceCountry, view: glanceView, focus: glanceFocus, marks: glanceMarks } : { host: "cMap", country: mapCountry, view: mapView, focus: mapFocus, marks: mapMarks };
   }
   var scroll = () => {
     if (UI.log) UI.log.scrollTop = UI.log.scrollHeight;
@@ -7977,7 +8864,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
   var seeIt = () => innerWidth <= 600 ? { label: "See it", run: close } : void 0;
   function noteDid(text2, button) {
     const target = turn2 ? turn2.box : UI.log?.lastElementChild;
-    if (!(target instanceof HTMLElement)) return;
+    if (!(target instanceof HTMLElement)) return null;
     const p = target.appendChild(h("p", "askDid", text2));
     if (button) {
       const b = p.appendChild(h("button", "askSee", button.label));
@@ -7985,6 +8872,12 @@ ${short(f.perYear)} hotspots a year` : c.n;
       b.onclick = button.run;
     }
     scroll();
+    return p;
+  }
+  function noteMoved(text2) {
+    turn2?.moved?.remove();
+    const p = noteDid(text2, seeIt());
+    if (turn2) turn2.moved = p;
   }
   function ask(raw) {
     const q = raw.trim().slice(0, 500);
@@ -8009,7 +8902,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
       hash: location.hash,
       cardCount: 0,
       frame: 0,
-      offered: []
+      offered: [],
+      moved: null
     };
     box2.append(status, live.cards, live.text);
     log.appendChild(box2);
@@ -8124,7 +9018,9 @@ ${short(f.perYear)} hotspots a year` : c.n;
   var UNREACHABLE = "Can't reach the copilot at hotspotters.compare. It may be down, or this network may block it.";
   function newConversation() {
     if (turn2) return;
+    pendingMap = null;
     mapMarks([]);
+    glanceMarks([]);
     UI.log.textContent = "";
     UI.log.appendChild(welcome());
     shown = true;
@@ -8139,7 +9035,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     }
   }
   function mapPad() {
-    const pad2 = { right: 0, bottom: 0 }, root = UI.root, host = document.getElementById("cMap");
+    const pad2 = { right: 0, bottom: 0 }, root = UI.root, host = document.getElementById(onMap().host);
     if (!root || root.hidden || !host) return pad2;
     const r = root.getBoundingClientRect(), m = host.getBoundingClientRect();
     if (r.left > m.left + 120) pad2.right = Math.max(0, m.right - r.left);
@@ -8147,6 +9043,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
     return pad2;
   }
   function showMapSection() {
+    const at = here();
+    if (at.kind === "country" && !at.full) return;
     const host = document.getElementById("cMap");
     if (!host) return;
     const r = host.getBoundingClientRect();
@@ -8157,14 +9055,15 @@ ${short(f.perYear)} hotspots a year` : c.n;
   }
   function frame(k, list4, focus) {
     const run = () => {
-      if (mapCountry() !== k) return;
+      const M = onMap();
+      if (M.country() !== k) return;
       const drawn = list4.filter((p) => p.b || p.g);
-      mapMarks(marksFor(drawn));
+      M.marks(marksFor(drawn));
       const b = focus ?? union(drawn.map((p) => p.b).filter((x) => x !== null));
-      if (b) mapFocus(b, mapPad(), 8);
+      if (b) M.focus(b, mapPad(), 8);
       showMapSection();
     };
-    if (mapCountry() === k) run();
+    if (onMap().country() === k) run();
     else {
       pendingMap = { k, run, until: Date.now() + 25e3 };
       tickPending();
@@ -8173,11 +9072,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
   function tickPending() {
     const p = pendingMap;
     if (!p) return;
-    if (mapCountry() === p.k) {
+    if (onMap().country() === p.k) {
       pendingMap = null;
       setTimeout(p.run, 300);
-    } else if (Date.now() > p.until || here().kind !== "country") pendingMap = null;
-    else setTimeout(tickPending, 400);
+    } else if (Date.now() > p.until || here().kind !== "country") {
+      pendingMap = null;
+      const at = here();
+      if (at.kind === "country" && at.k === p.k) noteDid(`${nameOf(p.k)}'s map did not load, so nothing was framed on it.`);
+    } else setTimeout(tickPending, 400);
   }
   function union(bs) {
     if (!bs.length) return null;
@@ -8194,27 +9096,37 @@ ${short(f.perYear)} hotspots a year` : c.n;
       return;
     }
     if (dest.kind === "state") {
-      if (at.kind === "state" && at.st === dest.st) {
-        if (byHand) scrollTo({ top: 0, behavior: "smooth" });
+      const here0 = at.kind === "state" && at.st === dest.st, counties = shapes.filter((s2) => s2.level === 2), county2 = p.level === 2 ? p : counties.length && !focus ? counties[0] : null;
+      if (!here0) {
+        go(dest.st);
+        followed();
+      }
+      const cname = county2 ? stateCounty(dest.st, countyName(county2.name), location.hash) : "";
+      if (cname) {
+        const others = counties.filter((c) => c.label !== county2.label).map((c) => `${countyName(c.name)} County`), also = others.length ? ` It shows one county at a time; also named: ${others.join(", ")}.` : "";
+        if (here0) noteDid(`Zoomed to ${cname} County.${also}`, seeIt());
+        else noteMoved(`Opened ${NAME[dest.st]} and zoomed to ${cname} County.${also}`);
         return;
       }
-      noteDid(`Opened ${NAME[dest.st]}.`, seeIt());
-      go(dest.st);
-      followed();
+      if (!here0) noteMoved(`Opened ${NAME[dest.st]}.`);
+      else if (byHand) scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    const onIt = at.kind === "country" && at.k === dest.k;
+    const onIt = at.kind === "country" && at.k === dest.k, list4 = shapes.length ? shapes : p.level >= 1 && p.b ? [p] : [];
     if (!onIt) {
-      noteDid(`Opened ${nameOf(dest.k)}.`, seeIt());
+      const name = theName(nameOf(dest.k));
+      noteMoved(
+        list4.length === 1 ? `Opened ${name} and framed ${list4[0].name}.` : list4.length ? `Opened ${name} and framed ${list4.length} places.` : `Opened ${name}.`
+      );
       goCountry(dest.k);
       followed();
     }
-    const list4 = shapes.length ? shapes : p.level >= 1 && p.b ? [p] : [];
     if (list4.length || focus) {
       if (onIt) noteDid(outlined(list4), seeIt());
       frame(dest.k, list4, focus);
     } else if (onIt && byHand) showMapSection();
   }
+  var countyName = (name) => name.replace(/\s+County$/i, "").trim();
   var outlined = (list4) => list4.length === 1 ? `Outlined ${list4[0].name} on the map.` : list4.length ? `Outlined ${list4.length} places on the map.` : "Moved the map.";
   function offerPlace(p, t, run) {
     const dest = destOf(p);
@@ -8232,10 +9144,15 @@ ${short(f.perYear)} hotspots a year` : c.n;
   };
   function mapHere() {
     const at = here();
-    return at.kind === "country" && at.k && mapCountry() === at.k ? at.k : null;
+    return at.kind === "country" && at.k && onMap().country() === at.k ? at.k : null;
   }
+  var placeOf = (hash) => hash.replace(/^#[cg]\//, "#k/");
+  var stateOf = (p) => {
+    const d = destOf(p);
+    return d?.kind === "state" ? d.st : null;
+  };
   function act(a, t) {
-    const moved = location.hash !== t.hash;
+    const moved = placeOf(location.hash) !== placeOf(t.hash);
     switch (a.type) {
       case "goto":
         if (moved) return offerPlace(a.place, t, () => gotoPlace(a.place, true));
@@ -8253,21 +9170,21 @@ ${short(f.perYear)} hotspots a year` : c.n;
         }
         const lead2 = (a.type === "mark" ? a.focus : null) ?? a.places[0];
         if (!lead2) return;
-        const dest = countryOf(lead2), shapes = dest ? a.places.filter((p) => p.level >= 1 && countryOf(p) === dest) : [], focus = dest && focusPlace && countryOf(focusPlace) === dest ? focusPlace.b : null;
+        const dest = countryOf(lead2), st = stateOf(lead2), shapes = dest ? a.places.filter((p) => p.level >= 1 && countryOf(p) === dest) : st ? a.places.filter((p) => p.level === 2 && stateOf(p) === st) : [], focus = dest && focusPlace && countryOf(focusPlace) === dest ? focusPlace.b : null;
         if (moved) return offerPlace(lead2, t, () => gotoPlace(lead2, true, shapes, focus));
         return gotoPlace(lead2, false, shapes, focus);
       }
       case "highlight": {
         const p = a.parent, k = moved ? null : mapHere();
-        if (p && p.level >= 1 && p.b && k && countryOf(p) === k) mapFocus(p.b, mapPad(), 8);
+        if (p && p.level >= 1 && p.b && k && countryOf(p) === k) onMap().focus(p.b, mapPad(), 8);
         return;
       }
     }
   }
   function syncPlace() {
-    const at = here(), paper = at.kind === "country";
+    const at = here(), paper = at.kind === "country" && at.full;
     for (const el of [UI.launch, UI.root]) el?.classList.toggle("paper", paper);
-    document.body.dataset.askView = at.kind;
+    document.body.dataset.askView = at.kind === "country" && !at.full ? "glance" : at.kind;
     if (UI.where) UI.where.textContent = whereLabel(at);
     const w = UI.log?.querySelector(".askWelcome");
     if (w) w.replaceWith(welcome());
@@ -8393,7 +9310,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
   }
 
   // src/main.ts
-  var fold2 = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^st /, "saint ");
+  var fold3 = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^st /, "saint ");
   var ALIAS = {
     us: "United_States",
     usa: "United_States",
@@ -8449,11 +9366,11 @@ ${short(f.perYear)} hotspots a year` : c.n;
       }).catch(() => asked = false);
     };
     const find = (q) => {
-      const f = fold2(q);
+      const f = fold3(q);
       if (!f) return null;
       const alias = ALIAS[f];
-      return list4.find((c) => fold2(c.name) === f || "k" in c && fold2(c.k) === f) || alias && list4.find((c) => "k" in c && c.k === alias) || list4.find((c) => fold2(c.name).startsWith(f)) || /* a word inside the name, such as "guinea" in "Papua New Guinea"; not single letters or pairs */
-      f.length >= 3 && list4.find((c) => (" " + fold2(c.name)).includes(" " + f)) || null;
+      return list4.find((c) => fold3(c.name) === f || "k" in c && fold3(c.k) === f) || alias && list4.find((c) => "k" in c && c.k === alias) || list4.find((c) => fold3(c.name).startsWith(f)) || /* a word inside the name, such as "guinea" in "Papua New Guinea"; not single letters or pairs */
+      f.length >= 3 && list4.find((c) => (" " + fold3(c.name)).includes(" " + f)) || null;
     };
     const open2 = (hit) => {
       $("heroFind").value = "";
@@ -8471,7 +9388,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     $("heroFind").oninput = (e) => {
       $("heroMsg").textContent = "";
       if (e instanceof InputEvent && e.inputType && e.inputType !== "insertReplacementText") return;
-      const v = fold2($("heroFind").value), hit = list4.find((c) => fold2(c.name) === v);
+      const v = fold3($("heroFind").value), hit = list4.find((c) => fold3(c.name) === v);
       if (hit) open2(hit);
     };
   }
@@ -8544,7 +9461,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       const r = tr.getBoundingClientRect(), n = S.yTo - S.yFrom + 1;
       return S.yFrom + Math.max(0, Math.min(n - 1, Math.floor((e.clientX - r.left) / r.width * n)));
     };
-    const setYear = (y) => {
+    const setYear2 = (y) => {
       stopPlay();
       if (S.layer === "count" && S.show.t === "year" && S.show.y === y) return;
       S.layer = "count";
@@ -8554,10 +9471,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
     tr.onpointerdown = (e) => {
       tr.setPointerCapture(e.pointerId);
       tlDrag = true;
-      setYear(yearAt(e));
+      setYear2(yearAt(e));
     };
     tr.onpointermove = (e) => {
-      if (tlDrag) setYear(yearAt(e));
+      if (tlDrag) setYear2(yearAt(e));
     };
     tr.onpointerup = tr.onpointercancel = () => {
       tlDrag = false;
@@ -8566,7 +9483,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       e.preventDefault();
       const d = e.key === "ArrowRight" ? 1 : -1, cur2 = S.show.t === "year" ? S.show.y : d > 0 ? S.yFrom - 1 : S.yTo + 1;
-      setYear(Math.max(S.yFrom, Math.min(S.yTo, cur2 + d)));
+      setYear2(Math.max(S.yFrom, Math.min(S.yTo, cur2 + d)));
     };
     $("showReset").onclick = () => {
       stopPlay();
@@ -8619,11 +9536,12 @@ ${short(f.perYear)} hotspots a year` : c.n;
     );
     document.querySelectorAll(".pick,.tag").forEach((b) => {
       b.onclick = () => go(b.dataset.st);
-      b.onmouseenter = () => G.hover && G.hover(b.dataset.st);
-      b.onmouseleave = () => G.hover && G.hover(null);
+      b.onmouseenter = () => G2.hover && G2.hover(b.dataset.st);
+      b.onmouseleave = () => G2.hover && G2.hover(null);
     });
     heroSearch();
     countryEvents();
+    glanceEvents();
     $("dlCal").onclick = csvCal;
     $("dlHot").onclick = csvHot;
     $("dlFc").onclick = csvForecast;

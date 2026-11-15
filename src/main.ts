@@ -17,6 +17,7 @@ import { respEvents } from "./respui";
 import { oddsEvents } from "./fcui";
 import { olEvents, olStart } from "./olui";
 import { copilotInit } from "./copilot";
+import { glanceEvents } from "./glance";
 
 /** a place the hero's search can open: a country by its FIRMS name, or one of the two detailed states */
 type Findable = { name: string; k: string } | { name: string; st: StateCode };
@@ -285,6 +286,7 @@ function init() {
   });
   heroSearch();
   countryEvents();
+  glanceEvents();
   $("dlCal").onclick = csvCal;
   $("dlHot").onclick = csvHot;
   $("dlFc").onclick = csvForecast;

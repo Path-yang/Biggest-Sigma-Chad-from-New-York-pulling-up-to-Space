@@ -51,7 +51,7 @@ export interface CountryForecast {
 }
 const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
 const numOrNull = (x: unknown) => x === null || num(x);
-function isForecast(x: unknown, k: string): x is CountryForecast {
+export function isForecast(x: unknown, k: string): x is CountryForecast {
   if (!isObj(x) || x.v !== 1 || x.country !== k || typeof x.name !== "string") return false;
   const mo = x.month,
     h = x.hist,
@@ -768,3 +768,65 @@ export function fcEvents() {
   );
   $("cFcDl").onclick = csv;
 }
+
+/* ---------- a few words for the country view's side card (src/glance.ts) ---------- */
+export const fcLoad = (k: string) => loadChecked(forecastPath(k), (x): x is CountryForecast => isForecast(x, k));
+/** "22% fewer than expected", "Close to expected", "Far fewer than expected", "2.4 times what was expected" */
+function relExpected(cur: number, exp: number) {
+  const r = cur / exp;
+  if (r < 0.1) return "Far fewer than expected";
+  const t = rel(cur, exp);
+  return r >= 2 ? `${t} what was expected` : `${t.charAt(0).toUpperCase()}${t.slice(1)} expected`;
+}
+/** 2026 so far against what the forecast expected, the month the record has reached so far, and the chance of fire
+    in the month after it (the month under way already has its answer in the record), or null where there was no fire
+    to forecast. Values may hold <small>. */
+export function fcGlance(F: CountryForecast, d: CountrySummary) {
+  /* no fire on record: nothing to forecast, as the full page says */
+  if (F.hist.annual_mean === 0 && F.year["2026"].mean === 0) return null;
+  const C = checkOf(F, d),
+    skill = skilled(F),
+    m = C ? C.mon : (d.partial?.m ?? new Date().getMonth() + 1) - 1,
+    next = C ? m + 1 : m,
+    pAny = skill ? F.month.p_any[next] : F.hist.p_any[next % 12];
+  const soFar = C
+    ? {
+        label: `${MONL[m]} so far`,
+        value: C.obs[C.full] > 0 ? nHot(C.obs[C.full]) : "None yet",
+        title: `1–${C.day} ${MONL[m]} 2026, as the satellites saw it`,
+      }
+    : null;
+  const vs = C
+    ? {
+        value:
+          C.exp >= 5
+            ? relExpected(C.cur, C.exp)
+            : `${nHot(C.cur)} <small>expected ${C.exp < 1 ? "fewer than 1" : `about ${about(C.exp)}`}</small>`,
+        /* where the forecast had no skill, say so where phones can see it, not only in a hover title */
+        note: skill ? "" : "No better than a typical year here",
+        title:
+          `By ${C.to} 2026: ${nHot(C.cur)}; the forecast expected ${C.exp < 1 ? "fewer than 1" : `about ${about(C.exp)}`}.` +
+          (skill ? "" : " This forecast did no better than the typical year here, so read it loosely."),
+      }
+    : null;
+  return {
+    vs,
+    soFar,
+    chance: {
+      label: `Chance of fire in ${MONL[next % 12]}${next >= 12 ? " 2027" : ""}`,
+      value: pc(pAny),
+      title: skill ? "From the 2026 forecast" : "From 2001–2025: the forecast did no better here",
+    },
+  };
+}
+/** whether the per-square forecast is worth showing for square c: the full page's own test (enough squares, not
+    worse than a coin toss), on the same grid as the summary */
+export const fcCellOk = (F: CountryForecast, d: CountrySummary, c: number) =>
+  F.cell === d.cell && c >= 0 && c < F.ncell && mapUseful(F);
+/** one square's forecast: chance of a hotspot in 2026, share of past years with one, expected hotspots */
+export function fcCell(F: CountryForecast, c: number) {
+  const r = F.cell_rows;
+  for (let i = 0; i + 3 < r.length; i += 4) if (r[i] === c) return { p: r[i + 1], share: r[i + 2], exp: r[i + 3] };
+  return null;
+}
+export const fcPc = pc;

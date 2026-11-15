@@ -89,7 +89,42 @@ function place(u: unknown): Place | null {
   if (!isObj(u)) return null;
   const name = text(u.name, 200);
   if (!name) return null;
-  return { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
+  const p = { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
+  return p.b && p.b[2] - p.b[0] > 180 ? acrossDateLine(p) : p;
+}
+/** every [lon, lat] pair in a GeoJSON coordinate tree */
+function eachPoint(c: unknown, f: (pt: number[]) => void) {
+  if (!Array.isArray(c)) return;
+  if (typeof c[0] === "number" && typeof c[1] === "number") f(c as number[]);
+  else for (const x of c) eachPoint(x, f);
+}
+function shiftWest(c: unknown): unknown {
+  if (!Array.isArray(c)) return c;
+  if (typeof c[0] === "number" && typeof c[1] === "number") return [c[0] < 0 ? c[0] + 360 : c[0], ...c.slice(1)];
+  return c.map(shiftWest);
+}
+/** a box sent as [-180, s, 180, n] (Chukotka, Fiji's east, a Kiribati group) frames the whole world: rebuild it from the
+    shape across the date line, east of 180 (lon + 360), with the shape moved the same way. No shape: no box. */
+function acrossDateLine(p: Place): Place {
+  if (!p.g) return { ...p, b: null };
+  let w = Infinity,
+    e = -Infinity,
+    w2 = Infinity,
+    e2 = -Infinity,
+    s = Infinity,
+    n = -Infinity;
+  eachPoint(p.g.coordinates, ([x, y]) => {
+    const x2 = x < 0 ? x + 360 : x;
+    w = Math.min(w, x);
+    e = Math.max(e, x);
+    w2 = Math.min(w2, x2);
+    e2 = Math.max(e2, x2);
+    s = Math.min(s, y);
+    n = Math.max(n, y);
+  });
+  if (!Number.isFinite(w) || !Number.isFinite(s)) return { ...p, b: null };
+  if (e - w <= e2 - w2) return { ...p, b: [w, s, e, n] };
+  return { ...p, b: [w2, s, e2, n], g: { type: p.g.type, coordinates: shiftWest(p.g.coordinates) as unknown[] } };
 }
 const places = (u: unknown) =>
   list(u, 60)

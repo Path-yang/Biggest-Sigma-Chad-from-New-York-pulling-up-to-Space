@@ -49,7 +49,7 @@ export interface CountryStations {
 }
 const LEVELS = ["fair", "patchy", "thin", "unpopulated", "no_data"];
 const numOrNull = (x: unknown) => x === null || typeof x === "number";
-function isStations(x: unknown, k: string): x is CountryStations {
+export function isStations(x: unknown, k: string): x is CountryStations {
   if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
   const co = x.completeness;
   return (
@@ -550,5 +550,67 @@ export function stEvents() {
     V.reveal = !V.reveal;
     figures(V.S, V.d, facts(V.S, V.d));
     draw();
+  };
+}
+
+/* ---------- a few words for the country view's side card (src/glance.ts) ---------- */
+export const stLoad = (k: string) => loadChecked(stationsPath(k), (x): x is CountryStations => isStations(x, k));
+/** stations mapped, and the places with regular fire and none within 15 km where the mapping is good enough to say */
+export function stGlance(S: CountryStations, d: CountrySummary) {
+  const F = facts(S, d),
+    nb = F.burn.length,
+    ng = F.gaps.length,
+    lv = S.completeness.level,
+    tn = theName(S.name);
+  return {
+    stations: fmt(S.stations_total),
+    gaps:
+      nb === 0
+        ? "No regular fire"
+        : F.show === "yes"
+          ? `${fmt(ng)} of ${fmt(nb)} places`
+          : F.show === "ask"
+            ? "Map patchy"
+            : lv === "unpopulated"
+              ? "Few people live here"
+              : "Map too thin",
+    gapsTitle:
+      nb === 0
+        ? "No place burned in 4 or more of the 14 years."
+        : F.show === "yes"
+          ? `Places with fire in 4 or more of 2012–2025 and no fire station mapped in OpenStreetMap within 15 km. A gap means none is mapped, not that none exists.` +
+            (anyDesert(S, d, F.gaps.slice(0, 10)) ? " In the desert some may be industrial heat." : "")
+          : F.show === "ask"
+            ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain; the full record lists them on request.`
+            : lv === "unpopulated"
+              ? "Few people live here, so the full record does not look for gaps."
+              : `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing.`,
+    facts: F,
+  };
+}
+/** one square: years with fire, nearest mapped station (in the full page's words), whether it counts as a gap, and
+    the full page's caveat or flag for it */
+export function stCell(S: CountryStations, d: CountrySummary, c: number, F = facts(S, d)) {
+  if (c >= F.n) return null;
+  const km1 = S.cell_rows[8 * c + 4],
+    s1 = S.cell_rows[8 * c + 1],
+    gap = F.show === "yes" && F.gapSet.has(c),
+    has = km1 >= 0 && s1 >= 0,
+    pos = posOf(d, c),
+    lv = S.completeness.level;
+  return {
+    burnYears: S.cell_rows[8 * c + 7],
+    km: has ? (gap && km1 < 15.5 ? "just over 15 km" : km(km1)) : null,
+    station: has ? stationName(S, s1) : "",
+    gap,
+    steady: F.steady.has(c),
+    note: !has
+      ? ""
+      : F.show === "ask"
+        ? "OpenStreetMap's stations look patchy here, so this distance partly measures the map."
+        : F.show === "no" && lv !== "unpopulated"
+          ? "With this little mapped, the distance mostly measures the map, not the fire service."
+          : "",
+    flag: gap && desert(S.country, pos.lat, pos.lon) ? DESERT_FLAG : solarCell(pos.lat, pos.lon) ? SOLAR_FLAG : "",
   };
 }
