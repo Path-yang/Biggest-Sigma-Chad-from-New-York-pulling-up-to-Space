@@ -227,8 +227,8 @@
       const rr = ser.filter((r) => r.y === y), sum = (k) => rr.reduce((a, r) => a + r[k], 0);
       years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
     }
-    const total = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
-    return { ser, stats, years, total, mean: total / years.length, order, ranked };
+    const total2 = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
+    return { ser, stats, years, total: total2, mean: total2 / years.length, order, ranked };
   }
   function verdict(R, focus = S.focus) {
     const [fy, fm] = focus, f = R.ser.find((r) => r.y === fy && r.m === fm);
@@ -591,14 +591,14 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   var FC_YEARS = [2026, 2027];
   var fcOn = (st) => !!F()?.[st]?.any?.p;
   var largeOf = (st) => {
-    const L = st === "CA" ? F()?.CA.large : null;
-    return L && L.past ? L : null;
+    const L2 = st === "CA" ? F()?.CA.large : null;
+    return L2 && L2.past ? L2 : null;
   };
   var fcData = () => F();
   var layerOf = (st, fire) => fire === "large" ? largeOf(st) : fcOn(st) ? F()[st].any : null;
   var sameCache = /* @__PURE__ */ new Map();
   function fcSame(st, fire, county2 = false) {
-    const L = layerOf(st, fire), arr = L && (county2 ? L.county : L.p);
+    const L2 = layerOf(st, fire), arr = L2 && (county2 ? L2.county : L2.p);
     if (!arr) return false;
     const key = [st, fire, county2].join("|");
     let v = sameCache.get(key);
@@ -619,7 +619,7 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   var tIdx = (year, m) => (year - 2026) * 12 + m;
   var fcCache = /* @__PURE__ */ new Map();
   function fcHex(st, fire, year, m, county2 = false) {
-    const L = layerOf(st, fire), arr = L && (county2 ? L.county : L.p);
+    const L2 = layerOf(st, fire), arr = L2 && (county2 ? L2.county : L2.p);
     if (!arr) return null;
     const key = [st, fire, year, m, county2].join("|"), hit = fcCache.get(key);
     if (hit) return hit;
@@ -630,41 +630,41 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   }
   var largeMarks = null;
   function largeMarked(st) {
-    const L = largeOf(st);
-    if (!L) return null;
+    const L2 = largeOf(st);
+    if (!L2) return null;
     if (!largeMarks) {
-      const n = hexState(st).n, m = new Uint8Array(n * NM), pr = L.past.pairs;
+      const n = hexState(st).n, m = new Uint8Array(n * NM), pr = L2.past.pairs;
       for (let q = 0; q < pr.length; q += 2) if (pr[q] < n && pr[q + 1] < NM) m[pr[q] * NM + pr[q + 1]] = 1;
       largeMarks = m;
     }
     return largeMarks;
   }
   function largeYears() {
-    const L = largeOf("CA"), a = Math.max(S.yFrom, L ? L.past.years[0] : Y0), b = Math.min(S.yTo, L ? L.past.years[1] : S.yTo);
+    const L2 = largeOf("CA"), a = Math.max(S.yFrom, L2 ? L2.past.years[0] : Y0), b = Math.min(S.yTo, L2 ? L2.past.years[1] : S.yTo);
     return a <= b ? [a, b] : [S.yFrom, S.yTo];
   }
   var pastLargeCache = /* @__PURE__ */ new Map();
   function pastLarge(st, m, a, b) {
-    const L = largeMarked(st);
-    if (!L) return null;
+    const L2 = largeMarked(st);
+    if (!L2) return null;
     const key = [m, a, b].join("|"), hit = pastLargeCache.get(key);
     if (hit) return hit;
     const n = hexState(st).n, o = new Float32Array(n), ny = b - a + 1;
     for (let k = 0; k < n; k++) {
       let c = 0;
-      for (let y = a; y <= b; y++) c += L[k * NM + (y - Y0) * 12 + m];
+      for (let y = a; y <= b; y++) c += L2[k * NM + (y - Y0) * 12 + m];
       o[k] = c / ny;
     }
     pastLargeCache.set(key, o);
     return o;
   }
   function pastLargeIn(st, mask, m, a, b) {
-    const L = largeMarked(st), n = hexState(st).n;
+    const L2 = largeMarked(st), n = hexState(st).n;
     let k = 0;
     for (let y = a; y <= b; y++) {
       const i = (y - Y0) * 12 + m;
       for (let h = 0; h < n; h++)
-        if (mask[h] && L[h * NM + i]) {
+        if (mask[h] && L2[h * NM + i]) {
           k++;
           break;
         }
@@ -835,11 +835,11 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   }
   function staffUp(st, m, risk) {
     const hx = hexState(st), ns = hx.stn.n, parts = splitFor(st, m), w = risk.p, E = new Float64Array(ns), top = new Float32Array(ns), hexes = new Uint16Array(ns);
-    let none = 0, total = 0;
+    let none = 0, total2 = 0;
     for (let k = 0; k < hx.n; k++) {
       const p = parts[k], wk = w[k];
       if (!(wk > 0)) continue;
-      total += wk;
+      total2 += wk;
       for (let q = 0; q < p.length; q += 2) {
         const s = p[q];
         if (s < 0) {
@@ -874,13 +874,13 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
         rows.push({
           i,
           e: E[i],
-          share: total ? E[i] / total : 0,
+          share: total2 ? E[i] / total2 : 0,
           top: top[i],
           hexes: hexes[i],
           ...past ? { hot: hot[i] / risk.n, k: K[i] } : {}
         });
     rows.sort((x, y) => y.e - x.e || y.top - x.top);
-    return { rows, total, noneShare: total ? none / total : 0, stations: rows.length };
+    return { rows, total: total2, noneShare: total2 ? none / total2 : 0, stations: rows.length };
   }
   function stationArea(st, m, i) {
     const parts = splitFor(st, m), mask = new Uint8Array(parts.length);
@@ -925,13 +925,13 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   }
   function greedyPlan(st, w, T, N) {
     const reach = reachFor(st, T), cov = coveredNow(st, T), n = w.length, by = new Int16Array(n).fill(-1);
-    let total = 0, got = 0;
+    let total2 = 0, got = 0;
     for (let k = 0; k < n; k++) {
-      total += w[k];
+      total2 += w[k];
       if (cov[k]) got += w[k];
     }
-    const before = total ? got / total : 0, sites = [], after = [];
-    for (let s = 0; s < N && total > 0; s++) {
+    const before = total2 ? got / total2 : 0, sites = [], after = [];
+    for (let s = 0; s < N && total2 > 0; s++) {
       let best = -1, bg = 1e-9;
       for (let j = 0; j < n; j++) {
         const R = reach[j];
@@ -950,10 +950,10 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
           by[k] = s;
         }
       got += bg;
-      sites.push({ k: best, gain: bg / total });
-      after.push(got / total);
+      sites.push({ k: best, gain: bg / total2 });
+      after.push(got / total2);
     }
-    return { before, after, sites, by, total };
+    return { before, after, sites, by, total: total2 };
   }
   function coverageWith(st, w, T, sites) {
     const reach = reachFor(st, T), cov = coveredNow(st, T);
@@ -1514,8 +1514,8 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
     return o;
   }
   function forecastHexRows(st = S.st, mask = selMask()) {
-    const F2 = fcData(), hx = hexState(st), s = D.states[st], n = hx.n, any = F2[st].any.p, L = largeOf(st), LM = largeMarked(st), [a, b] = riskYears(), [la, lb] = largeYears(), nf = notFire(st), pa = pastShares(n, a, b, (k, i) => !nf[k] && hx.H[k * NM + i] > 0), pl = L && LM ? pastShares(n, la, lb, (k, i) => LM[k * NM + i] === 1) : null, rows = [
-      `state,county,hex_id,hex_center_lat,hex_center_lon,year,month,p_any${L ? ",p_large" : ""},past_any_${a}_${b}${pl ? `,past_large_${la}_${lb}` : ""}`
+    const F2 = fcData(), hx = hexState(st), s = D.states[st], n = hx.n, any = F2[st].any.p, L2 = largeOf(st), LM = largeMarked(st), [a, b] = riskYears(), [la, lb] = largeYears(), nf = notFire(st), pa = pastShares(n, a, b, (k, i) => !nf[k] && hx.H[k * NM + i] > 0), pl = L2 && LM ? pastShares(n, la, lb, (k, i) => LM[k * NM + i] === 1) : null, rows = [
+      `state,county,hex_id,hex_center_lat,hex_center_lon,year,month,p_any${L2 ? ",p_large" : ""},past_any_${a}_${b}${pl ? `,past_large_${la}_${lb}` : ""}`
     ];
     for (let k = 0; k < n; k++) {
       if (!mask[k]) continue;
@@ -1524,7 +1524,7 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
         for (let m = 0; m < 12; m++) {
           const t = (yi * 12 + m) * n + k;
           rows.push(
-            `${head},${y},${m + 1},${pm(any[t])}${L ? "," + pm(L.p[t]) : ""},${pa[k * 12 + m].toFixed(3)}${pl ? "," + pl[k * 12 + m].toFixed(3) : ""}`
+            `${head},${y},${m + 1},${pm(any[t])}${L2 ? "," + pm(L2.p[t]) : ""},${pa[k * 12 + m].toFixed(3)}${pl ? "," + pl[k * 12 + m].toFixed(3) : ""}`
           );
         }
       });
@@ -1532,7 +1532,7 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
     return rows;
   }
   function forecastCountyRows(st = S.st, mask = selMask()) {
-    const F2 = fcData(), hx = hexState(st), s = D.states[st], nc = s.counties.length, hexAny = F2[st].any.p, any = F2[st].any.county.slice(), L = largeOf(st), [a, b] = riskYears(), [la, lb] = largeYears(), seen = new Uint8Array(nc), fire = new Uint8Array(nc * NM), big = new Uint8Array(nc * NM), cr = s.county_rows;
+    const F2 = fcData(), hx = hexState(st), s = D.states[st], nc = s.counties.length, hexAny = F2[st].any.p, any = F2[st].any.county.slice(), L2 = largeOf(st), [a, b] = riskYears(), [la, lb] = largeYears(), seen = new Uint8Array(nc), fire = new Uint8Array(nc * NM), big = new Uint8Array(nc * NM), cr = s.county_rows;
     for (let k = 0; k < hx.n; k++) if (mask[k]) seen[hx.c[k]] = 1;
     for (let t = 0; t < 12 * FC_YEARS.length; t++)
       for (let k = 0; k < hx.n; k++) {
@@ -1540,12 +1540,12 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
         if (hexAny[t * hx.n + k] > any[u]) any[u] = hexAny[t * hx.n + k];
       }
     for (let p = 0; p < cr.length; p += 5) if (harm(st, cr[p + 1], cr[p + 2], cr[p + 3], cr[p + 4]).h > 0) fire[cr[p] * NM + cr[p + 1]] = 1;
-    if (L) {
-      for (let p = 0; p < L.past.county_rows.length; p += 4)
-        if (L.past.county_rows[p + 2] > 0) big[L.past.county_rows[p] * NM + L.past.county_rows[p + 1]] = 1;
+    if (L2) {
+      for (let p = 0; p < L2.past.county_rows.length; p += 4)
+        if (L2.past.county_rows[p + 2] > 0) big[L2.past.county_rows[p] * NM + L2.past.county_rows[p + 1]] = 1;
     }
-    const pa = pastShares(nc, a, b, (c, i) => fire[c * NM + i] === 1), pl = L ? pastShares(nc, la, lb, (c, i) => big[c * NM + i] === 1) : null, rows = [
-      `state,county,fips,year,month,p_any${L && L.county ? ",p_large" : ""},past_any_${a}_${b}${pl ? `,past_large_${la}_${lb}` : ""}`
+    const pa = pastShares(nc, a, b, (c, i) => fire[c * NM + i] === 1), pl = L2 ? pastShares(nc, la, lb, (c, i) => big[c * NM + i] === 1) : null, rows = [
+      `state,county,fips,year,month,p_any${L2 && L2.county ? ",p_large" : ""},past_any_${a}_${b}${pl ? `,past_large_${la}_${lb}` : ""}`
     ];
     for (let c = 0; c < nc; c++) {
       if (!seen[c]) continue;
@@ -1553,7 +1553,7 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
         for (let m = 0; m < 12; m++) {
           const t = (yi * 12 + m) * nc + c;
           rows.push(
-            `${st},"${s.counties[c].name}",${s.counties[c].fips},${y},${m + 1},${pm(any[t])}${L && L.county ? "," + pm(L.county[t]) : ""},${pa[c * 12 + m].toFixed(3)}${pl ? "," + pl[c * 12 + m].toFixed(3) : ""}`
+            `${st},"${s.counties[c].name}",${s.counties[c].fips},${y},${m + 1},${pm(any[t])}${L2 && L2.county ? "," + pm(L2.county[t]) : ""},${pa[c * 12 + m].toFixed(3)}${pl ? "," + pl[c * 12 + m].toFixed(3) : ""}`
           );
         }
       });
@@ -1613,13 +1613,13 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
         if (r < D2.dry_mm) dry++;
       }
     }
-    const base = S2.base[ci * 365 + doy365(today)] / 1e4;
-    if (!(base > 0 && base < 1)) return null;
-    const x = [Math.log(base / (1 - base)), Math.log1p(rain14), dry / H, et14 / H, Math.log1p(rain30), (et30 - rain30) / T];
+    const base2 = S2.base[ci * 365 + doy365(today)] / 1e4;
+    if (!(base2 > 0 && base2 < 1)) return null;
+    const x = [Math.log(base2 / (1 - base2)), Math.log1p(rain14), dry / H, et14 / H, Math.log1p(rain30), (et30 - rain30) / T];
     let z = S2.coef[0];
     for (let j = 0; j < x.length; j++) z += S2.coef[j + 1] * x[j];
     const p = 1 / (1 + Math.exp(-z)), norm2 = 1 / (1 + Math.exp(-(S2.norm_coef[0] + S2.norm_coef[1] * x[0])));
-    return { p, base, ratio: p / base, norm: norm2, wx_ratio: p / norm2, today };
+    return { p, base: base2, ratio: p / base2, norm: norm2, wx_ratio: p / norm2, today };
   }
   function forecastUrl(st, cis, models) {
     const S2 = O().states[st], q = new URLSearchParams();
@@ -1925,8 +1925,8 @@ Usual for these dates: ${pct2(o.base)}
     $("olHow").innerHTML = `Each county's <b>usual chance</b> is how often VIIRS saw a hotspot there in the same 14-day window of the year, ${so.climatology.years[0]}\u2013${so.climatology.years[1]}. A small model (a logistic regression, fitted on ${so.metrics.years[0]}\u2013${so.metrics.years[so.metrics.years.length - 1]}) nudges it with ${OM}'s ECMWF weather: rain and drying over the past 30 days and the next 14, above all the number of dry days ahead. <b>The test is generous:</b> it gave the model the weather that actually happened, and even then it beat the usual odds by only ${(sk.bss * 100).toFixed(1)}%. A real forecast goes wrong, more so in the second week, so expect less; real forecasts were not tested, because Open-Meteo's archive of past forecasts was beyond its free daily limit.`;
     const recal = bt["recalibrated climatology"], beyond = (s) => recal ? 1 - (1 - s.bss) / (1 - recal.bss) : null, sp = (x) => x == null ? "\u2013" : (x >= 0 ? "+" : "\u2212") + Math.abs(x * 100).toFixed(2) + "%";
     $("olTable").innerHTML = `<tr><th>Tested on ${so.metrics.years[0]}\u2013${so.metrics.years[so.metrics.years.length - 1]}, one year left out at a time</th><th>Brier</th><th>Against the usual odds</th><th>Against the recalibrated odds</th><th>AUC</th><th>Years better than usual</th></tr>` + ROWS.filter(([k]) => bt[k]).map(([k, lab]) => {
-      const s = bt[k], base = k === "climatology", wx = !base && k !== "recalibrated climatology", last = k === ROWS[ROWS.length - 1][0];
-      return `<tr><td class="u">${lab}</td><td>${s.brier.toFixed(4)}</td><td>${base ? "\u2013" : sp(s.bss)}</td><td class="${last ? "em" : ""}">${wx ? sp(beyond(s)) : "\u2013"}</td><td>${s.auc.toFixed(3)}</td><td>${base ? "\u2013" : yearsBetter(s)}</td></tr>`;
+      const s = bt[k], base2 = k === "climatology", wx = !base2 && k !== "recalibrated climatology", last = k === ROWS[ROWS.length - 1][0];
+      return `<tr><td class="u">${lab}</td><td>${s.brier.toFixed(4)}</td><td>${base2 ? "\u2013" : sp(s.bss)}</td><td class="${last ? "em" : ""}">${wx ? sp(beyond(s)) : "\u2013"}</td><td>${s.auc.toFixed(3)}</td><td>${base2 ? "\u2013" : yearsBetter(s)}</td></tr>`;
     }).join("");
     const p30 = bt["climatology + past 30 days"], p30b = p30 ? beyond(p30) : null;
     $("olKeyS").textContent = `${NAME[st]}: ${so.metrics.rows.toLocaleString("en-US")} county-days, ${Math.round(so.metrics.events / so.metrics.rows * 100)}% with a hotspot in the 14 days that followed. Part of every gain over the usual odds needs no weather: refitting the usual odds alone (the second row) already helps. That refit is the model's chance with no weather, which the map compares against, so the map shows the weather's own effect. ` + (p30b != null && p30b <= 1e-3 ? `Here the past 30 days of weather add nothing beyond that refit (${sp(p30b)}); all the weather's skill is in the days ahead. ` : "") + "Brier: the average squared gap between the chance given and what happened; lower is better. Against the usual or the recalibrated odds: the Brier skill score against that row. AUC: how often a county-window with a hotspot got a higher chance than one without; 0.5 is a coin toss. We expect the live outlook to land between the past-30-days row, which needs no forecast, and the last; that was not tested.";
@@ -2277,7 +2277,7 @@ Raw counts: ${fmt(ys[i].naive)}`
     return 1 - b.mean_p / b.base_rate;
   };
   function renderOdds() {
-    const st = S.st, ch = S.layer === "chance", fc = fcOn(st), L = largeOf(st);
+    const st = S.st, ch = S.layer === "chance", fc = fcOn(st), L2 = largeOf(st);
     $("oddsBar").hidden = !ch;
     $("playMap").hidden = $("tlMain").hidden = S.layer !== "count";
     ["oddsSeg", "oddsSheet"].forEach(
@@ -2287,7 +2287,7 @@ Raw counts: ${fmt(ys[i].naive)}`
       })
     );
     $("oddsSheet").hidden = !fc;
-    $("fireSeg").hidden = !L;
+    $("fireSeg").hidden = !L2;
     document.querySelectorAll("#fireSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.fire === S.fire)));
     if (!ch) return;
     const big = S.fire === "large", F2 = fcData(), mo = MONL[S.rm];
@@ -2304,9 +2304,9 @@ Raw counts: ${fmt(ys[i].naive)}`
       const [a, b] = [Math.max(S.yFrom, 2012), S.yTo];
       h = `<b>Past odds</b>: share of ${mo}s ${a <= b ? `${a}\u2013${b}` : `${S.yFrom}\u2013${S.yTo}`} with a hotspot. History, not a forecast.`;
     }
-    if (!L) h += ` <span title="${esc3(NY_WHY)}">Large fires: California only.</span>`;
+    if (!L2) h += ` <span title="${esc3(NY_WHY)}">Large fires: California only.</span>`;
     $("oddsNote").innerHTML = h;
-    $("oddsNote").title = L ? "" : NY_WHY;
+    $("oddsNote").title = L2 ? "" : NY_WHY;
   }
   function chanceCard(R) {
     const st = S.st, sl = S.sel, mo = MON[S.rm], big = S.fire === "large" && !!largeOf(st);
@@ -2377,20 +2377,20 @@ Raw counts: ${fmt(ys[i].naive)}`
     $("fcSec").hidden = !fcOn(st);
     $("dlFcBox").hidden = !fcOn(st);
     if (!F2 || !fcOn(st)) return;
-    const B = F2.backtest[st], L = largeOf(st), h = B.hex, c = B.county, lh = L ? L.backtest.hex.horizon_1y : null, lc = L ? L.backtest.county.horizon_1y : null;
+    const B = F2.backtest[st], L2 = largeOf(st), h = B.hex, c = B.county, lh = L2 ? L2.backtest.hex.horizon_1y : null, lc = L2 ? L2.backtest.county.horizon_1y : null;
     let v = `Any fire: <b>${verdictWord(Math.min(h.brier_skill_vs_history, c.brier_skill_vs_history))} past odds</b>. Predicting each year 2018\u20132025 from the years before it, its Brier score was ${pctGain(h.brier_skill_vs_history)} lower for hexagons (better in ${h.years_model_better_brier} years) and ${pctGain(c.brier_skill_vs_history)} lower for counties.`;
     if (lh && lc)
       v += ` Large fires: <b>${verdictWord(lh.brier_skill_vs_history_alone)} past odds</b> for hexagons (${pctGain(lh.brier_skill_vs_history_alone)} lower), only ${pctGain(lh.brier_skill_vs_state_seasonal_average)} better than the state's plain seasonal average, and ${verdictWord(lc.brier_skill_vs_history_alone)} past odds for counties.`;
     $("fcVerdict").innerHTML = v;
     const same = [fcSame(st, "any") && "hexagons", fcSame(st, "any", true) && "counties"].filter(Boolean);
-    $("fcNote").textContent = `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone: no weather, fuel or ignitions. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.` : "");
+    $("fcNote").textContent = `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L2 ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone: no weather, fuel or ignitions. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.` : "");
     $("dlFcNote").textContent = "The forecast for every month of 2026 and 2027, for the area chosen above, with past odds alongside. Chances run from 0 to 1; 0 means under 0.0005." + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, the 2027 rows repeat 2026's any-fire chances.` : "") + " The county file gives a county at least its likeliest hexagon's chance, as the page does.";
     const row = (u, m) => `<tr><td class="u">${u}</td><td>${br(m.model.brier)}</td><td>${br(m.history_alone.brier)}</td><td class="em">${pctGain(m.brier_skill_vs_history)}</td><td>${auc(m.model.auc)}</td><td>${auc(m.history_alone.auc)}</td><td>${m.years_model_better_brier}</td><td>${pctGain(m.horizon2.brier_skill_vs_history)}</td></tr>`;
     const lrow = (u, b) => `<tr><td class="u">${u}</td><td>${br(b.horizon_1y.model.brier)}</td><td>${br(b.horizon_1y.history_alone.brier)}</td><td class="em">${pctGain(b.horizon_1y.brier_skill_vs_history_alone)}</td><td>${auc(b.horizon_1y.model.auc)}</td><td>${auc(b.horizon_1y.history_alone.auc)}</td><td>\u2013</td><td>${pctGain(largeSkill2(b.horizon_2y))}</td></tr>`;
-    $("fcTable").innerHTML = `<tr><th>Tested on 2018\u20132025</th><th>Brier, forecast</th><th>Brier, past odds</th><th>Lower by</th><th>AUC, forecast</th><th>AUC, past odds</th><th>Years better</th><th>2 years ahead, lower by</th></tr><tr class="grp"><td colspan="8">Any fire: at least one hotspot</td></tr>` + row("Hexagons", h) + row("Counties", c) + (L ? `<tr class="grp"><td colspan="8">Large fires: 1,000+ acres, CAL FIRE perimeters</td></tr>` + lrow("Hexagons", L.backtest.hex) + lrow("Counties", L.backtest.county) : "");
-    $("fcKey").textContent = "Brier score: the average squared gap between the chance given and what happened; lower is better. AUC: how often a place that burned was given a higher chance than one that did not; 0.5 is a coin toss, 1 is perfect. Past odds: the share of earlier years with fire in that place and month, which is what the map shows under Past odds. 2 years ahead is the 2027 case: trained on years up to two before the test year." + (L ? " Large fires have no per-year Brier table, so that column is blank." : "");
+    $("fcTable").innerHTML = `<tr><th>Tested on 2018\u20132025</th><th>Brier, forecast</th><th>Brier, past odds</th><th>Lower by</th><th>AUC, forecast</th><th>AUC, past odds</th><th>Years better</th><th>2 years ahead, lower by</th></tr><tr class="grp"><td colspan="8">Any fire: at least one hotspot</td></tr>` + row("Hexagons", h) + row("Counties", c) + (L2 ? `<tr class="grp"><td colspan="8">Large fires: 1,000+ acres, CAL FIRE perimeters</td></tr>` + lrow("Hexagons", L2.backtest.hex) + lrow("Counties", L2.backtest.county) : "");
+    $("fcKey").textContent = "Brier score: the average squared gap between the chance given and what happened; lower is better. AUC: how often a place that burned was given a higher chance than one that did not; 0.5 is a coin toss, 1 is perfect. Past odds: the share of earlier years with fire in that place and month, which is what the map shows under Past odds. 2 years ahead is the 2027 case: trained on years up to two before the test year." + (L2 ? " Large fires have no per-year Brier table, so that column is blank." : "");
     const anyRel = relChart(`Any fire, hexagons`, norm(h.model.reliability || []), norm(h.history_alone.reliability || []));
-    const largeRel = L && lh ? relChart(
+    const largeRel = L2 && lh ? relChart(
       `Large fires, hexagons`,
       lh.reliability_model.map((r) => ({ lo: r.pred_range[0], hi: r.pred_range[1], n: r.n, p: r.mean_pred, o: r.observed })),
       lh.reliability_history_alone.map((r) => ({ lo: r.pred_range[0], hi: r.pred_range[1], n: r.n, p: r.mean_pred, o: r.observed }))
@@ -2423,7 +2423,7 @@ Raw counts: ${fmt(ys[i].naive)}`
       lim.push(
         `<b>${NAME[st]} runs low overall.</b> In the tests the forecast expected ${pctP(h.model.mean_p)} of hexagon-months to have fire; ${pctP(h.model.base_rate)} did, because fire there has been rising. Treat any ${NAME[st]} total as probably too low.`
       );
-    if (L && lh) {
+    if (L2 && lh) {
       const ev = Object.entries(lh.model.expected_vs_observed_by_year).map(([y, [e, o]]) => ({ y, e, o, r: o / Math.max(1, e) })), hi = ev.reduce((a, b) => b.r > a.r ? b : a), lo = ev.reduce((a, b) => b.r < a.r ? b : a);
       lim.push(
         `<b>Large fires: it cannot tell a big year from a quiet one.</b> It expected about ${Math.round(hi.e)} large-fire hexagon-months in ${hi.y}, which had ${hi.o}, and about ${Math.round(lo.e)} in ${lo.y}, which had ${lo.o}. Read it as typical odds for the place and month. Its strength is ranking: ${pctGain(lh.model.share_of_events_in_top_risk.top_5pct)} of the hexagon-months that had a large fire were in its top 5%, against ${pctGain(lh.history_alone.share_of_events_in_top_risk.top_5pct)} for past odds and ${pctGain(lh.state_seasonal_average.share_of_events_in_top_risk.top_5pct)} for the state's seasonal average. Much of its AUC (${auc(lh.model.auc)}) comes from the season alone: a rule that knows only the month scores ${auc(lh.state_seasonal_average.auc)}, and past odds ${auc(lh.history_alone.auc)}.`
@@ -2433,7 +2433,7 @@ Raw counts: ${fmt(ys[i].naive)}`
       `Counties and hexagons are forecast separately (${esc3(B.county_below_its_likeliest_hex)} have a county chance below that of its likeliest hexagon); the page shows the higher of the two for a county.`
     );
     $("fcLimits").innerHTML = lim.map((t) => `<li>${t}</li>`).join("");
-    $("fcMethod").innerHTML = `<p>${esc3(F2.method)}</p><p class="note small" style="margin-top:6px">Settings for ${NAME[st]}: hexagons ${esc3(h.final_settings_label)}; counties ${esc3(c.final_settings_label)}. Settings for each test year were chosen only on earlier years (${esc3(h.settings_chosen_on)}).</p>` + (L ? `<p style="margin-top:8px"><b>Large fires.</b> ${esc3(L.definition)} ${esc3(L.method)}</p><ul class="steps">${L.limits.map((t) => `<li>${esc3(t)}</li>`).join("")}<li>${Math.round(L.firms_inside.viirs * 100)}% of California's VIIRS hotspots fall inside a large-fire perimeter while it burned, but far fewer in quiet years, so large fires and all fires make different maps.</li></ul><p class="note small" style="margin-top:6px">${esc3(L.credit)} <a href="${esc3(L.source_page)}" target="_blank" rel="noopener">CAL FIRE FRAP fire perimeters</a>, retrieved ${esc3(L.retrieved)}.</p>` : `<p class="note small" style="margin-top:6px">${esc3(NY_WHY)}</p>`);
+    $("fcMethod").innerHTML = `<p>${esc3(F2.method)}</p><p class="note small" style="margin-top:6px">Settings for ${NAME[st]}: hexagons ${esc3(h.final_settings_label)}; counties ${esc3(c.final_settings_label)}. Settings for each test year were chosen only on earlier years (${esc3(h.settings_chosen_on)}).</p>` + (L2 ? `<p style="margin-top:8px"><b>Large fires.</b> ${esc3(L2.definition)} ${esc3(L2.method)}</p><ul class="steps">${L2.limits.map((t) => `<li>${esc3(t)}</li>`).join("")}<li>${Math.round(L2.firms_inside.viirs * 100)}% of California's VIIRS hotspots fall inside a large-fire perimeter while it burned, but far fewer in quiet years, so large fires and all fires make different maps.</li></ul><p class="note small" style="margin-top:6px">${esc3(L2.credit)} <a href="${esc3(L2.source_page)}" target="_blank" rel="noopener">CAL FIRE FRAP fire perimeters</a>, retrieved ${esc3(L2.retrieved)}.</p>` : `<p class="note small" style="margin-top:6px">${esc3(NY_WHY)}</p>`);
   }
   var norm = (r) => r.map((b) => ({ lo: b.bin[0], hi: b.bin[1], n: b.n, p: b.mean_p, o: b.observed }));
   function relChart(title, model, hist) {
@@ -2598,7 +2598,7 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     return x > 0 && x < V.W - inset() && y > 0 && y < V.H;
   };
   function fitView(b) {
-    const pad = 70, s = Math.min((V.W - inset() - 2 * pad) / (b.x1 - b.x0), (V.H - 216) / (b.y1 - b.y0));
+    const pad2 = 70, s = Math.min((V.W - inset() - 2 * pad2) / (b.x1 - b.x0), (V.H - 216) / (b.y1 - b.y0));
     return { cx: (b.x0 + b.x1) / 2 + inset() / 2 / s, cy: (b.y0 + b.y1) / 2 - 30 / s, s };
   }
   function flyTo(t, ms) {
@@ -2815,17 +2815,17 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     }
   }
   function drawLabels(c, hx) {
-    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad = Math.max(5, 15 - 2.5 * zr), cap = Math.round(12 + 5 * zr), boxes = [];
+    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad2 = Math.max(5, 15 - 2.5 * zr), cap2 = Math.round(12 + 5 * zr), boxes = [];
     c.textAlign = "left";
     c.textBaseline = "middle";
     c.lineJoin = "round";
-    for (let i = 0; i < K && boxes.length < cap; i++) {
+    for (let i = 0; i < K && boxes.length < cap2; i++) {
       const t = hx.towns[i], x = sx(t.X), y = sy(t.Y);
       if (x < 4 || y < 12 || x > V.W - 30 || y > V.H - 12) continue;
       const big = t.pop >= 1e5, w = (big ? 7.6 : 6.6) * t.n.length, hit = (b2) => boxes.some((o) => b2[0] < o[2] && b2[2] > o[0] && b2[1] < o[3] && b2[3] > o[1]);
-      let b = [x - 6 - pad, y - 9 - pad, x + 9 + w + pad, y + 9 + pad], left = false;
+      let b = [x - 6 - pad2, y - 9 - pad2, x + 9 + w + pad2, y + 9 + pad2], left = false;
       if (hit(b)) {
-        b = [x - 9 - w - pad, y - 9 - pad, x + 6 + pad, y + 9 + pad];
+        b = [x - 9 - w - pad2, y - 9 - pad2, x + 6 + pad2, y + 9 + pad2];
         left = true;
         if (hit(b) || b[0] < 4) continue;
       }
@@ -2876,7 +2876,7 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     if (R < 70) drawContext(c, hx, rr, ox, oy, (S.sel.type === "state" ? 1 : 0.6) * (tiles ? 0.35 : 1));
     const olReady = S.layer === "outlook" && olRun(S.st)?.status === "ok";
     if (fineT < 1 && !olReady) {
-      const sc = V.selC, base = (1 - fineT) * (tiles ? 0.62 : 1);
+      const sc = V.selC, base2 = (1 - fineT) * (tiles ? 0.62 : 1);
       for (let k = 0; k < hx.n; k++) {
         const x = sx(hx.X[k]), y = sy(hx.Y[k]);
         if (x < -rr || y < -rr || x > V.W + rr || y > V.H + rr) continue;
@@ -2886,13 +2886,13 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
           const d = Math.max(0, Math.hypot(hx.X[k] - sc.x, hx.Y[k] - sc.y) - sc.r);
           a = Math.max(0.08, 0.4 * Math.exp(-d / (hx.R * 8)));
         }
-        c.globalAlpha = a * base * (tiles ? 0.45 : 1);
+        c.globalAlpha = a * base2 * (tiles ? 0.45 : 1);
         c.fillStyle = "#141a27";
         hexPath(x, y, ox, oy, 1);
         c.fill();
         if (v > 0) {
           const t = ch ? chT(v) : Math.log1p(v) / lmax;
-          c.globalAlpha = a * base;
+          c.globalAlpha = a * base2;
           c.fillStyle = colT(lut2, t);
           hexPath(x, y, ox, oy, 0.46 + 0.54 * t);
           c.fill();
@@ -3200,7 +3200,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   async function fetchText(url, onProgress) {
     const res = await fetchOnce(url);
     if (!res.ok) throw new Error(res.status === 429 ? "Hugging Face is busy (too many requests)" : `Hugging Face answered ${res.status}`);
-    const total = Number(res.headers.get("content-length")) || null;
+    const total2 = Number(res.headers.get("content-length")) || null;
     if (!res.body) return res.text();
     const reader = res.body.getReader(), parts = [];
     let got = 0;
@@ -3209,7 +3209,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       if (done) break;
       parts.push(value);
       got += value.length;
-      onProgress()?.(got, total);
+      onProgress()?.(got, total2);
     }
     const all = new Uint8Array(got);
     let at = 0;
@@ -3336,9 +3336,9 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   var quantile = (s, q) => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
   function buildFireLayer(index2, width = 2048) {
-    const total = new Map(index2.map((e) => [e.country, e.total])), raw = [];
+    const total2 = new Map(index2.map((e) => [e.country, e.total])), raw = [];
     for (const c of WORLD) {
-      const tot = total.get(c.k), area = areaKm2(c);
+      const tot = total2.get(c.k), area = areaKm2(c);
       if (!tot || !(tot > 0) || !(area > 0)) continue;
       const perYear = tot / FIRE_YEARS;
       raw.push({ c, area, perYear, density: perYear / area * 1e3 });
@@ -3374,14 +3374,913 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
   }
 
+  // src/libs.ts
+  var MAPLIBRE = "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.js";
+  var MAPLIBRE_CSS = "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.css";
+  var D3 = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
+  var PLOT = "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/dist/plot.umd.min.js";
+  var FONTS = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&display=swap";
+  function script(src) {
+    return new Promise((ok, fail) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = false;
+      s.onload = () => ok();
+      s.onerror = () => {
+        s.remove();
+        fail(new Error(`${new URL(src).hostname} did not answer`));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  function style(href) {
+    if (document.querySelector(`link[href="${href}"]`)) return;
+    const l = document.createElement("link");
+    l.rel = "stylesheet";
+    l.href = href;
+    document.head.appendChild(l);
+  }
+  var mapP = null;
+  var plotP = null;
+  function loadMapLib() {
+    if (window.maplibregl) return Promise.resolve();
+    if (!mapP) {
+      style(MAPLIBRE_CSS);
+      mapP = script(MAPLIBRE);
+      mapP.catch(() => mapP = null);
+    }
+    return mapP;
+  }
+  function loadPlotLib() {
+    if (window.Plot && window.d3) return Promise.resolve();
+    if (!plotP) {
+      plotP = (window.d3 ? Promise.resolve() : script(D3)).then(() => window.Plot ? void 0 : script(PLOT));
+      plotP.catch(() => plotP = null);
+    }
+    return plotP;
+  }
+  var loadFonts = () => style(FONTS);
+
+  // src/cmap.ts
+  var STYLE = "https://tiles.openfreemap.org/styles/positron";
+  var FIRE = ["#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"];
+  function classColours(breaks, ramp = FIRE) {
+    if (!breaks.length) return [ramp[3]];
+    const cols = breaks.length + 1;
+    return Array.from({ length: cols }, (_, i) => ramp[Math.round(i * (ramp.length - 1) / (cols - 1))]);
+  }
+  var INK = "#1b1b1b";
+  function cellIndexes(d) {
+    const n = d.cells.length / 2, la = new Int32Array(n), lo = new Int32Array(n), lim = 180 / d.cell + 1;
+    for (let c = 0; c < n; c++) {
+      la[c] = d.cells[2 * c];
+      lo[c] = d.cells[2 * c + 1];
+      if (lo[c] > lim) {
+        lo[c] -= 1e5;
+        la[c] += 1;
+      }
+    }
+    return { la, lo };
+  }
+  function nice(v) {
+    if (v < 1) return Math.round(v * 10) / 10 || 0.1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+    return (f < 1.5 ? 1 : f < 2.5 ? 2 : f < 4 ? 3 : f < 7.5 ? 5 : 10) * p;
+  }
+  var PROBS = [0.25, 0.45, 0.62, 0.76, 0.87, 0.95];
+  function classBreaks(vals) {
+    const pos = vals.filter((v) => v > 0).sort((a, b) => a - b);
+    if (!pos.length) return { breaks: [], max: 0, min: 0 };
+    const max = pos[pos.length - 1], min = pos[0], out = [];
+    for (const q of PROBS) {
+      const b = nice(pos[Math.floor(q * (pos.length - 1))]);
+      if (b > (out.length ? out[out.length - 1] : min) && b < max) out.push(b);
+    }
+    return { breaks: out, max, min };
+  }
+  function pad(b) {
+    const px = Math.max(0, 0.5 - (b[2] - b[0])) / 2, py = Math.max(0, 0.5 - (b[3] - b[1])) / 2;
+    return [b[0] - px, Math.max(-85, b[1] - py), b[2] + px, Math.min(85, b[3] + py)];
+  }
+  function mapData(d, yFrom, yTo) {
+    const shape = shapeOf(d.country), cell = d.cell, nc = d.cells.length / 2, { la, lo } = cellIndexes(d), tot = new Float64Array(nc), modis = new Float64Array(nc), viirs = new Float64Array(nc);
+    for (let p = 0; p < d.cell_rows.length; p += 5) {
+      const y = d.y0 + d.cell_rows[p + 1];
+      if (y < yFrom || y > yTo) continue;
+      const c = d.cell_rows[p];
+      tot[c] += d.cell_rows[p + 2];
+      modis[c] += d.cell_rows[p + 3];
+      viirs[c] += d.cell_rows[p + 4];
+    }
+    let lon0 = shape ? shape.c[0] : (d.bbox[0] + d.bbox[2]) / 2;
+    if (!shape && nc) {
+      const ls = Array.from(lo, (v) => v * cell).sort((a, b) => a - b);
+      lon0 = ls[Math.floor(ls.length / 2)];
+    }
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const grow = (x, y) => {
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    };
+    const cells = [];
+    for (let c = 0; c < nc; c++) {
+      if (tot[c] + modis[c] + viirs[c] <= 0) continue;
+      const s = la[c] * cell, w = near(lo[c] * cell + cell / 2, lon0) - cell / 2, e = w + cell, n = s + cell;
+      grow(w, s);
+      grow(e, n);
+      cells.push({
+        type: "Feature",
+        properties: { n: tot[c], mo: modis[c], vi: viirs[c], s, w: lo[c] * cell },
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [w, s],
+              [e, s],
+              [e, n],
+              [w, n],
+              [w, s]
+            ]
+          ]
+        }
+      });
+    }
+    const lines2 = [];
+    if (shape)
+      for (const r of shape.r) {
+        const off = near(r[0], lon0) - r[0];
+        let run = [];
+        const flush = () => {
+          if (run.length > 1) lines2.push(run);
+          run = [];
+        };
+        for (let i = 0; i + 3 < r.length; i += 2) {
+          if (cutEdge(d.country, r[i], r[i + 1], r[i + 2], r[i + 3])) {
+            flush();
+            continue;
+          }
+          if (!run.length) run.push([r[i] + off, r[i + 1]]);
+          run.push([r[i + 2] + off, r[i + 3]]);
+          grow(r[i] + off, r[i + 1]);
+        }
+        flush();
+      }
+    if (!isFinite(x0)) {
+      grow(near(d.bbox[0], lon0), d.bbox[1]);
+      grow(near(d.bbox[2], lon0), d.bbox[3]);
+    }
+    const all = pad([x0, y0, x1, y1]);
+    let bounds = all;
+    if (cells.length) {
+      const wt = cells.map((f) => Math.max(f.properties.n, 0.01)), sum = wt.reduce((a, b) => a + b, 0), at = (key, q) => {
+        const idx = cells.map((_, i) => i).sort((a, b) => key(a) - key(b));
+        let acc = 0;
+        for (const i of idx) {
+          acc += wt[i];
+          if (acc >= q * sum) return key(i);
+        }
+        return key(idx[idx.length - 1]);
+      }, edge = (i, k) => cells[i].geometry.coordinates[0][k * 2], w = at((i) => edge(i, 0)[0], 0.01), s0 = at((i) => edge(i, 0)[1], 0.01), e = at((i) => edge(i, 1)[0], 0.99), n = at((i) => edge(i, 1)[1], 0.99), dx = (e - w) * 0.06, dy = (n - s0) * 0.06;
+      bounds = pad([w - dx, s0 - dy, e + dx, n + dy]);
+    }
+    const dw = all[2] - all[0], dh = all[3] - all[1], keep = (i, d2) => Math.abs(all[i] - bounds[i]) < 0.15 * d2 ? all[i] : bounds[i];
+    bounds = [keep(0, dw), keep(1, dh), keep(2, dw), keep(3, dh)];
+    const cropped = bounds.some((b, i) => b !== all[i]);
+    const { breaks, max, min } = classBreaks(cells.map((f) => f.properties.n));
+    return {
+      cells: { type: "FeatureCollection", features: cells },
+      outline: {
+        type: "FeatureCollection",
+        features: [{ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: lines2 } }]
+      },
+      bounds,
+      all,
+      cropped,
+      min,
+      breaks,
+      max,
+      n: cells.length
+    };
+  }
+  function fillExpr(breaks) {
+    const c = classColours(breaks);
+    if (!breaks.length) return c[0];
+    const e = ["step", ["get", "n"], c[0]];
+    breaks.forEach((b, i) => e.push(b, c[i + 1]));
+    return e;
+  }
+  var L = null;
+  function destroyMap() {
+    if (!L) return;
+    try {
+      L.map?.remove();
+    } catch {
+    }
+    L = null;
+  }
+  var deg = (v, p, n) => `${Math.abs(v).toFixed(2)}\xB0${v < 0 ? n : p}`;
+  function popupHtml(p, cell, yFrom, yTo) {
+    const n = p.n;
+    return `<b>${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}</b> <span>in ${yFrom === yTo ? yFrom : `${yFrom}\u2013${yTo}`}, adjusted</span><span>Raw: ${fmt(p.mo)} MODIS, ${fmt(p.vi)} Suomi NPP</span><span class="pos">${deg(p.s, "N", "S")}\u2013${deg(p.s + cell, "N", "S")}, ${deg(p.w, "E", "W")}\u2013${deg(p.w + cell, "E", "W")}</span>`;
+  }
+  var PAPER = "#f5f4f0";
+  var WATER = "#dde5ea";
+  var FALLBACK = { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#eeebe4" } }] };
+  var DROP = /^(highway-name|highway-shield|road_shield|airport|waterway_line_label)/;
+  var LATIN = ["coalesce", ["get", "name:latin"], ["get", "name_en"], ["get", "name"]];
+  function tidyStyle(st) {
+    st.layers = st.layers.filter((l) => !DROP.test(l.id)).map((l) => {
+      if (l.id === "background") l.paint = { ...l.paint, "background-color": PAPER };
+      if (l.id === "water") l.paint = { ...l.paint, "fill-color": WATER };
+      if (l.id === "waterway") l.paint = { ...l.paint, "line-color": WATER };
+      if (l.layout && l.layout["text-field"] && /name/.test(JSON.stringify(l.layout["text-field"])))
+        l.layout = { ...l.layout, "text-field": LATIN };
+      return l;
+    });
+    return st;
+  }
+  var styleP = null;
+  function getStyle() {
+    if (!styleP)
+      styleP = Promise.race([
+        fetch(STYLE).then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        }),
+        new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 8e3))
+      ]).then(tidyStyle, () => {
+        styleP = null;
+        return FALLBACK;
+      });
+    return styleP;
+  }
+  function showMap(host, d, data, yFrom, yTo, onFail, onBasemap) {
+    const ml = window.maplibregl;
+    if (!ml) return onFail("The map library did not load.");
+    const fresh2 = !L || L.k !== d.country;
+    if (fresh2) {
+      destroyMap();
+      const k = d.country;
+      const live2 = L = {
+        map: null,
+        popup: null,
+        k,
+        ready: false,
+        next: data,
+        hover: null,
+        yFrom,
+        yTo,
+        all: data.all
+      };
+      getStyle().then((style2) => {
+        if (L !== live2) return;
+        if (style2 === FALLBACK) onBasemap();
+        start(host, d, live2, style2, onFail, onBasemap);
+      });
+      return;
+    }
+    const live = L;
+    live.yFrom = yFrom;
+    live.yTo = yTo;
+    live.all = data.all;
+    if (!live.ready) {
+      live.next = data;
+      return;
+    }
+    live.popup.remove();
+    live.hover = null;
+    live.map.getSource("cells").setData(data.cells);
+    for (const id of ["cells", "cells-edge"])
+      if (live.map.getLayer(id)) live.map.setPaintProperty(id, id === "cells" ? "fill-color" : "line-color", fillExpr(data.breaks));
+  }
+  function fitAll() {
+    if (!L || !L.map) return;
+    const b = L.all;
+    L.map.fitBounds([b.slice(0, 2), b.slice(2)], { padding: 24, duration: 600 });
+  }
+  function start(host, d, live, style2, onFail, onBasemap) {
+    const ml = window.maplibregl, data = live.next;
+    host.innerHTML = "";
+    let map;
+    try {
+      map = new ml.Map({
+        container: host,
+        style: style2,
+        bounds: [data.bounds.slice(0, 2), data.bounds.slice(2)],
+        fitBoundsOptions: { padding: host.clientWidth < 560 ? 12 : 28 },
+        maxZoom: 11,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+        cooperativeGestures: true,
+        attributionControl: { compact: true },
+        renderWorldCopies: true,
+        fadeDuration: 0
+      });
+    } catch (e) {
+      L = null;
+      return onFail("This browser could not start the map (WebGL is off or unavailable).");
+    }
+    live.map = map;
+    host._map = map;
+    live.popup = new ml.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px", className: "cpPop", offset: 8 });
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new ml.ScaleControl({ maxWidth: 110, unit: "metric" }), "bottom-left");
+    let swapped = style2 === FALLBACK;
+    const swap = () => {
+      if (swapped || live.ready || L !== live) return;
+      swapped = true;
+      onBasemap();
+      map.setStyle(FALLBACK);
+    };
+    map.on("error", (e) => {
+      if (e.sourceId && e.sourceId !== "cells" && e.sourceId !== "outline" && !e.tile) onBasemap();
+      setTimeout(swap, 4e3);
+    });
+    map.on("style.load", () => {
+      if (L !== live || live.ready) return;
+      addLayers(map, d, live);
+    });
+  }
+  function addLayers(map, d, live) {
+    const data = live.next;
+    const under = map.getLayer("boundary_3") ? "boundary_3" : void 0, labels = map.getLayer("water_name_point_label") ? "water_name_point_label" : void 0;
+    map.addSource("cells", { type: "geojson", data: data.cells, tolerance: 0, buffer: 2, generateId: true });
+    map.addSource("outline", { type: "geojson", data: data.outline });
+    map.addLayer(
+      {
+        id: "cells",
+        type: "fill",
+        source: "cells",
+        paint: { "fill-color": fillExpr(data.breaks), "fill-opacity": 0.9, "fill-antialias": false }
+      },
+      under
+    );
+    if (data.n < 400)
+      map.addLayer(
+        {
+          id: "cells-edge",
+          type: "line",
+          source: "cells",
+          paint: {
+            "line-color": fillExpr(data.breaks),
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 7, 1.5, 9, 0]
+          }
+        },
+        under
+      );
+    map.addLayer(
+      {
+        id: "cells-hover",
+        type: "line",
+        source: "cells",
+        paint: { "line-color": INK, "line-width": 1.5, "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0] }
+      },
+      labels
+    );
+    map.addLayer(
+      { id: "outline", type: "line", source: "outline", paint: { "line-color": INK, "line-width": 1.1, "line-opacity": 0.75 } },
+      labels
+    );
+    live.ready = true;
+    live.next = null;
+    const host = map.getContainer();
+    const fold2 = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    fold2();
+    map.once("idle", fold2);
+    const clear = () => {
+      if (live.hover != null) map.setFeatureState({ source: "cells", id: live.hover }, { hover: false });
+      live.hover = null;
+    };
+    const show = (e) => {
+      const f = e.features && e.features[0];
+      if (!f) return;
+      if (live.hover !== f.id) {
+        clear();
+        live.hover = f.id;
+        map.setFeatureState({ source: "cells", id: f.id }, { hover: true });
+      }
+      map.getCanvas().style.cursor = "default";
+      live.popup.setLngLat(e.lngLat).setHTML(popupHtml(f.properties, d.cell, live.yFrom, live.yTo)).addTo(map);
+    };
+    map.on("mousemove", "cells", show);
+    map.on("click", "cells", show);
+    map.on("mouseleave", "cells", () => {
+      clear();
+      live.popup.remove();
+      map.getCanvas().style.cursor = "";
+    });
+    map.on("click", (e) => {
+      if (!map.queryRenderedFeatures(e.point, { layers: ["cells"] }).length) {
+        clear();
+        live.popup.remove();
+      }
+    });
+  }
+
+  // src/cplot.ts
+  var INK2 = "#1b1b1b";
+  var INK22 = "#55524c";
+  var GRID = "#e4e0d7";
+  var ZERO = "#ebe8e1";
+  var RED = "#bd0026";
+  var TYPICAL = "#6b665c";
+  var CONTEXT = "#d8d4cb";
+  var BAR_SEEN = "#b8b2a7";
+  var BAR_CONV = "#dcd7cd";
+  var PAPER2 = "#faf9f6";
+  var CAL = ["#ffeda0", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#b10026"];
+  var yTop = (v) => Math.max(5, niceMax2(v));
+  var yAxis = (ymax) => ({
+    domain: [0, ymax],
+    grid: GRID,
+    tickFormat: (v) => Number.isInteger(v) ? short(v) : "",
+    label: null,
+    tickSize: 0,
+    ticks: 4
+  });
+  function yearTicks(xs, n) {
+    if (xs.length === 1) return xs;
+    const step = Math.max(1, Math.ceil((xs.length - 1) / (n - 1)));
+    return xs.filter((_, i) => (xs.length - 1 - i) % step === 0);
+  }
+  var STYLE2 = {
+    fontFamily: '"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+    fontSize: "13px",
+    fontVariantNumeric: "tabular-nums lining-nums",
+    background: "transparent",
+    color: INK2,
+    overflow: "visible"
+  };
+  var TIP = { fill: "#fffefa", stroke: INK2, fontSize: 13, textPadding: 8, lineHeight: 1.35 };
+  var Pl = () => window.Plot;
+  function niceMax2(v) {
+    if (v <= 1) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
+    for (const z of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (f <= z) return z * p;
+    return 10 * p;
+  }
+  function mount(el, fig, click) {
+    el.replaceChildren(fig);
+    if (click) {
+      fig.style.cursor = "pointer";
+      fig.addEventListener("click", () => {
+        if (fig.value != null) click(fig.value);
+      });
+    }
+  }
+  function spread(items, ymax, H, mT, mB) {
+    const px = (v) => mT + (1 - v / ymax) * (H - mT - mB), out = items.map((it) => ({ ...it, py: px(it.v), dy: 0 })).sort((a, b) => a.py - b.py);
+    for (let i = 1; i < out.length; i++)
+      if (out[i].py + out[i].dy - (out[i - 1].py + out[i - 1].dy) < 15) out[i].dy = out[i - 1].py + out[i - 1].dy + 15 - out[i].py;
+    return out;
+  }
+  function endLabels(Plot, items, x) {
+    return items.map(
+      (it) => Plot.text([it], {
+        x: () => x,
+        y: () => it.v,
+        text: () => it.text,
+        dx: 7,
+        dy: it.dy,
+        textAnchor: "start",
+        fill: it.fill,
+        fontWeight: it.weight ?? 600
+      })
+    );
+  }
+  var phone = (W) => W < 560;
+  var base = (W, H, o) => ({ width: W, height: H, style: STYLE2, ...o });
+  function calendarClasses(R) {
+    const c = classBreaks(R.ser.map((r) => r.h));
+    return { ...c, colours: classColours(c.breaks, CAL) };
+  }
+  function calendarScale(R, mode) {
+    if (mode === "anom") return { type: "diverging-log", scheme: "RdBu", reverse: true, pivot: 1, domain: [0.25, 4], clamp: true };
+    const c = calendarClasses(R);
+    return c.breaks.length ? { type: "threshold", domain: c.breaks, range: c.colours } : { type: "ordinal", range: c.colours };
+  }
+  var total = (v) => v === 0 ? "0" : v < 1 ? "<1" : short(Math.round(v));
+  function calendar(top, bottom, R, o) {
+    const Plot = Pl(), W = top.clientWidth || 640, ph = phone(W), rowH = ph ? 17 : 20, mL = ph ? 38 : 44, mR = ph ? 44 : 64, color = calendarScale(R, o.mode), totals = new Map(R.years.map((y) => [y.y, y.h]));
+    const part = (el, rows, head) => {
+      if (!rows.length) {
+        el.replaceChildren();
+        el.hidden = true;
+        return;
+      }
+      el.hidden = false;
+      const years = [...new Set(rows.map((r) => r.y))].sort((a, b) => b - a), mT = head ? 26 : 4, H = years.length * rowH + mT + 4, f = rows.find((r) => r.y === o.focus[0] && r.m === o.focus[1]);
+      const marks = [
+        Plot.cell(rows, { x: "m", y: "y", fill: o.mode === "count" ? ZERO : "ratio", inset: 1 }),
+        o.mode === "count" ? Plot.cell(
+          rows.filter((r) => r.h > 0),
+          { x: "m", y: "y", fill: "h", inset: 1 }
+        ) : null,
+        f ? Plot.cell([f], { x: "m", y: "y", fill: "none", stroke: INK2, strokeWidth: 2, inset: 0 }) : null,
+        Plot.text(years, {
+          y: (d) => d,
+          text: (d) => total(totals.get(d) ?? 0),
+          frameAnchor: "right",
+          dx: 10,
+          textAnchor: "start",
+          fill: INK22
+        }),
+        head ? Plot.text([ph ? "Total" : "Year total"], {
+          text: (d) => d,
+          frameAnchor: "top-right",
+          dx: 10,
+          dy: -18,
+          textAnchor: "start",
+          fill: INK22
+        }) : null,
+        Plot.tip(rows, Plot.pointer({ x: "m", y: "y", title: o.tip, ...TIP }))
+      ];
+      const fig = Plot.plot(
+        base(W, H, {
+          marginLeft: mL,
+          marginRight: mR,
+          marginTop: mT,
+          marginBottom: 4,
+          padding: 0,
+          x: head ? {
+            axis: "top",
+            domain: MON.map((_, m) => m),
+            tickFormat: (m) => ph ? MON[m][0] : MON[m],
+            tickSize: 0,
+            label: null,
+            tickPadding: 8
+          } : { axis: null, domain: MON.map((_, m) => m) },
+          y: { domain: years, tickFormat: (y) => String(y), tickSize: 0, label: null, tickPadding: 8 },
+          color,
+          marks
+        })
+      );
+      fig.setAttribute("aria-label", `Hotspots per month, ${years[years.length - 1]} to ${years[0]}`);
+      mount(el, fig, o.click);
+    };
+    part(
+      top,
+      R.ser.filter((r) => r.y >= o.viirsYear),
+      true
+    );
+    part(
+      bottom,
+      R.ser.filter((r) => r.y < o.viirsYear),
+      !R.ser.some((r) => r.y >= o.viirsYear)
+    );
+  }
+  function seasonal(el, R, year, click) {
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, st = R.stats.map((s, m) => {
+      const v = R.ser.filter((r) => r.m === m).map((r) => r.h);
+      return { m, ...s, min: Math.min(...v), max: Math.max(...v) };
+    }), yr = R.ser.filter((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...st.map((s) => s.max))), labs = spread(
+      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...yr.length ? [{ v: yr[11].h, text: String(year), fill: RED }] : []],
+      ymax,
+      H,
+      mT,
+      mB
+    ), px = (v) => v / ymax * (H - mT - mB), at = (f, k) => {
+      const a = Math.floor(k), b = Math.min(11, a + 1);
+      return f(a) + (f(b) - f(a)) * (k - a);
+    }, lines2 = (k) => [at((m) => st[m].med, k), ...yr.length ? [at((m) => yr[m].h, k)] : []], monthPx = (W - 44 - 64) / 11, place = (lo, hi, t) => {
+      const half = t.length * 3.3 / monthPx;
+      let best = null, score = 0;
+      for (let m = 0; m <= 11; m += 0.25) {
+        if (m - half < 0.2 || m + half > 10.8) continue;
+        const near2 = [-1, -0.5, 0, 0.5, 1].map((f) => m + f * half), bot = px(Math.max(...near2.map((k) => at(lo, k)))), top = px(Math.min(...near2.map((k) => at(hi, k)))), ls = near2.flatMap((k) => lines2(k).map(px));
+        for (let y = bot + 8; y <= top - 8; y += 2) {
+          const clear = Math.min(y - bot, top - y, ...ls.map((l) => Math.abs(l - y)));
+          if (clear >= 10 && clear > score) {
+            score = clear;
+            best = { m, v: y / (H - mT - mB) * ymax, t };
+          }
+        }
+      }
+      return best ? [best] : [];
+    }, bandLabels = [
+      ...place(
+        (m) => st[m].q1,
+        (m) => st[m].q3,
+        "Middle half of years"
+      ),
+      ...place(
+        (m) => st[m].q3,
+        (m) => st[m].max,
+        "Full range"
+      )
+    ];
+    const fig = Plot.plot(
+      base(W, H, {
+        marginTop: mT,
+        marginBottom: mB,
+        marginLeft: 44,
+        marginRight: 64,
+        x: {
+          domain: [0, 11],
+          ticks: MON.map((_, m) => m).filter((m) => !ph || m % 2 === 0),
+          tickFormat: (m) => MON[m],
+          label: null,
+          tickSize: 0
+        },
+        y: yAxis(ymax),
+        marks: [
+          Plot.areaY(st, { x: "m", y1: "min", y2: "max", fill: "#efebe3" }),
+          Plot.areaY(st, { x: "m", y1: "q1", y2: "q3", fill: "#e0dace" }),
+          Plot.text(bandLabels, {
+            x: "m",
+            y: "v",
+            text: "t",
+            fill: INK22,
+            fontSize: 12,
+            stroke: (d) => d.t === "Full range" ? "#efebe3" : "#e0dace",
+            strokeWidth: 3,
+            paintOrder: "stroke"
+          }),
+          Plot.lineY(st, { x: "m", y: "med", stroke: TYPICAL, strokeWidth: 2, strokeDasharray: "4,3" }),
+          yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: RED, strokeWidth: 2.5 }) : null,
+          yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: RED, r: 2.6 }) : null,
+          ...endLabels(Plot, labs, 11),
+          Plot.ruleX(st, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
+          Plot.tip(
+            st,
+            Plot.pointerX({
+              x: "m",
+              y: "med",
+              ...TIP,
+              title: (s) => `${MONL[s.m]}
+Typical (median): ${fmt(s.med)} hotspots
+Middle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}
+Range: ${fmt(s.min)} to ${fmt(s.max)}` + (yr.length ? `
+${year}: ${fmt(yr[s.m].h)}` : "") + `
+Click to test ${MONL[s.m]} ${year} at the top`
+            })
+          )
+        ]
+      })
+    );
+    fig.setAttribute("aria-label", "Hotspots by calendar month: median, middle half and range of years");
+    mount(el, fig, (v) => click(v.m));
+    const missing = [
+      ["#e0dace", "Middle half of years"],
+      ["#efebe3", "Full range"]
+    ].filter(([, t]) => !bandLabels.some((b) => b.t === t));
+    const sub = el.previousElementSibling;
+    sub?.querySelector(".cpMiniKey")?.remove();
+    if (missing.length && sub) {
+      const key = document.createElement("span");
+      key.className = "cpMiniKey";
+      key.innerHTML = missing.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
+      sub.append(key);
+    }
+  }
+  function annual(el, R, o) {
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, ys = R.years, conv = ys.filter((y) => y.y < o.viirsYear), worst = R.ranked[0], ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.hi))) * 1.06), xs = ys.map((y) => y.y), fill = (y) => y.y === o.focusYear ? RED : worst && y.y === worst.y ? INK2 : y.y < o.viirsYear ? BAR_CONV : BAR_SEEN;
+    const fig = Plot.plot(
+      base(W, H, {
+        marginTop: 18,
+        marginBottom: 30,
+        marginLeft: 44,
+        marginRight: 62,
+        x: {
+          domain: xs,
+          ticks: yearTicks(xs, ph ? 4 : 7),
+          tickFormat: (y) => String(y),
+          label: null,
+          tickSize: 0,
+          padding: 0.18
+        },
+        y: yAxis(ymax),
+        marks: [
+          Plot.barY(ys, { x: "y", y: "h", fill }),
+          Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK2, strokeOpacity: 0.45 }),
+          R.mean > 0 ? Plot.ruleY([R.mean], { stroke: INK2, strokeDasharray: "3,3", strokeOpacity: 0.8 }) : null,
+          R.mean > 0 ? Plot.text([R.mean], {
+            y: (d) => d,
+            frameAnchor: "right",
+            text: () => `Average
+${short(R.mean)}`,
+            dx: 6,
+            textAnchor: "start",
+            lineHeight: 1.15,
+            fill: INK2
+          }) : null,
+          worst && worst.h > 0 ? Plot.text([worst], {
+            x: "y",
+            y: (d) => d.y < o.viirsYear ? Math.max(d.h, d.hi) : d.h,
+            text: (d) => String(d.y),
+            dy: -9,
+            fontWeight: 600,
+            fill: INK2,
+            stroke: PAPER2,
+            strokeWidth: 4,
+            paintOrder: "stroke"
+          }) : null,
+          Plot.tip(ys, Plot.pointerX({ x: "y", y: "h", title: o.tip, ...TIP }))
+        ]
+      })
+    );
+    fig.setAttribute("aria-label", "Hotspots per year");
+    mount(el, fig, (v) => o.click(v.y));
+  }
+  function cumulative(el, R, year) {
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, rows = [];
+    for (const yr of R.years) {
+      let c = 0;
+      for (const r of R.ser.filter((r2) => r2.y === yr.y)) rows.push({ y: yr.y, m: r.m, c: c += r.h });
+    }
+    const worst = R.ranked[0]?.y, has = rows.some((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.c))), endOf = (y) => rows.find((r) => r.y === y && r.m === 11)?.c ?? 0, labs = spread(
+      [
+        ...has ? [{ v: endOf(year), text: String(year), fill: RED }] : [],
+        ...worst !== void 0 && worst !== year ? [{ v: endOf(worst), text: String(worst), fill: INK2 }] : []
+      ],
+      ymax,
+      H,
+      mT,
+      mB
+    );
+    const fig = Plot.plot(
+      base(W, H, {
+        marginTop: mT,
+        marginBottom: mB,
+        marginLeft: 44,
+        marginRight: 48,
+        x: {
+          domain: [0, 11],
+          ticks: MON.map((_, m) => m).filter((m) => !ph || m % 2 === 0),
+          tickFormat: (m) => MON[m],
+          label: null,
+          tickSize: 0
+        },
+        y: yAxis(ymax),
+        marks: [
+          Plot.lineY(
+            rows.filter((r) => r.y !== year && r.y !== worst),
+            { x: "m", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 }
+          ),
+          worst !== void 0 && worst !== year ? Plot.lineY(
+            rows.filter((r) => r.y === worst),
+            { x: "m", y: "c", stroke: INK2, strokeWidth: 1.5 }
+          ) : null,
+          Plot.lineY(
+            rows.filter((r) => r.y === year),
+            { x: "m", y: "c", stroke: RED, strokeWidth: 2.5 }
+          ),
+          ...endLabels(Plot, labs, 11),
+          Plot.tip(
+            rows,
+            Plot.pointer({
+              x: "m",
+              y: "c",
+              ...TIP,
+              title: (r) => `${r.y}, January to ${MONL[r.m]}
+${fmt(r.c)} hotspots so far`
+            })
+          )
+        ]
+      })
+    );
+    fig.setAttribute("aria-label", "Running total of hotspots through each year");
+    mount(el, fig);
+  }
+  function seam(el, R, viirsYear2) {
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 22, mB = 30, ys = R.years, last = ys[ys.length - 1], band = ys.filter((y) => y.y <= viirsYear2), ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.naive)), ...band.map((y) => y.hi))), labs = spread(
+      [
+        { v: last.h, text: "Harmonized", fill: INK2 },
+        { v: last.naive, text: "Raw", fill: TYPICAL }
+      ],
+      ymax,
+      H,
+      mT,
+      mB
+    );
+    const xs = ys.map((y) => y.y), one = xs.length === 1;
+    const fig = Plot.plot(
+      base(W, H, {
+        marginTop: mT,
+        marginBottom: mB,
+        marginLeft: 44,
+        marginRight: 86,
+        x: {
+          domain: one ? [xs[0] - 1, xs[0] + 1] : [xs[0], xs[xs.length - 1]],
+          tickFormat: "d",
+          label: null,
+          tickSize: 0,
+          ticks: yearTicks(xs, ph ? 4 : 7)
+        },
+        y: yAxis(ymax),
+        marks: [
+          band.length > 1 ? Plot.areaY(band, { x: "y", y1: "lo", y2: "hi", fill: "#e6e1d6" }) : null,
+          band.length > 2 ? Plot.text([band[Math.floor(band.length / 2)]], {
+            x: "y",
+            y: "hi",
+            text: () => "90% range",
+            dy: -8,
+            fill: INK22,
+            fontSize: 12,
+            stroke: PAPER2,
+            strokeWidth: 3,
+            paintOrder: "stroke"
+          }) : null,
+          xs[0] < viirsYear2 && xs[xs.length - 1] >= viirsYear2 ? [
+            Plot.ruleX([viirsYear2], { stroke: INK2, strokeOpacity: 0.45 }),
+            Plot.text([viirsYear2], {
+              x: (d) => d,
+              frameAnchor: "top",
+              dy: -14,
+              dx: 4,
+              textAnchor: "start",
+              text: () => "VIIRS starts",
+              fill: INK22
+            })
+          ] : null,
+          Plot.lineY(ys, { x: "y", y: "naive", stroke: TYPICAL, strokeWidth: 1.6, strokeDasharray: "4,3" }),
+          Plot.lineY(ys, { x: "y", y: "h", stroke: INK2, strokeWidth: 2 }),
+          one ? Plot.dot(ys, { x: "y", y: "naive", fill: TYPICAL }) : null,
+          one ? Plot.dot(ys, { x: "y", y: "h", fill: INK2 }) : null,
+          ...endLabels(Plot, labs, last.y),
+          Plot.ruleX(ys, Plot.pointerX({ x: "y", stroke: "#b9b3a6" })),
+          Plot.tip(
+            ys,
+            Plot.pointerX({
+              x: "y",
+              y: "h",
+              ...TIP,
+              title: (y) => `${y.y}
+Harmonized: ${fmt(y.h)}` + (y.y <= viirsYear2 ? `, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "") + `
+Raw counts: ${fmt(y.naive)}`
+            })
+          )
+        ]
+      })
+    );
+    fig.setAttribute("aria-label", "Raw joined counts against the harmonized record");
+    mount(el, fig);
+  }
+  function sensorLines(el, xs, per) {
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 270, mT = 16, mB = 30, rows = per.flatMap((s) => xs.map((x, i) => ({ s: s.name, x, v: s.v[i] }))), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.v).filter(Number.isFinite))), n = xs.length - 1, labs = spread(
+      per.filter((s) => Number.isFinite(s.v[n])).map((s) => ({ v: s.v[n], text: s.name, fill: s.c })),
+      ymax,
+      H,
+      mT,
+      mB
+    );
+    const fig = Plot.plot(
+      base(W, H, {
+        marginTop: mT,
+        marginBottom: mB,
+        marginLeft: 44,
+        marginRight: 92,
+        x: {
+          domain: xs.length > 1 ? [xs[0], xs[n]] : [xs[0] - 1, xs[0] + 1],
+          tickFormat: "d",
+          label: null,
+          tickSize: 0,
+          ticks: yearTicks(xs, ph ? 4 : 7)
+        },
+        y: yAxis(ymax),
+        marks: [
+          ...per.map(
+            (s) => Plot.lineY(
+              xs.map((x, i) => ({ x, v: s.v[i] })),
+              { x: "x", y: "v", stroke: s.c, strokeWidth: 1.8, strokeDasharray: s.dash }
+            )
+          ),
+          ...xs.length === 1 ? per.map((s) => Plot.dot([{ x: xs[0], v: s.v[0] }], { x: "x", y: "v", fill: s.c })) : [],
+          ...endLabels(Plot, labs, xs[n]),
+          Plot.ruleX(xs, Plot.pointerX({ x: (d) => d, stroke: "#b9b3a6" })),
+          Plot.tip(
+            xs,
+            Plot.pointerX({
+              x: (d) => d,
+              frameAnchor: "top",
+              ...TIP,
+              title: (x) => {
+                const i = xs.indexOf(x);
+                return `${x}
+` + per.map((s) => `${s.name}: ${Number.isFinite(s.v[i]) ? fmt(s.v[i]) : "not flying"}`).join("\n");
+              }
+            })
+          )
+        ]
+      })
+    );
+    fig.setAttribute("aria-label", "Raw detections per year from each satellite");
+    mount(el, fig);
+  }
+
   // src/country.ts
-  var CV = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, focus: [2025, 0], mode: "count" };
+  var CV = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, focus: [2025, 0], mode: "count", mapKey: "" };
   var SENSOR_FROM = { T: 2e3, V: 2012, N20: 2018 };
   var SENSORS = [
-    { s: "T", name: "Terra", c: "#6fa8ff" },
-    { s: "A", name: "Aqua", c: "#a9c7f5" },
-    { s: "V", name: "Suomi NPP", c: "#ff8a3d" },
-    { s: "N20", name: "NOAA-20", c: "#bcc5d3", dash: "5 4" }
+    /* MODIS in greys, VIIRS in blues; red is kept for the year being tested */
+    { s: "T", name: "Terra", c: "#1b1b1b" },
+    { s: "A", name: "Aqua", c: "#8a8478", dash: "5,4" },
+    { s: "V", name: "Suomi NPP", c: "#2166ac" },
+    { s: "N20", name: "NOAA-20", c: "#4393c3", dash: "5,4" }
   ];
   var esc4 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var pc = (x) => x == null ? "n/a" : Math.round(x * 100) + "%";
@@ -3391,22 +4290,51 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     aq0: (d.aqua_from[0] - d.y0) * 12 + d.aqua_from[1] - 1,
     bins: d.bins
   });
+  var viirsYear = (d) => d.viirs_from[0];
+  var ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+  function the(name) {
+    return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
+      name
+    ) ? "the " + name : name;
+  }
+  var cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  var yrs = () => CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}\u2013${CV.yTo}`;
+  var longDate = (iso) => {
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
+  };
+  var VOLCANIC = /* @__PURE__ */ new Set(["Iceland"]);
+  var coarse = () => matchMedia("(pointer: coarse)").matches;
+  function stepped(title, cols, breaks, max) {
+    if (!breaks.length)
+      return `<b>${title}</b><div class="cpKey"><div class="cpStep"><i style="background:${cols[0]}"></i><span>${short(max)}</span></div></div>`;
+    return `<b>${title}</b><div class="cpKey">` + cols.map((c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? "" : short(breaks[i - 1])}</span></div>`).join("") + `<div class="cpStep" style="flex:0 0 1px"><i style="background:none"></i><span>${short(max)}</span></div></div>`;
+  }
+  function monthRun(ms) {
+    const s = ms.slice().sort((a, b) => a - b);
+    if (s.length > 1 && s.every((m, i) => i === 0 || m === s[i - 1] + 1)) return `${MON[s[0]]}\u2013${MON[s[s.length - 1]]}`;
+    if (s.length === 3 && s[0] === 0 && s[2] === 11 && (s[1] === 1 || s[1] === 10)) return s[1] === 1 ? `Dec\u2013${MON[1]}` : `${MON[10]}\u2013Jan`;
+    return s.map((m) => MON[m]).join(", ");
+  }
   function openCountry(k) {
     if (CV.k === k && CV.d) return;
     CV.k = k;
     CV.d = CV.R = null;
+    CV.mapKey = "";
+    loadFonts();
     const el = $("country");
     el.hidden = false;
     el.scrollTop = 0;
     $("cName").textContent = nameOf(k);
-    $("cCrumb").textContent = "Country";
+    $("cCrumb").textContent = "Fire, month by month";
     requestAnimationFrame(() => el.classList.add("in"));
     load();
   }
   function closeCountry() {
     if (CV.k === null) return;
     CV.k = null;
-    hideTip();
+    CV.mapKey = "";
+    destroyMap();
     const el = $("country");
     el.classList.remove("in");
     el.hidden = true;
@@ -3414,15 +4342,17 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   function countryMissing(slug) {
     CV.k = "";
     CV.d = CV.R = null;
+    destroyMap();
+    loadFonts();
     const el = $("country");
     el.hidden = false;
     el.classList.add("in");
-    $("cName").textContent = "Not found";
-    $("cCrumb").textContent = "Country";
+    $("cName").textContent = "No such country";
+    $("cCrumb").textContent = "Fire, month by month";
     $("cBody").hidden = $("cCtl").hidden = true;
     $("cStatus").hidden = false;
     $("cBar").parentElement.hidden = $("cRetry").hidden = true;
-    $("cMsg").textContent = `There is no country at "#c/${slug}". Go back to the globe, or search for a country there.`;
+    $("cMsg").textContent = `Nothing lives at "#c/${slug}". Go back to the globe and pick a country there, or search for one by name.`;
   }
   function load() {
     const k = CV.k, name = nameOf(k);
@@ -3431,26 +4361,28 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     $("cRetry").hidden = true;
     $("cBar").parentElement.hidden = false;
     $("cBar").style.width = "0";
-    $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026`;
-    loadSummary(k, (got, total) => {
+    $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026`;
+    loadMapLib().catch(() => void 0);
+    loadPlotLib().catch(() => void 0);
+    loadSummary(k, (got, total2) => {
       if (CV.k !== k) return;
       const mb = (n) => (n / 1e6).toFixed(n < 1e5 ? 2 : 1) + " MB";
-      if (total && got <= total) {
-        $("cBar").style.width = got / total * 100 + "%";
-        $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026 ${mb(got)} of ${mb(total)}`;
-      } else $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026 ${mb(got)}`;
+      if (total2 && got <= total2) {
+        $("cBar").style.width = got / total2 * 100 + "%";
+        $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026 ${mb(got)} of ${mb(total2)}`;
+      } else $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026 ${mb(got)}`;
     }).then((d) => {
       if (CV.k !== k) return;
       CV.d = d;
-      start(d);
+      start2(d);
     }).catch((e) => {
       if (CV.k !== k) return;
       $("cBar").parentElement.hidden = true;
-      $("cMsg").textContent = `Could not load ${name} from Hugging Face. ${e instanceof Error ? e.message : String(e)}.`;
+      $("cMsg").textContent = `${name}'s record did not arrive from Hugging Face. ${e instanceof Error ? e.message : String(e)}.`;
       $("cRetry").hidden = false;
     });
   }
-  function start(d) {
+  function start2(d) {
     const yo = [];
     for (let y = d.y0; y <= d.y1; y++) yo.push(`<option>${y}</option>`);
     $("cFrom").innerHTML = $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
@@ -3484,151 +4416,214 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       yTo: CV.yTo,
       vi0: ep.vi0,
       harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v)
-    }), name = d.name;
+    });
     CV.R = R;
-    $("cCrumb").textContent = `Country \xB7 ${CV.yFrom}\u2013${CV.yTo}`;
-    $("cLead").textContent = (R.total === 0 ? `No vegetation fire hotspots were counted in ${name} in these years.` : leadText(R)) + (CV.yFrom < d.viirs_from[0] && d.val.monthly_wape != null && d.val.monthly_wape > 1 ? ` Years before ${d.viirs_from[0]} are rough here: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.` : "");
+    $("cCrumb").textContent = `Fire, month by month \xB7 ${yrs()}`;
+    $("cLead").textContent = lead(d, R);
+    $("cDate").textContent = `Fire detections from NASA satellites, ${d.y0}\u2013${d.y1}. Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. Data as of ${longDate(d.source.firms_updated)}.`;
     answers(R);
-    drawMap();
-    const N20 = d.monthly.N20, pickFocus = (y, m) => {
-      CV.focus = [y, m];
-      renderCountry();
-    };
-    calendarInto($("cCal"), R, {
-      mode: CV.mode,
-      focus: true,
-      focusYM: CV.focus,
-      vi0: ep.vi0,
-      more: (r) => `Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)`,
-      click: (r) => pickFocus(r.y, r.m)
-    });
-    document.querySelectorAll("#cModeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
-    $("cCalNote").textContent = CV.mode === "count" ? "Every month of every year, newest at the top. Brighter means more hotspots. Tap a month to test whether it was unusual." : "Red months ran above what is normal for that month, blue months below. Tap a month to test it.";
-    paintRamp("cCalRamp", CV.mode === "count" ? seq : (t) => div(t * 2 - 1));
-    $("cCalLo").textContent = CV.mode === "count" ? "fewer" : "\u215B\xD7 normal";
-    $("cCalHi").textContent = CV.mode === "count" ? "more (log scale)" : "8\xD7 normal";
-    const ys = R.years, xs = ys.map((y) => y.y), top = [];
-    ys.map((y, i) => [y.h, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).forEach((a) => {
-      if (a[0] > 0 && !top.some((i) => Math.abs(i - a[1]) < 2)) top.push(a[1]);
-    });
-    bars(
-      $("cYears"),
-      xs,
-      ys.map((y) => y.h),
-      {
-        aria: "Hotspots per year",
-        step: Math.ceil(xs.length / 9),
-        sel: xs.indexOf(CV.focus[0]),
-        avg: R.mean,
-        top,
-        hatch: (i) => xs[i] < 2012,
-        lo: ys.map((y) => y.lo),
-        hi: ys.map((y) => y.hi),
-        whisk: (i) => xs[i] < 2012,
-        tip: (i) => `${xs[i]}: ${nHot(ys[i].h)}
-${R.mean > 0 ? (ys[i].h >= R.mean ? "+" : "") + Math.round((ys[i].h / R.mean - 1) * 100) + "% against the average year" : ""}` + (xs[i] < 2012 ? `
-Converted from MODIS, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "\nSeen by VIIRS"),
-        click: (i) => pickFocus(xs[i], CV.focus[1])
-      }
-    );
-    bars(
-      $("cMonths"),
-      MON,
-      R.stats.map((z) => z.med),
-      {
-        aria: "Typical hotspots by calendar month",
-        sel: CV.focus[1],
-        lo: R.stats.map((z) => z.q1),
-        hi: R.stats.map((z) => z.q3),
-        whisk: () => true,
-        tip: (m) => `${MONL[m]}
-Typical: ${nHot(R.stats[m].med)}
-Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
-        click: (m) => pickFocus(CV.focus[0], m)
-      }
-    );
-    const bandN = xs.filter((y) => y <= 2012).length;
-    lines(
-      $("cSeam"),
-      xs,
-      [
-        { v: ys.map((y) => y.naive), c: "#6fa8ff" },
-        { v: ys.map((y) => y.h), c: "#ff8a3d" }
-      ],
-      {
-        W: 660,
-        vline: xs.indexOf(2012),
-        band: { lo: ys.map((y) => y.lo), hi: ys.map((y) => y.hi), n: bandN, c: "rgba(255,138,61,.22)" },
-        aria: "Raw joined counts against the harmonized record",
-        tip: (i) => `${xs[i]}
-Harmonized: ${fmt(ys[i].h)}` + (xs[i] <= 2012 ? `, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "") + `
-Raw counts: ${fmt(ys[i].naive)}`
-      }
-    );
-    const avg = (a, b, k) => {
-      const r = ys.filter((y) => y.y >= a && y.y <= b);
-      return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
-    };
-    const n0 = avg(2007, 2011, "naive"), n1 = avg(2012, 2016, "naive"), h0 = avg(2007, 2011, "h"), h1 = avg(2012, 2016, "h");
-    $("cSeamNote").textContent = n0 == null || h0 == null || n1 == null || h1 == null ? "The blue line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step." : n0 === 0 || h0 === 0 ? "MODIS counted no hotspots here in 2007\u20132011, so the step at 2012 cannot be measured." : `Raw counts make 2012\u20132016 look ${(n1 / n0).toFixed(1)}\xD7 busier than 2007\u20132011. In the harmonized record the step is ${(h1 / h0).toFixed(1)}\xD7.`;
-    sensors(d, R);
+    const key = `${d.country}|${CV.yFrom}|${CV.yTo}`;
+    if (key !== CV.mapKey) {
+      CV.mapKey = key;
+      drawMap(d);
+    }
     method(d);
+    calendarText(d, R);
+    chartText(d, R);
+    drawCharts();
+  }
+  function lead(d, R) {
+    const name = the(d.name);
+    if (R.total === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
+    const peak = R.order[0].m, w = R.ranked[0], span = CV.yTo - CV.yFrom + 1;
+    let t = `${cap(name)} burns most in ${MONL[peak]}.`;
+    if (span > 2 && R.mean > 0)
+      t += ` ${w.y} was its worst year ${span === d.y1 - d.y0 + 1 ? "on record" : `between ${CV.yFrom} and ${CV.yTo}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+    if (VOLCANIC.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
+    if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
+      t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.`;
+    return t;
   }
   function answers(R) {
     if (R.total === 0) {
       $("ca1").textContent = $("ca2").textContent = "None";
-      $("ca1n").textContent = $("ca2n").textContent = "";
+      $("ca1n").textContent = $("ca2n").textContent = "No hotspots in these years.";
     } else {
       const top = R.order.slice(0, 3).filter((o) => o.sum > 0), worst = R.ranked.slice(0, 3).filter((y) => y.h > 0), quiet = R.order.filter((o) => o.sum === 0), share = Math.round(top.reduce((a, o) => a + o.sum, 0) / R.total * 100);
-      $("ca1").textContent = top.map((o) => MON[o.m]).join(", ");
+      $("ca1").textContent = monthRun(top.map((o) => o.m));
       $("ca1n").textContent = (top.length === 1 ? `Every hotspot fell in ${MONL[top[0].m]}.` : `${top.length === 2 ? "These two months" : "These three months"} hold ${share}% of all hotspots.`) + (quiet.length > 1 ? ` ${quiet.length} months had none in these years.` : ` ${MONL[R.order[11].m]} is the quietest${quiet.length ? ", with none" : ""}.`);
+      const vy = viirsYear(CV.d), est = worst.some((y) => y.y < vy);
       $("ca2").textContent = worst.map((y) => y.y).join(", ");
-      $("ca2n").textContent = worst.map((y) => `${y.y}: ${fmt(y.h)}${y.y < 2012 ? " (converted)" : ""}`).join(" \xB7 ") + `. An average year has ${fmt(R.mean)}.`;
+      $("ca2n").innerHTML = worst.map((y) => `<span class="cpRow">${y.y} \xB7 ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") + `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` + (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
     }
     const v = verdict(R, CV.focus), vi0 = epochs(CV.d).vi0;
     $("cfM").value = String(CV.focus[1]);
     $("cfY").value = String(CV.focus[0]);
     if (!v) {
       $("ca3").textContent = "Outside the chosen years";
-      $("ca3n").textContent = "";
+      $("ca3n").textContent = "Pick a month inside the years chosen at the top.";
     } else if (R.ser.every((r) => r.m !== v.fm || r.h === 0)) {
       $("ca3").textContent = "No hotspots";
       $("ca3n").textContent = `No hotspots in ${MONL[v.fm]} in any of these years, so there is nothing to compare.`;
     } else {
-      $("ca3").innerHTML = `<span class="pill ${v.cls}">${v.label}</span>${v.mult}`;
-      $("ca3n").textContent = `${nHot(v.f.h)} against a normal ${fmt(v.med)}. Rank ${v.rank} of ${v.n} years.` + (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
+      $("ca3").innerHTML = `<span class="${v.cls}">${esc4(v.label)}</span><small>${esc4(v.mult)}</small>`;
+      $("ca3n").textContent = `${cap(nHot(v.f.h))} against a normal ${fmt(v.med)}; ${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n} ${MONL[v.fm]}s.` + (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
     }
   }
-  function sensors(d, R) {
-    const from = { ...SENSOR_FROM, A: d.aqua_from[0] }, xs = R.years.map((y) => y.y), per = SENSORS.map((z) => ({
-      ...z,
-      v: xs.map((y) => {
-        if (y < from[z.s]) return NaN;
-        const i = (y - d.y0) * 12;
-        return d.monthly[z.s].slice(i, i + 12).reduce((a, b) => a + b, 0);
-      })
-    }));
-    $("cRawKey").innerHTML = per.map(
-      (z) => `<span><i style="background:${z.dash ? `repeating-linear-gradient(90deg,${z.c} 0 5px,transparent 5px 9px)` : z.c};height:3px"></i>${z.name}${z.s === "N20" ? " (not used in the harmonized record)" : ""}</span>`
-    ).join("");
-    lines($("cRaw"), xs, per, {
-      W: 560,
-      h: 250,
-      labels: true,
-      every: 9,
-      aria: "Raw detections per year from each satellite",
-      tip: (i) => `${xs[i]}
-` + per.map((z) => `${z.name}: ${Number.isFinite(z.v[i]) ? fmt(z.v[i]) : "not flying"}${z.s === "N20" ? " (not used)" : ""}`).join("\n")
+  function calendarText(d, R) {
+    const peaks = new Array(12).fill(0);
+    let n = 0;
+    for (const y of R.years) {
+      const rows = R.ser.filter((r) => r.y === y.y);
+      const top = rows.reduce((a, r) => r.h > a.h ? r : a, rows[0]);
+      if (top.h > 0) {
+        peaks[top.m]++;
+        n++;
+      }
+    }
+    const pm2 = peaks.indexOf(Math.max(...peaks)), most = R.total > 0 ? R.order[0].m : pm2;
+    $("cCalTitle").textContent = n <= 2 ? CV.yFrom === CV.yTo ? `Every month of ${CV.yFrom}` : `Every month from ${CV.yFrom} to ${CV.yTo}` : pm2 === most || peaks[pm2] > n / 2 ? `${MONL[pm2]} was the busiest month in ${peaks[pm2]} of ${n} years` : `${MONL[most]} has the most fire in total, but the busiest month moves from year to year`;
+    $("cCalSub").textContent = CV.yFrom === CV.yTo ? `${CV.yFrom}, by month.` : `${CV.yFrom} to ${CV.yTo}, newest at the top.`;
+    document.querySelectorAll("#cModeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
+    const vy = viirsYear(d);
+    $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}\u2013${CV.yTo}` : "";
+    $("cCalBotH").textContent = CV.yFrom < vy ? `Converted from MODIS, ${CV.yFrom}\u2013${Math.min(vy - 1, CV.yTo)}` : "";
+    $("cCalNote").textContent = CV.mode === "count" ? `The outlined month is the one tested at the top; click any month to test it instead.` : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`;
+    const cc = calendarClasses(R);
+    $("cCalLegend").innerHTML = CV.mode === "count" ? cc.max > 0 ? `<div>${stepped("Hotspots in a month", cc.colours, cc.breaks, cc.max)}</div><span class="cpNone"><i></i>none</span>` : "" : `<div class="cpRamp"><span>\xBC of normal</span><i style="background:linear-gradient(90deg,#2166ac,#67a9cf,#d1e5f0,#f7f7f7,#fddbc7,#ef8a62,#b2182b)"></i><span>4\xD7 normal</span></div><span>white: a normal month</span>`;
+  }
+  function chartText(d, R) {
+    const st = R.stats, meds = st.map((s) => s.med), pk = meds.indexOf(Math.max(...meds)), lo = meds.indexOf(Math.min(...meds)), fy = CV.focus[0], span = yrs(), top = R.order.slice(0, 3).filter((o) => o.sum > 0), topShare = R.total > 0 ? top.reduce((a, o) => a + o.sum, 0) / R.total : 0;
+    $("cMonthsT").textContent = R.total === 0 ? "No month stands out" : meds[lo] >= 10 && meds[pk] / meds[lo] >= 1.5 ? `A typical ${MONL[pk]} has ${times(meds[pk] / meds[lo])} the hotspots of a typical ${MONL[lo]}` : topShare >= 0.5 && top.length > 1 ? `${topShare >= 0.8 ? "Almost all" : "Most"} of the fire in ${the(d.name)} comes in ${monthRun(top.map((o) => o.m))}; a typical ${MONL[lo]} has ${meds[lo] === 0 ? "none" : nHot(meds[lo])}` : meds[pk] > 0 ? `A typical ${MONL[pk]} brings ${nHot(meds[pk])}; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}` : `Most months pass with no hotspots at all`;
+    $("cMonthsS").textContent = `Hotspots per month, ${span}, with ${fy} in red. Click a month to test it.`;
+    const w = R.ranked[0];
+    $("cYearsT").textContent = R.total === 0 ? "No year stands out" : R.years.length > 1 && R.mean > 0 ? `${w.y} was the worst year, at ${times(w.h / R.mean)} the average` : `${fmt(w.h)} hotspots in ${w.y}`;
+    $("cYearsS").textContent = `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.`;
+    const fyRow = R.years.find((y) => y.y === fy), rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0;
+    $("cCumT").textContent = !fyRow || R.total === 0 ? "How each year adds up" : rank === 1 ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year` : rank === R.years.length ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years` : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
+    $("cCumS").textContent = `Running total of hotspots from January, one line per year.`;
+    const ys = R.years, avg = (a, b, k) => {
+      const r = ys.filter((y) => y.y >= a && y.y <= b);
+      return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
+    };
+    const n0 = avg(2007, 2011, "naive"), n1 = avg(2012, 2016, "naive"), h0 = avg(2007, 2011, "h"), h1 = avg(2012, 2016, "h");
+    const can = n0 != null && h0 != null && n1 != null && h1 != null && n0 > 0 && h0 > 0;
+    $("cSeamT").textContent = can ? `Joined raw, 2012 looks like a ${(n1 / n0).toFixed(1)}\xD7 jump. Harmonized, it is ${(h1 / h0).toFixed(1)}\xD7` : "Raw counts against the harmonized record";
+    $("cSeamNote").textContent = can ? `Average hotspots a year, 2012\u20132016 against 2007\u20132011. The jump in the raw line is the change of satellite, not more fire.` : n0 === 0 || h0 === 0 ? "MODIS counted no hotspots here in 2007\u20132011, so the step at 2012 cannot be measured." : "The dashed line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step.";
+    const none = R.total === 0;
+    $("cCharts").hidden = $("cRawFig").hidden = none;
+    $("cNoFire").hidden = !none;
+    $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span}, so there is nothing to chart.` : "";
+  }
+  function chartsFailed() {
+    const msg = `<p class="cpMapMsg" style="position:static">The charts did not load (cdnjs or jsdelivr did not answer). The numbers above are unaffected; reload to try again.</p>`;
+    ["cCal", "cMonths", "cYears", "cCum", "cSeam", "cRaw"].forEach((id) => $(id).innerHTML = msg);
+    $("cCal2").innerHTML = "";
+  }
+  function drawCharts() {
+    const d = CV.d, R = CV.R;
+    if (!d || !R) return;
+    if (!window.Plot || !window.d3) {
+      const k = CV.k;
+      ["cCal", "cMonths", "cYears", "cCum", "cSeam", "cRaw"].forEach((id) => {
+        if (!$(id).firstChild) $(id).innerHTML = `<p class="cpCap">Drawing\u2026</p>`;
+      });
+      loadPlotLib().then(
+        () => CV.k === k && drawCharts(),
+        () => CV.k === k && chartsFailed()
+      );
+      return;
+    }
+    const N20 = d.monthly.N20, vy = viirsYear(d), pick = (y, m) => {
+      CV.focus = [y, m];
+      renderCountry();
+    };
+    calendar($("cCal"), $("cCal2"), R, {
+      mode: CV.mode,
+      focus: CV.focus,
+      viirsYear: vy,
+      tip: (r) => `${MONL[r.m]} ${r.y}: ${nHot(r.h)}
+Normal for ${MONL[r.m]}: ${fmt(r.med)}` + (r.med > 0 || r.h > 0 ? ` (${times(r.ratio)} normal)` : "") + `
+${r.src}` + (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + `
+Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)
+Click to test this month`,
+      click: (r) => pick(r.y, r.m)
     });
+    seasonal($("cMonths"), R, CV.focus[0], (m) => pick(CV.focus[0], m));
+    annual($("cYears"), R, {
+      viirsYear: vy,
+      focusYear: CV.focus[0],
+      tip: (y) => `${y.y}: ${nHot(y.h)}` + (R.mean > 0 ? `
+${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") + (y.y < vy ? `
+Estimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") + `
+Click to test ${MONL[CV.focus[1]]} ${y.y}`,
+      click: (y) => pick(y, CV.focus[1])
+    });
+    cumulative($("cCum"), R, CV.focus[0]);
+    seam($("cSeam"), R, vy);
+    const from = { ...SENSOR_FROM, A: d.aqua_from[0] }, xs = R.years.map((y) => y.y);
+    sensorLines(
+      $("cRaw"),
+      xs,
+      SENSORS.map((z) => ({
+        name: z.name,
+        c: z.c,
+        dash: z.dash,
+        v: xs.map((y) => {
+          if (y < from[z.s]) return NaN;
+          const i = (y - d.y0) * 12;
+          return d.monthly[z.s].slice(i, i + 12).reduce((a, b) => a + b, 0);
+        })
+      }))
+    );
+  }
+  function mapMsg(text) {
+    $("cMap").innerHTML = `<p class="cpMapMsg">${esc4(text)}</p>`;
+  }
+  function drawMap(d) {
+    const data = mapData(d, CV.yFrom, CV.yTo), k = d.country;
+    $("cMapLegend").innerHTML = data.n ? `<div>${stepped("Hotspots per square", classColours(data.breaks), data.breaks, data.max)}</div>` : "";
+    const vals = data.cells.features.map((f) => f.properties.n).sort((a, b) => b - a), tot = vals.reduce((a, b) => a + b, 0);
+    let acc = 0, k50 = 0;
+    for (const v of vals) {
+      acc += v;
+      k50++;
+      if (acc >= tot / 2) break;
+    }
+    const share = vals.length ? k50 / vals.length * 100 : 0;
+    $("cMapTitle").textContent = tot > 0 && vals.length >= 10 ? `Half of all hotspots fell in ${share < 1 ? "under 1" : Math.round(share)}% of the squares that burned` : "Where it burns";
+    $("cMapSub").textContent = `Hotspots counted in each ${d.cell}\xB0 square (about ${Math.round(d.cell * 111)} km across), ${yrs()}.`;
+    const name = the(d.name);
+    $("cMapNote").innerHTML = data.n ? (coarse() ? "Tap a square for its numbers. Use two fingers to move and zoom." : "Hover over a square for its numbers. Use the buttons, or Ctrl/\u2318 and scroll, to zoom.") + (data.cropped ? ` <button class="cpText cpSmall" id="cMapAll" type="button">Show all of ${esc4(name)}</button>` : "") + `<span id="cMapBase"></span>` : `No hotspots were counted anywhere in ${esc4(name)} in these years, so the map has no squares.<span id="cMapBase"></span>`;
+    const all = document.getElementById("cMapAll");
+    if (all) all.onclick = fitAll;
+    const go2 = () => {
+      if (CV.k !== k || !CV.d) return;
+      showMap($("cMap"), d, data, CV.yFrom, CV.yTo, mapMsg, () => {
+        const b = document.getElementById("cMapBase");
+        if (b && CV.k === k) b.textContent = " The background map did not load, so only the squares and the outline are shown.";
+      });
+    };
+    if (window.maplibregl) go2();
+    else {
+      mapMsg("Loading the map\u2026");
+      loadMapLib().then(go2, () => {
+        if (CV.k === k) mapMsg("The map did not load (cdnjs did not answer). The numbers on this page are unaffected; reload to try again.");
+      });
+    }
   }
   function method(d) {
     const val = d.val;
-    $("cTiles").innerHTML = `<div class="tile"><b>${val.raw_factor == null ? "n/a" : val.raw_factor.toFixed(1) + "\xD7"}</b><span>more hotspots from VIIRS than MODIS for the same fires in ${esc4(d.name)}, 2012\u20132025</span></div><div class="tile"><b>${pc(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc(val.annual_max_err)}</b><span>error in the worst tested year</span></div><div class="tile"><b>${pc(val.monthly_wape)}</b><span>typical error of a converted month, weighted by size</span></div>`;
+    const item = (v, t) => `<div><dt>${v}</dt><dd>${t}</dd></div>`;
+    $("cTiles").innerHTML = item(
+      val.raw_factor == null ? "n/a" : val.raw_factor.toFixed(1) + "\xD7",
+      `more hotspots from VIIRS than MODIS for the same fires in ${esc4(the(d.name))}, 2012\u20132025`
+    ) + item(pc(val.annual_med_err), "typical error of a converted year, tested on years we could check") + item(pc(val.annual_max_err), "error in the worst tested year") + item(pc(val.monthly_wape), "typical error of a converted month, weighted by size");
     $("cRateNote").textContent = d.rate_note;
     $("cFilter").textContent = d.filter;
     $("cCell").textContent = `${d.cell}\xB0`;
     const row = (label, a) => `<tr><td>${label}</td>${a.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
-    $("cRates").innerHTML = `<tr><th>Rate</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr>` + row("Terra+Aqua", d.r_ta) + row("  90% low", d.r_ta_lo) + row("  90% high", d.r_ta_hi) + row("Terra only", d.r_t);
+    $("cRates").innerHTML = `<tr><th>VIIRS per MODIS hotspot</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr>` + row("Terra+Aqua", d.r_ta) + row("90% low", d.r_ta_lo) + row("90% high", d.r_ta_hi) + row("Terra only", d.r_t);
     $("cLoyo").innerHTML = `<tr><th>Held-out year</th><th>Seen by VIIRS</th><th>Predicted from MODIS</th><th>Raw MODIS</th><th>Error</th></tr>` + val.loyo.map(
       (r) => `<tr><td>${Number(r.y)}</td><td>${fmt(r.obs)}</td><td>${fmt(r.pred)}</td><td>${fmt(r.modis)}</td><td>${r.obs > 0 ? (r.pred >= r.obs ? "+" : "") + Math.round((r.pred / r.obs - 1) * 100) + "%" : "n/a"}</td></tr>`
     ).join("");
@@ -3646,159 +4641,6 @@ Raw counts: ${fmt(ys[i].naive)}`
     );
     save(`burn-calendar_${d.country}_${CV.yFrom}-${CV.yTo}.csv`, rows.join("\n"), $("cDlMsg"));
   }
-  var MF = null;
-  function cellIndexes(d) {
-    const n = d.cells.length / 2, la = new Int32Array(n), lo = new Int32Array(n), lim = 180 / d.cell + 1;
-    for (let c = 0; c < n; c++) {
-      la[c] = d.cells[2 * c];
-      lo[c] = d.cells[2 * c + 1];
-      if (lo[c] > lim) {
-        lo[c] -= 1e5;
-        la[c] += 1;
-      }
-    }
-    return { la, lo };
-  }
-  function shiftRing(r, lon0) {
-    const off = near(r[0], lon0) - r[0];
-    return off ? r.map((v, i) => i % 2 ? v : v + off) : r;
-  }
-  function drawMap() {
-    const d = CV.d, cv = $("cMap"), W = cv.parentElement.clientWidth;
-    if (!d || !W) return;
-    const shape = shapeOf(d.country), lon0 = shape ? shape.c[0] : (d.bbox[0] + d.bbox[2]) / 2, own = shape ? shape.r.map((r) => shiftRing(r, lon0)) : [], cell = d.cell, nc = d.cells.length / 2, { la: cla, lo: clo } = cellIndexes(d), tot = new Float64Array(nc), modis = new Float64Array(nc), viirs = new Float64Array(nc), cellAt = /* @__PURE__ */ new Map();
-    for (let p = 0; p < d.cell_rows.length; p += 5) {
-      const y = d.y0 + d.cell_rows[p + 1];
-      if (y < CV.yFrom || y > CV.yTo) continue;
-      const c2 = d.cell_rows[p];
-      tot[c2] += d.cell_rows[p + 2];
-      modis[c2] += d.cell_rows[p + 3];
-      viirs[c2] += d.cell_rows[p + 4];
-    }
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    const grow = (lon, lat) => {
-      if (lon < x0) x0 = lon;
-      if (lon > x1) x1 = lon;
-      if (lat < y0) y0 = lat;
-      if (lat > y1) y1 = lat;
-    };
-    for (const r of own) for (let i = 0; i < r.length; i += 2) grow(r[i], r[i + 1]);
-    const cellLon = new Float64Array(nc);
-    for (let c2 = 0; c2 < nc; c2++) {
-      const la = cla[c2] * cell, lo = clo[c2] * cell;
-      cellAt.set(cla[c2] + "," + clo[c2], c2);
-      cellLon[c2] = near(lo + cell / 2, lon0) - cell / 2;
-      grow(cellLon[c2], la);
-      grow(cellLon[c2] + cell, la + cell);
-    }
-    if (!isFinite(x0)) {
-      grow(near(d.bbox[0], lon0), d.bbox[1]);
-      grow(near(d.bbox[2], lon0), d.bbox[3]);
-    }
-    const span = Math.max(0.5, x1 - x0), spanY = Math.max(0.5, y1 - y0), k = Math.max(0.2, Math.cos((y0 + y1) / 2 * Math.PI / 180)), pad = 14, H = Math.round(Math.max(240, Math.min(560, innerHeight * 0.7, W * spanY / (span * k)))), s = Math.min((W - 2 * pad) / (span * k), (H - 2 * pad) / spanY), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, dpr = Math.min(2, devicePixelRatio || 1);
-    cv.style.height = H + "px";
-    cv.width = W * dpr;
-    cv.height = H * dpr;
-    const base = document.createElement("canvas");
-    base.width = cv.width;
-    base.height = cv.height;
-    const c = base.getContext("2d"), X = (lon) => W / 2 + (lon - cx) * k * s, Y = (lat) => H / 2 - (lat - cy) * s, ring = (r) => {
-      c.moveTo(X(r[0]), Y(r[1]));
-      for (let i = 2; i < r.length; i += 2) c.lineTo(X(r[i]), Y(r[i + 1]));
-      c.closePath();
-    }, border = (k2, r, orig) => {
-      for (let i = 0; i + 3 < r.length; i += 2) {
-        if (cutEdge(k2, orig[i], orig[i + 1], orig[i + 2], orig[i + 3])) continue;
-        c.moveTo(X(r[i]), Y(r[i + 1]));
-        c.lineTo(X(r[i + 2]), Y(r[i + 3]));
-      }
-    };
-    c.scale(dpr, dpr);
-    c.fillStyle = "#05080f";
-    c.fillRect(0, 0, W, H);
-    const vw = W / (2 * k * s), vh = H / (2 * s);
-    const near3 = [];
-    for (const o of WORLD) {
-      if (o.k === d.country) continue;
-      const b = o.b;
-      if (b[1] > cy + vh || b[3] < cy - vh) continue;
-      for (const r of o.r) {
-        const rr = shiftRing(r, lon0);
-        let a = Infinity, z = -Infinity;
-        for (let i = 0; i < rr.length; i += 2) {
-          if (rr[i] < a) a = rr[i];
-          if (rr[i] > z) z = rr[i];
-        }
-        if (z >= cx - vw && a <= cx + vw) near3.push([o.k, rr, r]);
-      }
-    }
-    c.beginPath();
-    near3.forEach((n) => ring(n[1]));
-    c.fillStyle = "#0f1522";
-    c.fill();
-    c.beginPath();
-    near3.forEach((n) => border(...n));
-    c.strokeStyle = "rgba(255,255,255,.12)";
-    c.lineWidth = 1;
-    c.stroke();
-    c.beginPath();
-    own.forEach(ring);
-    c.fillStyle = "#1b2334";
-    c.fill();
-    let mx = 0;
-    for (let j = 0; j < nc; j++) if (tot[j] > mx) mx = tot[j];
-    const lmax = Math.log1p(mx), lut2 = LUT(), side = Math.max(1.5, cell * s);
-    for (let j = 0; j < nc; j++) {
-      if (tot[j] <= 0) continue;
-      c.fillStyle = lut2[Math.round(63 * (0.06 + 0.94 * Math.log1p(tot[j]) / lmax))];
-      c.fillRect(X(cellLon[j]), Y(cla[j] * cell + cell), Math.max(side, cell * k * s) + 0.5, side + 0.5);
-    }
-    c.beginPath();
-    own.forEach((r, i) => border(d.country, r, shape.r[i]));
-    c.strokeStyle = "rgba(241,244,249,.65)";
-    c.lineWidth = 1.2;
-    c.stroke();
-    MF = { W, H, cx, cy, lon0, k, s, base, cellAt, la: cla, lo: clo, tot, modis, viirs, hover: -1 };
-    blit();
-    paintRamp("cMapRamp", seq);
-    $("cMapHi").textContent = mx > 0 ? `${short(mx)} per square (log scale)` : "";
-    $("cMapNote").textContent = nc ? `Each square is ${cell}\xB0 across, about ${Math.round(cell * 111)} km north to south. Colour shows the hotspots counted in it over ${CV.yFrom}\u2013${CV.yTo}, in VIIRS terms, on a log scale. Hover or tap a square for its numbers.` : `No hotspots were counted anywhere in ${d.name}, so the map has no squares.`;
-  }
-  function blit() {
-    const f = MF, d = CV.d;
-    if (!f || !d) return;
-    const cv = $("cMap"), c = cv.getContext("2d"), dpr = cv.width / f.W;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.drawImage(f.base, 0, 0);
-    if (f.hover < 0) return;
-    const cell = d.cell, la = f.la[f.hover] * cell, lo = near(f.lo[f.hover] * cell + cell / 2, f.lon0) - cell / 2, x = f.W / 2 + (lo - f.cx) * f.k * f.s, y = f.H / 2 - (la + cell - f.cy) * f.s, side = Math.max(1.5, cell * f.s);
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    c.strokeStyle = "#fff";
-    c.lineWidth = 2;
-    c.strokeRect(x - 1, y - 1, Math.max(side, cell * f.k * f.s) + 2, side + 2);
-  }
-  function mapHover(e) {
-    const f = MF, d = CV.d;
-    if (!f || !d) return;
-    const r = $("cMap").getBoundingClientRect(), lonU = f.cx + (e.clientX - r.left - f.W / 2) / (f.k * f.s), lat = f.cy - (e.clientY - r.top - f.H / 2) / f.s, lon = near(lonU, 0), key = Math.floor(lat / d.cell) + "," + Math.floor(lon / d.cell), j = f.cellAt.get(key) ?? -1, hit = j >= 0 && f.tot[j] + f.modis[j] + f.viirs[j] > 0 ? j : -1;
-    if (hit !== f.hover) {
-      f.hover = hit;
-      blit();
-    }
-    if (hit >= 0) {
-      const la = f.la[hit] * d.cell, lo = f.lo[hit] * d.cell, deg = (v, p, n) => `${Math.abs(v).toFixed(2)}\xB0${v < 0 ? n : p}`;
-      showTip(
-        e,
-        `${deg(la, "N", "S")} to ${deg(la + d.cell, "N", "S")}, ${deg(lo, "E", "W")} to ${deg(lo + d.cell, "E", "W")}
-${CV.yFrom}\u2013${CV.yTo}: ${nHot(f.tot[hit])} in VIIRS terms
-Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
-      );
-      return;
-    }
-    const o = countryAt(lon, lat);
-    if (o && o.k !== d.country) showTip(e, o.n);
-    else hideTip();
-  }
   function countryEvents() {
     $("cBack").onclick = () => {
       location.hash = "";
@@ -3814,6 +4656,7 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
       }
       CV.yFrom = a;
       CV.yTo = b;
+      CV.focus = [Math.min(b, Math.max(a, CV.focus[0])), CV.focus[1]];
       $("cFrom").value = String(a);
       $("cTo").value = String(b);
       renderCountry();
@@ -3830,19 +4673,15 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
       }
     );
     $("cDl").onclick = csv;
-    const cv = $("cMap");
-    cv.onpointermove = cv.onpointerdown = mapHover;
-    cv.onpointerleave = () => {
-      if (MF) MF.hover = -1;
-      blit();
-      hideTip();
-    };
-    let rt;
+    let rt, lastW = 0;
     addEventListener("resize", () => {
       clearTimeout(rt);
       rt = setTimeout(() => {
-        if (CV.d && !$("country").hidden) drawMap();
-      }, 120);
+        const w = $("cBody").clientWidth;
+        if (!CV.d || $("country").hidden || w === lastW) return;
+        lastW = w;
+        drawCharts();
+      }, 150);
     });
   }
 
@@ -4086,16 +4925,16 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
       $("heroRetry").hidden = true;
       $("heroKey").hidden = false;
       Promise.race([loadIndex(), giveUp(15e3)]).then((idx) => {
-        const L = buildFireLayer(idx);
-        if (!L.stats.size) throw new Error("The country index has no fire totals");
-        const ft = new T.CanvasTexture(L.canvas);
+        const L2 = buildFireLayer(idx);
+        if (!L2.stats.size) throw new Error("The country index has no fire totals");
+        const ft = new T.CanvasTexture(L2.canvas);
         ft.minFilter = T.LinearFilter;
         fireM.map = ft;
         fireM.needsUpdate = true;
         fireMesh.visible = true;
-        fireStats = L.stats;
+        fireStats = L2.stats;
         fireT0 = performance.now();
-        showKey(L.lo, L.hi);
+        showKey(L2.lo, L2.hi);
         if (hov) tagC.textContent = tagText(hov);
       }).catch(() => {
         $("heroWait").textContent = "Could not load the fire map from Hugging Face.";
@@ -4188,7 +5027,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       fragmentShader: "uniform sampler2D tex;uniform vec2 res;varying vec2 u;float B2(vec2 a){a=floor(a);return fract(a.x/2.0+a.y*a.y*0.75);}void main(){vec3 c=texture2D(tex,u).rgb;float g=dot(c,vec3(0.3,0.59,0.11));c=clamp(mix(vec3(g),c,1.55)*1.18,0.0,1.0);vec2 p=floor(u*res);float d=B2(0.5*p)*0.25+B2(p);c=floor(c*8.0+d*0.7)/8.0;gl_FragColor=vec4(c,1.0);}"
     });
     post.add(new T.Mesh(new T.PlaneGeometry(2, 2), pmat));
-    const base = { ry: 8 * Math.PI / 180, rx: 34 * Math.PI / 180 }, user = { ry: 0, rx: 0 };
+    const base2 = { ry: 8 * Math.PI / 180, rx: 34 * Math.PI / 180 }, user = { ry: 0, rx: 0 };
     let fly = null, drag = null, off = { x: 0, y: 0 }, camZ = 4.6, last = 0;
     const ray = new T.Raycaster(), ndc = new T.Vector2(), ball = new T.Sphere(new T.Vector3(), 1), hitP = new T.Vector3();
     function size() {
@@ -4323,8 +5162,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
           d();
         }
       } else {
-        grp.rotation.y = base.ry + user.ry + (reduced ? 0 : Math.sin(t * 0.2) * 0.13);
-        grp.rotation.x = base.rx + user.rx;
+        grp.rotation.y = base2.ry + user.ry + (reduced ? 0 : Math.sin(t * 0.2) * 0.13);
+        grp.rotation.x = base2.rx + user.rx;
         grp.position.x = off.x;
         grp.position.y = off.y + (reduced ? 0 : Math.sin(t * 0.8) * 0.03);
         cam.position.z = camZ;

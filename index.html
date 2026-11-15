@@ -62,23 +62,136 @@ input[type=number]{width:84px}
 .heroMsg{flex:1 1 100%;margin:0;text-align:center;font-size:13px;color:var(--ink2);text-shadow:0 1px 6px #000;min-height:0}
 .heroMsg:empty{display:none}
 
-/* ---------- country view: one scrolling page of data fetched from Hugging Face ---------- */
-#country{position:fixed;inset:0;z-index:5;overflow-y:auto;overflow-x:hidden;background:#000;opacity:0;transition:opacity .45s ease}
+/* ---------- country view: a light report page, one reading column, figures wider than the text ---------- */
+#country{
+  --paper:#faf9f6; --cink:#1b1b1b; --cink2:#55524c; --hair:#d8d4cb; --tint:#f1eee7; --cred:#bd0026; --cblue:#2166ac;
+  --serif:"Source Serif 4","Source Serif Pro",Georgia,"Times New Roman",serif;
+  --sans:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;position:fixed;inset:0;z-index:5;overflow-y:auto;overflow-x:hidden;background:var(--paper);color:var(--cink);
+  font:16px/1.55 var(--sans);font-variant-numeric:tabular-nums lining-nums;opacity:0;transition:opacity .35s ease;-webkit-font-smoothing:antialiased}
 #country.in{opacity:1}
-.cHead{position:sticky;top:0;z-index:3;display:flex;gap:12px 16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;padding:16px 24px 14px;background:rgba(8,11,19,.96);border-bottom:1px solid var(--line)}
-.cWho{display:flex;gap:14px;align-items:flex-end;min-width:0}
-.cWho h2{font:800 clamp(28px,4vw,44px)/1 var(--font-d);letter-spacing:-.03em;margin:4px 0 0;overflow-wrap:anywhere}
-.cMain{max-width:1260px;margin:0 auto}
-.cStatus{margin:12vh 16px 0;max-width:520px;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:12px;align-items:flex-start}
-@media (min-width:552px){.cStatus{margin-left:auto;margin-right:auto}}
-.cStatus p{margin:0;color:var(--ink2)}
-.cBar{width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
-.cBar i{display:block;height:100%;width:0;background:var(--ember);transition:width .15s linear}
-#cMap{display:block;width:100%;height:320px;border-radius:10px;cursor:crosshair}
-.cSrc a{color:var(--ember)}
-.cSrc{overflow-wrap:anywhere}
-#country .rampRow canvas{flex:0 1 200px;min-width:60px}
-@media (max-width:900px){.cHead{padding:14px 16px}}
+#country :focus-visible{outline:2px solid var(--cink);outline-offset:2px}
+#country a{color:inherit;text-decoration-color:#9a9488;text-underline-offset:2px}
+#country a:hover{text-decoration-color:var(--cink)}
+.cpTop{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding:10px max(16px,calc((100% - 1032px)/2));background:var(--paper);border-bottom:1px solid var(--hair);font-size:15px}
+.cpBack{border:0;background:none;padding:6px 0;cursor:pointer;font:600 15px var(--sans);color:var(--cink)}
+.cpBack:hover{text-decoration:underline;text-underline-offset:3px}
+.cpBrand{font:700 16px var(--font-d);letter-spacing:-.01em;color:var(--cink2);padding-left:20px;border-left:1px solid var(--hair)}
+.cpYears{margin-left:auto;display:flex;align-items:baseline;gap:6px;color:var(--cink2)}
+#country select{appearance:none;-webkit-appearance:none;background:transparent;border:0;border-bottom:1.5px solid var(--cink);border-radius:0;padding:0 16px 0 1px;color:var(--cink);font:600 inherit/1.2 var(--sans);font-size:inherit;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 7px) 55%,calc(100% - 3px) 55%;background-size:4px 4px;background-repeat:no-repeat;min-height:0}
+#country select:hover{background-color:var(--tint)}
+.cpPage{max-width:1080px;margin:0 auto;padding:44px 24px 40px}
+.cpKicker{margin:0 0 6px;font:600 14px/1.3 var(--sans);letter-spacing:.02em;color:var(--cink2)}
+.cpName{font:600 clamp(34px,5.4vw,52px)/1.05 var(--serif);font-optical-sizing:auto;letter-spacing:-.015em;margin:0;max-width:680px;overflow-wrap:anywhere;text-wrap:balance}
+.cpStatus{max-width:680px;margin:28px 0 0;display:flex;flex-direction:column;gap:14px;align-items:flex-start}
+.cpStatus p{margin:0;font:400 20px/1.45 var(--serif);color:var(--cink)}
+.cpBar{width:100%;max-width:420px;height:2px;background:var(--hair)}
+.cpBar i{display:block;height:100%;width:0;background:var(--cink);transition:width .15s linear}
+.cpText{border:0;background:none;padding:0;cursor:pointer;font:600 16px var(--sans);color:var(--cink);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px}
+.cpText:hover{color:var(--cred)}
+.cpLead{max-width:680px;margin:18px 0 0;font:400 clamp(20px,2.2vw,23px)/1.42 var(--serif);font-optical-sizing:auto;text-wrap:pretty}
+.cpDate{max-width:680px;margin:14px 0 0;font-size:14px;color:var(--cink2)}
+.cpAnswers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:40px 0 0;border-top:1px solid var(--cink)}
+.cpAns{padding:16px 24px 20px;border-left:1px solid var(--hair);min-width:0}
+.cpAns:first-child{padding-left:0;border-left:0}
+.cpAns h2{margin:0;font:600 15px/1.4 var(--sans);letter-spacing:.01em}
+.cpFig{margin:8px 0 6px;font:600 clamp(26px,3vw,32px)/1.12 var(--serif);font-optical-sizing:auto;letter-spacing:-.01em;overflow-wrap:anywhere}
+.cpFig .hi{color:var(--cred)}.cpFig .lo{color:var(--cblue)}
+.cpFig small{display:block;font:400 17px/1.35 var(--serif);color:var(--cink2);margin-top:4px;letter-spacing:0}
+.cpAns p:last-child{margin:0;font-size:15px;line-height:1.5;color:var(--cink2)}
+.cpRow{display:block;font-variant-numeric:tabular-nums}
+.cpFn{font-size:13px;margin-top:4px}
+.cpNone{display:flex;align-items:center;gap:6px;align-self:flex-end;padding-bottom:13px}
+.cpNone i{display:inline-block;width:14px;height:12px;background:#ebe8e1}
+.cpSmall{display:block;margin-top:6px;font-size:inherit;font-weight:600}
+.cpSec{margin:64px 0 0;padding-top:20px;border-top:1px solid var(--hair)}
+.cpH{margin:0;max-width:760px;font:600 clamp(24px,2.8vw,30px)/1.2 var(--serif);font-optical-sizing:auto;letter-spacing:-.01em;text-wrap:balance}
+.cpH3{margin:0;font:600 20px/1.3 var(--serif);font-optical-sizing:auto;text-wrap:balance}
+.cpSub{margin:6px 0 0;max-width:680px;font-size:15px;color:var(--cink2)}
+.cpCap{margin:12px 0 0;max-width:680px;font-size:14px;color:var(--cink2)}
+.cpLegend{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin:18px 0 10px;font-size:13px;color:var(--cink2)}
+.cpLegend:empty{display:none}
+.cpKey{display:flex;align-items:flex-start;max-width:100%;min-width:0}
+.cpLegend>div{flex:0 1 420px;min-width:0;padding-right:22px}
+.cpLegend>div>b{display:block;margin-bottom:5px}
+.cpStep{display:flex;flex-direction:column;gap:3px;flex:1 1 0;min-width:0}
+.cpStep i{display:block;height:12px}
+.cpStep span{font-size:13px;line-height:1;transform:translateX(-50%);white-space:nowrap}
+.cpStep:first-child span{transform:none}
+.cpRamp{display:grid;grid-template-columns:auto 220px auto;gap:2px 8px;align-items:center}
+.cpRamp i{height:12px;display:block}
+.cpLegend b{font-weight:600;color:var(--cink);margin-right:4px}
+.cpMap{position:relative;height:480px;background:#f2f3f0;border:1px solid var(--hair)}
+.cpMapMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--cink2);font-size:15px}
+.cpCalBar{max-width:820px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px 24px;flex-wrap:wrap}
+.cpSeg{display:flex;gap:18px}
+.cpSeg button{border:0;background:none;padding:4px 0;cursor:pointer;font:600 15px var(--sans);color:var(--cink2);border-bottom:2px solid transparent}
+.cpSeg button:hover{color:var(--cink)}
+.cpSeg button[aria-pressed="true"]{color:var(--cink);border-bottom-color:var(--cink)}
+.cpCal{max-width:820px}
+.cpPart{margin:14px 0 2px;font:600 13px/1.3 var(--sans);letter-spacing:.02em;color:var(--cink2)}
+.cpPart:empty{display:none}
+.cpPlot{min-height:40px}
+.cpPlot svg{display:block;max-width:100%;height:auto;overflow:visible}
+.cpCharts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 48px}
+.cpCharts[hidden]{display:none}
+.cpMiniKey{display:flex;gap:4px 16px;flex-wrap:wrap;margin:8px 0 0;font-size:13px;color:var(--cink2)}
+.cpMiniKey span{display:inline-flex;align-items:center;gap:6px}
+.cpMiniKey i{display:inline-block;width:16px;height:10px}
+#cNoFire{margin-top:64px;max-width:680px}
+/* heading, subhead and plot share rows across each pair, so the two x axes line up */
+.cpChart{margin:0;min-width:0;display:grid;grid-row:span 3;grid-template-rows:subgrid;row-gap:0;align-content:start;padding-bottom:56px}
+.cpChart.cpWide{display:block;padding-bottom:0}
+.cpChart .cpPlot{margin-top:14px}
+.cpWide{margin-top:40px;max-width:820px}
+.cpProse{max-width:680px;margin:14px 0 0;font:400 18px/1.55 var(--serif)}
+.cpLimits{font-size:16px;color:var(--cink2)}
+.cpTrust{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:28px 0 0;border-top:1px solid var(--hair)}
+.cpTrust div{padding:14px 20px 4px;border-left:1px solid var(--hair);min-width:0}
+.cpTrust div:first-child{padding-left:0;border-left:0}
+.cpTrust dt{font:600 30px/1.1 var(--serif);font-optical-sizing:auto}
+.cpTrust dd{margin:6px 0 0;font-size:14px;color:var(--cink2)}
+.cpSteps{display:block;max-width:680px;margin:24px 0 0;padding-left:22px;font-size:15px}
+.cpSteps li{margin:6px 0;padding-left:4px}
+.cpDetails{max-width:820px;margin:28px 0 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:12px 0;border-left:0;border-right:0;border-radius:0}
+.cpDetails summary{font-weight:600;cursor:pointer}
+.cpScroll{overflow-x:auto;margin:14px 0}
+#country table{border-collapse:collapse;font:14px var(--sans);font-variant-numeric:tabular-nums lining-nums}
+#country th,#country td{padding:5px 9px;text-align:right;border-bottom:1px solid var(--hair);white-space:nowrap;color:var(--cink)}
+#country th{font-weight:600}
+#country th:first-child,#country td:first-child{text-align:left}
+.cpDl{margin:28px 0 0;font-size:15px}
+.cpDl span{color:var(--cink2);margin-left:8px}
+.cpFoot{margin:72px 0 0;padding-top:16px;border-top:1px solid var(--cink);font-size:14px;color:var(--cink2);max-width:820px}
+.cpFoot p{margin:0 0 10px;overflow-wrap:anywhere}
+/* MapLibre: quiet controls, a plain popup */
+#country .maplibregl-ctrl-group{border-radius:2px;box-shadow:none;border:1px solid var(--hair)}
+#country .maplibregl-ctrl-scale{border-color:var(--cink2);color:var(--cink);background:rgba(250,249,246,.85);font:12px var(--sans)}
+#country .maplibregl-ctrl-attrib{font:12px var(--sans)}
+.cpPop .maplibregl-popup-content{border-radius:2px;padding:9px 11px;box-shadow:none;border:1px solid var(--cink);background:#fffefa;font:14px/1.4 var(--sans);color:var(--cink);font-variant-numeric:tabular-nums}
+.cpPop .maplibregl-popup-content span{display:block;color:var(--cink2)}
+.cpPop .maplibregl-popup-content b{font-weight:600}
+.cpPop .maplibregl-popup-content .pos{font-size:13px;margin-top:3px}
+.cpPop .maplibregl-popup-tip{display:none}
+/* Plot's tip box inherits the page font */
+#country [aria-label="tip"] text{font-family:var(--sans)}
+@media (max-width:860px){
+  .cpCharts{grid-template-columns:minmax(0,1fr)}
+  .cpTrust{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cpTrust div:nth-child(3){padding-left:0;border-left:0}
+}
+@media (max-width:700px){
+  .cpPage{padding:28px 16px 32px}
+  .cpTop{padding:8px 16px;gap:4px 14px}
+  .cpBrand{display:none}
+  .cpAnswers{grid-template-columns:minmax(0,1fr)}
+  .cpAns{padding:14px 0 16px;border-left:0;border-top:1px solid var(--hair)}
+  .cpAns:first-child{border-top:0}
+  .cpMap{height:60vh;min-height:320px}
+  .cpSec{margin-top:48px}
+  .cpRamp{grid-template-columns:auto minmax(80px,1fr) auto}
+}
 
 /* ---------- state view: the map is the page ---------- */
 #app{position:fixed;inset:0;opacity:0;transition:opacity .45s ease;background:#000}
@@ -218,9 +331,9 @@ table.fcT{min-width:640px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:rgba(9,13,22,.5)}
 .seg button{border:0;background:transparent;color:var(--ink2);font-size:14px;padding:8px 14px;cursor:pointer;min-height:38px}
 .seg button[aria-pressed="true"]{background:var(--ink);color:#05070c;font-weight:600}
-svg{display:block;width:100%;height:auto;overflow:visible}
-svg text{font:11px var(--font-m);fill:var(--muted)}
-svg .hl{fill:var(--ink)}
+:is(#app,#sheet) svg{display:block;width:100%;height:auto;overflow:visible}
+:is(#app,#sheet) svg text{font:11px var(--font-m);fill:var(--muted)}
+:is(#app,#sheet) svg .hl{fill:var(--ink)}
 .key{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink2)}
 .key i{display:inline-block;width:13px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:6px}
 .cal{display:grid;gap:3px;font-variant-numeric:tabular-nums}
@@ -310,72 +423,88 @@ th{color:var(--muted);font-weight:400}
 </section>
 
 <section id="country" hidden>
-  <header class="cHead">
-    <div class="cWho"><button class="btn" id="cBack" type="button">← Globe</button><div><p class="eyebrow" id="cCrumb"></p><h2 id="cName"></h2></div></div>
-    <div class="shCtl" id="cCtl" hidden>
-      <div class="yrs"><span>Years</span><select id="cFrom" aria-label="From year"></select><span>to</span><select id="cTo" aria-label="To year"></select></div>
-    </div>
+  <header class="cpTop">
+    <button class="cpBack" id="cBack" type="button">← Globe</button>
+    <span class="cpBrand">Burn Calendar</span>
+    <div class="cpYears" id="cCtl" hidden><label for="cFrom">Years</label> <select id="cFrom" aria-label="From year"></select> <span>to</span> <select id="cTo" aria-label="To year"></select></div>
   </header>
-  <div class="cMain">
-    <div class="cStatus glass" id="cStatus" role="status">
+  <main class="cpPage">
+    <p class="cpKicker" id="cCrumb"></p>
+    <h1 class="cpName" id="cName"></h1>
+    <div class="cpStatus" id="cStatus" role="status">
       <p id="cMsg"></p>
-      <div class="cBar"><i id="cBar"></i></div>
-      <button class="btn primary" id="cRetry" type="button" hidden>Retry</button>
+      <div class="cpBar"><i id="cBar"></i></div>
+      <button class="cpText" id="cRetry" type="button" hidden>Try again</button>
     </div>
-    <div class="grid" id="cBody" hidden>
-      <p class="lead" id="cLead"></p>
-      <section class="sec s12"><span class="num">01</span><h3>The short answer</h3>
-        <div class="ans">
-          <div class="a"><span class="q">Which months have the most fires?</span><span class="v" id="ca1"></span><span class="d" id="ca1n"></span></div>
-          <div class="a"><span class="q">Which years were the worst?</span><span class="v" id="ca2"></span><span class="d" id="ca2n"></span></div>
-          <div class="a"><span class="q">Was <select id="cfM" aria-label="Month"></select> <select id="cfY" aria-label="Year"></select> unusual?</span><span class="v" id="ca3"></span><span class="d" id="ca3n"></span></div>
-        </div></section>
-      <section class="sec s12"><span class="num">02</span><h3>Where it burns</h3>
-        <p class="note" id="cMapNote"></p>
-        <canvas id="cMap" role="img" aria-label="Map of hotspots in the country by grid square"></canvas>
-        <div class="rampRow"><span>fewer</span><canvas id="cMapRamp" width="200" height="10"></canvas><span id="cMapHi"></span></div></section>
-      <section class="sec s12"><span class="num">03</span><div class="row between"><h3>The full calendar</h3>
-          <div class="seg" id="cModeSeg" role="group" aria-label="Calendar values"><button type="button" data-mode="count">Hotspots</button><button type="button" data-mode="anom">Versus normal</button></div></div>
-        <p class="note" id="cCalNote"></p>
-        <div class="scroll"><div class="cal" id="cCal" style="min-width:640px"></div></div>
-        <div class="rampRow"><span id="cCalLo"></span><canvas id="cCalRamp" width="200" height="10"></canvas><span id="cCalHi"></span></div></section>
-      <section class="sec s6"><span class="num">04</span><h3>Year by year</h3>
-        <p class="note">Each year against the average year, the dashed line. Tap a bar to test that year below.</p>
-        <div class="key"><span><i style="background:var(--ember)"></i>Seen by VIIRS</span><span><i style="background:repeating-linear-gradient(45deg,var(--ember) 0 2px,transparent 2px 4px)"></i>Converted from MODIS, with likely range</span></div>
-        <div id="cYears"></div></section>
-      <section class="sec s6"><span class="num">05</span><h3>When it burns</h3>
-        <p class="note">A typical year, month by month: the median, with a line over the middle half of years. Tap a bar to test that month.</p>
-        <div id="cMonths"></div></section>
-      <section class="sec s7"><span class="num">06</span><h3>Can you trust the early years?</h3>
-        <p class="note">Before 2012 only the older MODIS sensor was flying, and it sees fewer hotspots than VIIRS for the same fire. Joined as they are, the two records make 2012 look like a fire explosion. We convert MODIS into VIIRS terms so that false step disappears.</p>
-        <div class="key"><span><i style="background:var(--ember);height:3px"></i>Our harmonized record</span><span><i style="background:rgba(255,138,61,.35)"></i>90% range of the converted years</span><span><i style="background:var(--cool);height:3px"></i>Raw counts joined as they are</span></div>
-        <div id="cSeam"></div>
-        <p class="note small" id="cSeamNote"></p>
-        <div class="tiles" id="cTiles"></div>
-        <p class="note small" id="cRateNote"></p>
-        <details><summary>Method, exchange rates and limits</summary>
-          <ol class="steps">
+    <div id="cBody" hidden>
+      <p class="cpLead" id="cLead"></p>
+      <p class="cpDate" id="cDate"></p>
+      <div class="cpAnswers">
+        <div class="cpAns"><h2>Busiest months</h2><p class="cpFig" id="ca1"></p><p id="ca1n"></p></div>
+        <div class="cpAns"><h2>Worst years</h2><p class="cpFig" id="ca2"></p><p id="ca2n"></p></div>
+        <div class="cpAns"><h2>Was <select id="cfM" aria-label="Month"></select> <select id="cfY" aria-label="Year"></select> unusual?</h2><p class="cpFig" id="ca3"></p><p id="ca3n"></p></div>
+      </div>
+
+      <section class="cpSec" aria-labelledby="cMapTitle">
+        <h2 class="cpH" id="cMapTitle">Where it burns</h2>
+        <p class="cpSub" id="cMapSub"></p>
+        <div class="cpLegend" id="cMapLegend"></div>
+        <div class="cpMap" id="cMap" role="region" aria-label="Map of hotspots by grid square"></div>
+        <p class="cpCap" id="cMapNote"></p>
+      </section>
+
+      <section class="cpSec" aria-labelledby="cCalTitle">
+        <h2 class="cpH" id="cCalTitle">Every month, every year</h2>
+        <div class="cpCalBar">
+          <p class="cpSub" id="cCalSub"></p>
+          <div class="cpSeg" id="cModeSeg" role="group" aria-label="Calendar values"><button type="button" data-mode="count">Hotspots</button><button type="button" data-mode="anom">Versus normal</button></div>
+        </div>
+        <div class="cpLegend" id="cCalLegend"></div>
+        <div class="cpCal">
+          <p class="cpPart" id="cCalTopH"></p>
+          <div class="cpPlot" id="cCal"></div>
+          <p class="cpPart" id="cCalBotH"></p>
+          <div class="cpPlot" id="cCal2"></div>
+        </div>
+        <p class="cpCap" id="cCalNote"></p>
+      </section>
+
+      <p class="cpSec cpProse" id="cNoFire" hidden></p>
+      <section class="cpSec cpCharts" id="cCharts" aria-label="Charts">
+        <figure class="cpChart"><h2 class="cpH3" id="cMonthsT"></h2><p class="cpSub" id="cMonthsS"></p><div class="cpPlot" id="cMonths"></div></figure>
+        <figure class="cpChart"><h2 class="cpH3" id="cYearsT"></h2><p class="cpSub" id="cYearsS"></p><div class="cpPlot" id="cYears"></div></figure>
+        <figure class="cpChart"><h2 class="cpH3" id="cCumT"></h2><p class="cpSub" id="cCumS"></p><div class="cpPlot" id="cCum"></div></figure>
+        <figure class="cpChart"><h2 class="cpH3" id="cSeamT"></h2><p class="cpSub" id="cSeamNote"></p><div class="cpPlot" id="cSeam"></div></figure>
+      </section>
+
+      <section class="cpSec cpMethod" aria-labelledby="cMethodT">
+        <h2 class="cpH" id="cMethodT">How we made this</h2>
+        <p class="cpProse">Two generations of satellites watch for fire. MODIS has flown since 2000; VIIRS joined in 2012 and, with sharper eyes, sees more hotspots for the same fire. Joined as they are, the records make 2012 look like an explosion of fire. We convert the MODIS years into VIIRS terms, month by month, and test how well that works.</p>
+        <dl class="cpTrust" id="cTiles"></dl>
+        <figure class="cpChart cpWide" id="cRawFig"><h2 class="cpH3">What each satellite saw</h2><p class="cpSub">Raw detections per year from each sensor, after the same filter. NOAA-20 sees much like Suomi NPP but is not used in the harmonized record.</p><div class="cpPlot" id="cRaw"></div></figure>
+        <details class="cpDetails"><summary>The method step by step, with the exchange rates and the held-out test</summary>
+          <ol class="cpSteps">
             <li><span id="cFilter"></span></li>
             <li>Count hotspots per month for the whole country, and per year in grid squares of <span id="cCell"></span>.</li>
             <li>On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS (Suomi NPP) hotspots divided by MODIS hotspots, pulled toward the country's all-month rate, and that toward a global rate, where the country has few hotspots.</li>
             <li>From February 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.</li>
             <li>Test: predict each year from 2012 to 2025 from MODIS alone, using rates learned on the other years. The 90% range comes from those held-out errors and is wider for small counts.</li>
-            <li>NOAA-20 VIIRS is shown for comparison only; it is not used in the harmonized record.</li></ol>
-          <div class="scroll" style="margin:8px 0"><table id="cRates"></table></div>
-          <div class="scroll" style="margin:8px 0"><table id="cLoyo"></table></div>
-          <p class="note small">Limits. The record ends in December 2025. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
-        </details></section>
-      <section class="sec s5"><span class="num">07</span><h3>What each satellite saw</h3>
-        <p class="note">Raw yearly detections from each sensor, after the same filter. NOAA-20 sees much like Suomi NPP but is not used in the harmonized record.</p>
-        <div class="key" id="cRawKey"></div>
-        <div id="cRaw"></div></section>
-      <section class="sec s12"><span class="num">08</span><h3>Take the data</h3>
-        <p class="note">The monthly series for the years chosen above: harmonized count, 90% range, and the raw counts from each satellite.</p>
-        <div class="row"><button class="btn primary" id="cDl" type="button">Monthly CSV</button></div>
-        <p class="note small" id="cDlMsg" role="status"></p>
-        <p class="note small cSrc" id="cSrc"></p></section>
+            <li>NOAA-20 VIIRS is shown for comparison only; it is not used in the harmonized record.</li>
+          </ol>
+          <p class="cpCap" id="cRateNote"></p>
+          <div class="cpScroll"><table id="cRates"></table></div>
+          <div class="cpScroll"><table id="cLoyo"></table></div>
+        </details>
+        <p class="cpProse cpLimits">Limits. The record ends in December 2025. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
+        <p class="cpDl"><button class="cpText" id="cDl" type="button">↓ Download the monthly data (CSV)</button> <span id="cDlMsg" role="status"></span></p>
+      </section>
+
+      <footer class="cpFoot">
+        <p id="cSrc"></p>
+        <p>Basemap: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>, © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors. Map drawn with MapLibre GL; charts with Observable Plot.</p>
+      </footer>
     </div>
-  </div>
+  </main>
 </section>
 
 <section id="app" hidden>
@@ -570,6 +699,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
