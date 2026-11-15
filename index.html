@@ -343,6 +343,11 @@ table.fcT{min-width:640px}
 .cal.compact{gap:2px}.cal.compact .c{height:11px;border-radius:2px;cursor:default}
 .cal .c.focus{outline:2px solid #fff;outline-offset:0;position:relative;z-index:1}
 .cal .t{font:12px var(--font-m);text-align:right;display:flex;align-items:center;justify-content:flex-end;color:var(--ink2)}
+.cal .c.none{cursor:default;background:repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.07) 4px 5px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.cal .c.part{outline:1.5px dashed rgba(255,255,255,.85);outline-offset:-3px;background-image:repeating-linear-gradient(135deg,transparent 0 5px,rgba(0,0,0,.22) 5px 7px)}
+.cal .c.part.focus{outline:2px dashed #fff;outline-offset:0}
+.cal .c.n20{position:relative}.cal .c.n20::after{content:"";position:absolute;top:3px;right:3px;width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.8}
+.cal .t.part{flex-direction:column;align-items:flex-end;justify-content:center;line-height:1.05}.cal .t.part small{font-size:9.5px;color:var(--muted)}
 .cal .split{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;font:10.5px var(--font-m);color:var(--muted);margin:2px 0}
 .cal .split::before,.cal .split::after{content:"";flex:1;border-top:1px dashed var(--muted)}
 .rampRow{display:flex;gap:8px;align-items:center;font:11px var(--font-m);color:var(--muted)}
@@ -481,7 +486,7 @@ th{color:var(--muted);font-weight:400}
         <h2 class="cpH" id="cMethodT">How we made this</h2>
         <p class="cpProse">Two generations of satellites watch for fire. MODIS has flown since 2000; VIIRS joined in 2012 and, with sharper eyes, sees more hotspots for the same fire. Joined as they are, the records make 2012 look like an explosion of fire. We convert the MODIS years into VIIRS terms, month by month, and test how well that works.</p>
         <dl class="cpTrust" id="cTiles"></dl>
-        <figure class="cpChart cpWide" id="cRawFig"><h2 class="cpH3">What each satellite saw</h2><p class="cpSub">Raw detections per year from each sensor, after the same filter. NOAA-20 sees much like Suomi NPP but is not used in the harmonized record.</p><div class="cpPlot" id="cRaw"></div></figure>
+        <figure class="cpChart cpWide" id="cRawFig"><h2 class="cpH3">What each satellite saw</h2><p class="cpSub">Raw detections per year from each sensor, after the same filter, whole years only. NOAA-20 sees much like Suomi NPP but is never added to it: it fills only the 2026 days Suomi NPP missed.</p><div class="cpPlot" id="cRaw"></div></figure>
         <details class="cpDetails"><summary>The method step by step, with the exchange rates and the held-out test</summary>
           <ol class="cpSteps">
             <li><span id="cFilter"></span></li>
@@ -489,13 +494,14 @@ th{color:var(--muted);font-weight:400}
             <li>On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS (Suomi NPP) hotspots divided by MODIS hotspots, pulled toward the country's all-month rate, and that toward a global rate, where the country has few hotspots.</li>
             <li>From February 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.</li>
             <li>Test: predict each year from 2012 to 2025 from MODIS alone, using rates learned on the other years. The 90% range comes from those held-out errors and is wider for small counts.</li>
-            <li>NOAA-20 VIIRS is shown for comparison only; it is not used in the harmonized record.</li>
+            <li>NOAA-20 VIIRS is shown for comparison only. <b id="cSatRule"></b> On those days NOAA-20's count is multiplied by the country's NOAA-20-to-Suomi NPP rate, learned on 2018–2025, and the month gets a 90% range.</li>
+            <li id="c2026"></li>
           </ol>
           <p class="cpCap" id="cRateNote"></p>
           <div class="cpScroll"><table id="cRates"></table></div>
           <div class="cpScroll"><table id="cLoyo"></table></div>
         </details>
-        <p class="cpProse cpLimits">Limits. The record ends in December 2025. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
+        <p class="cpProse cpLimits" id="cLimits">Limits. The record ends in December 2025. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
         <p class="cpDl"><button class="cpText" id="cDl" type="button">↓ Download the monthly data (CSV)</button> <span id="cDlMsg" role="status"></span></p>
       </section>
 
@@ -661,9 +667,11 @@ th{color:var(--muted);font-weight:400}
             <li>Count hotspots per month in each county and hexagon.</li>
             <li>On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS hotspots divided by MODIS hotspots.</li>
             <li>From 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.</li>
-            <li>Test: predict each year from 2012 to 2025 from MODIS alone, using rates learned on the other years. The likely range comes from those errors.</li></ol>
+            <li>Test: predict each year from 2012 to 2025 from MODIS alone, using rates learned on the other years. The likely range comes from those errors.</li>
+            <li><b><span id="satRule"></span></b> On those days NOAA-20's count is multiplied by the state's NOAA-20-to-Suomi NPP ratio for the month, from 2018–2025, and the month gets a likely range.</li>
+            <li>2026 comes from the FIRMS API: standard processing to July, near real time from August. Near-real-time rows have no type flag, so a point within 0.01° of a past or 2026 non-vegetation detection counts as one, and the 2012–2025 industrial mask applies unchanged.</li></ol>
           <div class="scroll" style="margin:8px 0"><table id="rates"></table></div>
-          <p class="note small">Limits. The record ends in December 2025. Converted months are estimates and small areas are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
+          <p class="note small">Limits. The record runs to 14 November 2026, the last complete day. 2026 is a partial year: its total is “so far”, it is not ranked against whole years, November 2026 is compared only with 1–14 November of past years, and later months are blank, not zero. MODIS was not fetched for 2026. Converted months are estimates and small areas are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Suomi NPP outages from 2018 on are filled from NOAA-20 the same way as in 2026; earlier gaps and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
         </details></section>
       <section class="sec s5"><span class="num">10</span><h3>Take the data</h3>
         <p class="note">These two files cover the area and years chosen above.</p>
@@ -696,9 +704,9 @@ th{color:var(--muted);font-weight:400}
 </div>
 <div id="tip"></div>
 
-<script src="data.js?v=2"></script>
+<script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

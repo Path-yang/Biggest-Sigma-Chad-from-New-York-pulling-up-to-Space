@@ -77,7 +77,7 @@ export function closestAt(st: StateCode, k: number, lon = hexLon(st, k), lat = h
     /* the drive from the centre to the point: the centre's own local minutes are already in its road time */
     leg = far ? estMin(r.cal, off, 0, eK) : 0,
     fj = hx.f.key.get(hexKey(lon * hx.K, lat, hx.f.R)),
-    fs = fj === undefined ? -1 : r.fine.s[fj],
+    fs = fj === undefined || fj >= r.fine.n ? -1 : r.fine.s[fj],
     fine = fs >= 0 ? { i: fs, name: hx.stn.names[fs][0], min: r.fine.min10[fj!] / 10 } : null,
     rows: NearStation[] = [];
   for (let j = 0; j < 3; j++) {
@@ -218,7 +218,9 @@ function splitFor(st: StateCode, m: number) {
     r = respOf(st)!,
     bit = 1 << m,
     acc: Map<number, number>[] = Array.from({ length: hx.n }, () => new Map());
-  for (let j = 0; j < f.n; j++) {
+  /* response.js has road times for the 2 km patches data.js had when it was built (to 2025); patches first seen in
+     2026 come after them and have none, so they are left out here */
+  for (let j = 0, nj = Math.min(f.n, r.fine.n); j < nj; j++) {
     if (!(f.mm[j] & bit)) continue;
     const k = hx.key.get(hexKey(f.X[j], f.Y[j], hx.R));
     if (k === undefined) continue;

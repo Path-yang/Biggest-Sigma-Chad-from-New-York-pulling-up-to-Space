@@ -2,7 +2,7 @@
 
 **Live site: [sigmachadsinspace.gay](https://sigmachadsinspace.gay/)**
 
-An interactive page that shows one consistent fire-hotspot record for New York and California, January 2001 to December 2025, built from NASA's MODIS and VIIRS satellite sensors.
+An interactive page that shows one consistent fire-hotspot record for New York and California, January 2001 to 14 November 2026, built from NASA's MODIS and VIIRS satellite sensors. Every country gets the same record from a summary on Hugging Face. 2026 is a partial year, shown "so far" (see [2026 to date](#2026-to-date)).
 
 VIIRS reports several times more hotspots than MODIS for the same fires, so joining the two records naively creates a false jump in 2012. The page converts the MODIS years into VIIRS-equivalent counts and shows the evidence for that conversion.
 
@@ -64,7 +64,7 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=12`, `data.js?v=2` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. Raise the number when a file changes (for the last three, in `src/extras.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=15`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. Raise the number when a file changes (for the last three, in `src/extras.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
 
 ## Method
 
@@ -75,12 +75,41 @@ GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` tog
 5. From February 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.
 6. The 90% range on converted months comes from held-out errors: each year from 2012 to 2025 is predicted from MODIS alone, using rates learned on the other years.
 
+## 2026 to date
+
+The record runs to **14 November 2026**, the last complete day. A count is still one VIIRS hotspot detection (a 375 m pixel flagged on one overpass), which measures fire activity, not the number of separate fires.
+
+**Sources.** 2001–2025 are unchanged: the FIRMS archive, as before. 2026 comes from the [FIRMS API](https://firms.modaps.eosdis.nasa.gov/api/): standard processing (SP) for January to July and near real time (NRT) from August, for VIIRS Suomi NPP, VIIRS NOAA-20 and MODIS. The API's country endpoint is switched off, so the world was fetched one satellite-day at a time and points were placed in countries, counties and hexagons by their outlines. No duplicate rows were found (0 of 32.5 million), so none were removed.
+
+**Same filter.** Type 0 (vegetation fire), confidence nominal or high, as before. NRT rows have no `type` column, so a 2026 NRT point counts as a non-vegetation source when a point of type 1, 2 or 3 from the archive (recent years) or from 2026 SP data lies within 0.01°. Tested on August to December 2025, this kept 98–100% of the true type-0 count in both states. New York and California keep their 2012–2025 industrial mask frozen, so past values do not move. The country summaries rebuild a same-year static-source mask for 2026 from VIIRS flags only; v2 also uses MODIS flags, which made a rerun on 2025 worse, and their absence is the main reason flaring countries such as Libya and Iraq differ (see below).
+
+**One satellite a day, never two added.** Suomi NPP only from 2012; NOAA-20 is not added (that would count the same fires twice). Each day of each place (country or state) comes from one source:
+
+- Suomi NPP, on the days it delivered.
+- NOAA-20 times the place's NOAA-20-to-Suomi NPP ratio for that month, on the days Suomi NPP missed: 2–14 November, after Suomi NPP stopped on 2 November, and 20 outage days from March to October (10–12 Mar, 28–30 Apr, 1–2 Jun, 10–16 Jul, 3, 4 and 18 Aug, 12–13 Oct). Also on a few days when Suomi NPP's data are partial (fewer than 22 UTC hours) and the missing hours are the ones that see that place, or Suomi NPP saw under 40% of NOAA-20's count there: for example 9 March for California and the United States. The ratio is learned on the 2018–2025 days when both satellites delivered normally (New York 0.989, California 1.009 over all months; per country in the summaries), pooled toward a wider ratio where a place has few hotspots, the same way MODIS is converted.
+- On 12 October both satellites lack many hours (NOAA-20 has no data from about 09 to 14 and after 17 UTC), so neither saw Africa's or the Americas' afternoon overpasses. Where neither covered a place's overpass hours, that day is the mean of the days either side, with a range from what was seen to the larger neighbour (California, and 53 countries, among them the United States and Mozambique).
+
+Each filled month carries a range. The calendars mark those months, and the tooltips and CSVs list the days. Suomi NPP's past outages (2018–2025, for example 10–16 and 24–29 July 2024 and 27 July to 10 August 2022) are filled the same way, so 2026 is compared with past months built by the same rule: in `data.js` as `gap_county_rows`, `gap_hex_rows` and `hist_gaps`, and in the summaries as `y2026.hist_gaps` (the summaries' `monthly.V` keeps the archive's value).
+
+**Partial year.**
+- November 2026 covers 1–14 November. December 2026 has no data and is drawn blank, never as zero.
+- 2026's total is labelled "so far". It is not ranked against whole years ("Worst years", the average year and the year charts use complete years only). It is compared instead with 1 January to 14 November of every year since 2012 (January 2012 converted from MODIS, as in the monthly record). The first year of the chosen range must be a complete year.
+- "Was it unusual?" starts on October 2026, the latest complete month. November 2026 can be tested too, but only against 1–14 November of past years: for the state and each county in `data.js` (`states.<st>.partial`), and for every country in the summaries (`y2026.same_days`); past Suomi NPP outage days in those dates are filled the same way in both. A drawn area or a hexagon has no daily history, so it says the month is not over.
+- Past odds of fire ("Chance of fire") use complete years, 2012–2025.
+- The CSVs include 2026 with a `month_status` column (`complete`, or `partial_to_2026-11-14`) and the NOAA-20 days used. MODIS was not fetched for the two states in 2026, so their 2026 MODIS columns are blank.
+
+**Forecast and outlook.** The 2026–2027 forecast, the large-fire layer, the 14-day outlook and the fire response tools were built from data to 2025 and are unchanged. They do not use the 2026 hotspots, and the page says so. The response tools ignore 2 km hexagons first seen in 2026, which have no road times.
+
+**Country summaries.** The country page reads `summary/v3` (v2 plus 2026; 2001–2025 identical to v2) and falls back to `summary/v2` if v3 does not load. The globe's colours stay on the 2001–2025 average. For 17 countries, including Canada, Libya and Iraq, the 2026 method came out more than 5% off v2 when it was rerun on 2025; their pages say so.
+
+The scripts that built the 2026 data are `scripts/extend_data_2026.py` (New York and California, into `data.js`) and `scripts/build_summaries_2026.py` with `scripts/summary2026/` (the country summaries).
+
 ## Limits
 
-- The record ends in December 2025.
+- The record ends on 14 November 2026, and 2026 is a partial year (see above).
 - Converted months are estimates, and small areas are noisy. MODIS misses many small fires, so a converted zero can hide real burning.
 - The 2 km hexagons cover 2012 onward. The chance of fire is measured on the years from 2012 whenever the chosen range includes them.
-- Satellite outages and cloud cover are not corrected.
+- Suomi NPP outages from 2018 on are filled from NOAA-20 (see above). Earlier gaps and cloud cover are not corrected.
 - A hotspot is a detection, not a fire count or burned area.
 - The industrial filter (step 2) misses heat seen by day. The Ivanpah solar power plant in San Bernardino County shows up as hotspots in most months since 2014 (its three solar towers). Its two hexagons still show those hotspots on the Past hotspots map and in the counts, but the chance of fire, the fire response tools and the forecast treat them as having no fire, and their tooltip says why.
 
@@ -264,6 +293,7 @@ Rebuild `outlook.js` with `.venv/bin/python scripts/build_outlook.py [--cache DI
 Every FIRMS yearly country file (MODIS 2000-2025, VIIRS Suomi NPP 2012-2025, VIIRS NOAA-20 2018-2025; 548.5 million detections, 238 countries) is published as Parquet at [rogeryzd/firms-active-fire-by-country](https://huggingface.co/datasets/rogeryzd/firms-active-fire-by-country) on Hugging Face. A web page can fetch any file from there directly.
 
 - [scripts/build_world_parquet.py](scripts/build_world_parquet.py) downloads the archive from NASA and converts it. Each Parquet file is checked to reproduce its source CSV byte for byte.
+- The country page reads the per-country summaries in `summary/v3/` (2001 to 14 November 2026), with `summary/v2/` (2001–2025) as the fallback.
 - [dataset/README.md](dataset/README.md) is the dataset's description page on Hugging Face, with NASA's acknowledgement, disclaimer and data-use terms.
 
 To rebuild it: `uv venv .venv && uv pip install --python .venv/bin/python duckdb huggingface_hub`, then `.venv/bin/python scripts/build_world_parquet.py`. It needs about 10 GB of download and 8 GB of disk; output goes to `build/hf/`, which git ignores.

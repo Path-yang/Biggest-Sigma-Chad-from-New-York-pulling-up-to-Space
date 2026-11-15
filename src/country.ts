@@ -1,9 +1,9 @@
-import type { CalendarMode, CountrySummary, Epochs, SensorSeries, SeriesAnalysis, SeriesRow, YearRow } from "./types";
-import { MON, MONL } from "./data";
+import type { CalendarMode, CountrySummary, Epochs, Harmonized, SameDays, SensorSeries, SeriesAnalysis, SeriesRow, YearRow, YearToDate } from "./types";
+import { MON, MONL, SAT_RULE } from "./data";
 import { $, fmt, short, times } from "./util";
-import { analyseSeries, harmWith, verdict } from "./model";
+import { analyseSeries, harmWith, partSpan, rankWords, verdict, ytdSentence } from "./model";
 import { save } from "./downloads";
-import { HF_DATASET, HF_PAGE, fileUrl, loadSummary, summaryPath } from "./hf";
+import { HF_DATASET, HF_PAGE, fileUrl, loadSummary, pathOf } from "./hf";
 import { nameOf } from "./world";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
@@ -57,8 +57,73 @@ function the(name: string) {
     : name;
 }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-/** "2005" or "2001–2025" */
-const yrs = () => (CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}–${CV.yTo}`);
+/** months with data in a summary: v3 stops at the partial month, v2 runs to December */
+const nMonths = (d: CountrySummary) => d.n_months ?? (d.y1 - d.y0 + 1) * 12;
+/** the partial last month of a v3 summary, 0-based month, or null */
+const partOf = (d: CountrySummary) => (d.partial ? { i: d.partial.i, y: d.partial.y, m: d.partial.m - 1, day: d.partial.day1 } : null);
+/** "14 Nov 2026" */
+const lastWords = (d: CountrySummary) => {
+  const p = partOf(d);
+  return p ? `${p.day} ${MON[p.m]} ${p.y}` : `31 Dec ${d.y1}`;
+};
+/** "2005", "2001–2025", or "2001–14 Nov 2026" when the last year is partial */
+const yrs = () => {
+  const p = CV.d ? partOf(CV.d) : null;
+  if (p && CV.yTo >= p.y) return CV.yFrom === CV.yTo ? `${CV.yTo} to ${p.day} ${MON[p.m]}` : `${CV.yFrom}–${lastWords(CV.d!)}`;
+  return CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}–${CV.yTo}`;
+};
+/** the partial month against the same days of 2012-2025 (gap-filled like 2026), from v3 */
+function sameDays(d: CountrySummary): SameDays | null {
+  const y = d.y2026,
+    p = partOf(d);
+  if (!y || !p) return null;
+  const sd = y.same_days,
+    years: number[] = [];
+  for (let k = sd.years[0]; k <= sd.years[1]; k++) years.push(k);
+  return { span: partSpan(p.m, p.day), cur: sd.cur, lo: sd.cur_lo, hi: sd.cur_hi, years, past: sd.V, med: sd.V_stats.median };
+}
+/** 2026 to date against 1 January to the same day of 2012-2025 (gap-filled like 2026), from v3 */
+function ytdOf(d: CountrySummary): YearToDate | null {
+  const y = d.y2026,
+    p = partOf(d);
+  if (!y || !p) return null;
+  const t = y.ytd,
+    years: number[] = [];
+  for (let k = t.years[0]; k <= t.years[1]; k++) years.push(k);
+  return {
+    span: `1 Jan–${p.day} ${MON[p.m]}`,
+    withPart: true,
+    y: p.y,
+    cur: t.cur,
+    lo: t.cur_lo,
+    hi: t.cur_hi,
+    years,
+    past: t.V,
+    med: t.V_stats.median,
+    rank: t.rank,
+    n: t.V.length + 1,
+  };
+}
+/** month i's days filled from NOAA-20, as words for a tooltip, or "" */
+function convNote(d: CountrySummary, i: number) {
+  const g = d.y2026?.hist_gaps?.find(x => x.i === i);
+  if (g)
+    return `${g.days.length} ${g.days.length === 1 ? "day" : "days"} (${g.days.join(", ")} ${MON[i % 12]}) of Suomi NPP outage, filled from NOAA-20 converted to Suomi NPP terms: ${fmt(g.filled)}, likely ${fmt(g.lo)} to ${fmt(g.hi)} (the archive's Suomi NPP count alone is ${fmt(g.v2)})`;
+  const c = d.y2026?.conv_months.find(x => x.i === i);
+  if (!c) return "";
+  const days = c.days,
+    run = days.length > 1 && days[days.length - 1] - days[0] === days.length - 1 ? `${days[0]}–${days[days.length - 1]}` : days.join(", ");
+  const it = c.interp_days ?? [],
+    parts = [
+      days.length
+        ? `${days.length} ${days.length === 1 ? "day" : "days"} (${run} ${MON[c.m - 1]}) from NOAA-20, converted to Suomi NPP terms: ${nHot(c.v_conv)}`
+        : "",
+      it.length
+        ? `${it.join(", ")} ${MON[c.m - 1]} estimated from the days either side, because both satellites missed ${the(d.name)}'s overpasses: ${nHot(c.v_interp ?? 0)}`
+        : "",
+    ].filter(Boolean);
+  return `${parts.join("; ")}; ${fmt(c.v)} in all, likely ${fmt(c.v_lo)} to ${fmt(c.v_hi)} for the month`;
+}
 /** "2026-10-10" as "10 October 2026" */
 const longDate = (iso: string) => {
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
@@ -164,28 +229,40 @@ function load() {
 function start(d: CountrySummary) {
   const yo: string[] = [];
   for (let y = d.y0; y <= d.y1; y++) yo.push(`<option>${y}</option>`);
-  $("cFrom").innerHTML = $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
+  $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
+  /* the first year must be a complete one: a range holding only the part year has no normal to compare with */
+  $("cFrom").innerHTML = yo.slice(0, (partOf(d) ? partOf(d)!.y - 1 : d.y1) - d.y0 + 1).join("");
   CV.yFrom = d.y0;
   CV.yTo = d.y1;
   $("cFrom").value = String(d.y0);
   $("cTo").value = String(d.y1);
-  /* test the busiest month of the latest year by default */
-  const last = (d.y1 - d.y0) * 12,
-    ep = epochs(d),
-    hs = MON.map((_, m) => harmWith(d, ep, last + m, d.monthly.T[last + m], d.monthly.A[last + m], d.monthly.V[last + m]).h);
-  CV.focus = [d.y1, hs.indexOf(Math.max(...hs))];
-  if (Math.max(...hs) === 0)
-    for (let i = last + 11; i >= 0; i--)
-      if (harmWith(d, ep, i, d.monthly.T[i], d.monthly.A[i], d.monthly.V[i]).h > 0) {
-        CV.focus = [d.y0 + Math.floor(i / 12), i % 12];
-        break;
-      }
+  /* test the latest complete month by default (October 2026 in v3; the partial month after it can be picked) */
+  const p = partOf(d),
+    last = p ? p.i - 1 : nMonths(d) - 1;
+  CV.focus = [d.y0 + Math.floor(last / 12), last % 12];
   $("cStatus").hidden = true;
   $("cBody").hidden = $("cCtl").hidden = false;
   $("cName").textContent = d.name;
   renderCountry();
 }
 
+const FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
+/** the harmonized month, with the days Suomi NPP missed filled from NOAA-20: in 2026 (already in monthly.V, with the
+ * range of the conversion) and in past outages from 2018 (y2026.hist_gaps; the file keeps v2's value in monthly.V) */
+function harmFilled(d: CountrySummary, ep: Epochs) {
+  const y26 = d.y2026,
+    p = partOf(d),
+    gaps = new Map((y26?.hist_gaps ?? []).map(g => [g.i, g])),
+    conv = new Map((y26?.conv_months ?? []).map(c => [c.i, c])),
+    i26 = p && y26 ? p.i - (y26.v_obs.length - 1) : Infinity;
+  return (i: number, t: number, a: number, v: number): Harmonized => {
+    const g = gaps.get(i);
+    if (g) return { h: g.filled, lo: g.lo, hi: g.hi, src: FILL_SRC };
+    const x = harmWith(d, ep, i, t, a, v);
+    if (i >= i26 && y26 && conv.has(i)) return { h: v, lo: y26.v_lo[i - i26], hi: y26.v_hi[i - i26], src: FILL_SRC };
+    return x;
+  };
+}
 function renderCountry() {
   const d = CV.d;
   if (!d) return;
@@ -198,14 +275,23 @@ function renderCountry() {
       yFrom: CV.yFrom,
       yTo: CV.yTo,
       vi0: ep.vi0,
-      harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v),
+      nm: nMonths(d),
+      partI: partOf(d)?.i ?? -1,
+      partMed: sameDays(d)?.med ?? null,
+      harm: harmFilled(d, ep),
     });
   CV.R = R;
   $("cCrumb").textContent = `Fire, month by month · ${yrs()}`;
   $("cLead").textContent = lead(d, R);
   $("cDate").textContent =
-    `Fire detections from NASA satellites, ${d.y0}–${d.y1}. Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. ` +
-    `Data as of ${longDate(d.source.firms_updated)}.`;
+    (d.partial
+      ? `Fire detections from NASA satellites, ${d.y0} to ${longDate(d.last_date!)}; ${d.partial.y} is not over, so it is counted “so far” and compared only with the same dates of past years. `
+      : `Fire detections from NASA satellites, ${d.y0}–${d.y1}. `) +
+    `Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. ` +
+    (d.partial
+      ? `Archive as of ${longDate(d.source.firms_updated)}; ${d.partial.y} from the FIRMS API.`
+      : `Data as of ${longDate(d.source.firms_updated)}.`) +
+    (d.v === 2 ? ` 2026 so far could not be loaded from Hugging Face, so this shows ${d.y0}–${d.y1} only. Reload the page to try again.` : "");
   answers(R);
   const key = `${d.country}|${CV.yFrom}|${CV.yTo}`;
   if (key !== CV.mapKey) {
@@ -221,13 +307,22 @@ function renderCountry() {
 /* ---------- words ---------- */
 function lead(d: CountrySummary, R: SeriesAnalysis) {
   const name = the(d.name);
-  if (R.total === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
+  if (R.any === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
+  const t2 = R.partYear ? ytdOf(d) : null;
+  if (R.total === 0)
+    return `No vegetation fire hotspots were counted in ${name} in the complete years chosen.` + (t2 ? " " + ytdSentence(t2) : "");
   const peak = R.order[0].m,
     w = R.ranked[0],
-    span = CV.yTo - CV.yFrom + 1;
+    full = R.years.filter(y => !y.part),
+    a = full[0]?.y ?? CV.yFrom,
+    b = full[full.length - 1]?.y ?? CV.yTo;
   let t = `${cap(name)} burns most in ${MONL[peak]}.`;
-  if (span > 2 && R.mean > 0)
-    t += ` ${w.y} was its worst year ${span === d.y1 - d.y0 + 1 ? "on record" : `between ${CV.yFrom} and ${CV.yTo}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+  if (full.length > 2 && R.mean > 0)
+    t += ` ${w.y} was its worst ${a === d.y0 && b === (partOf(d) ? partOf(d)!.y - 1 : d.y1) ? "complete year on record" : `year between ${a} and ${b}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+  if (t2) t += " " + ytdSentence(t2);
+  const jc = d.y2026?.join_check_2025;
+  if (t2 && jc?.warn)
+    t += ` Read ${t2.y} here with care: run on 2025, the method used for ${t2.y} came out ${Math.abs(jc.V_pct).toFixed(0)}% ${jc.V_pct > 0 ? "higher" : "lower"} than the archive.`;
   if (VOLCANIC.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
   if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
     t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.`;
@@ -235,6 +330,8 @@ function lead(d: CountrySummary, R: SeriesAnalysis) {
 }
 
 function answers(R: SeriesAnalysis) {
+  const d = CV.d!,
+    t2 = R.partYear ? ytdOf(d) : null;
   if (R.total === 0) {
     $("ca1").textContent = $("ca2").textContent = "None";
     $("ca1n").textContent = $("ca2n").textContent = "No hotspots in these years.";
@@ -258,15 +355,35 @@ function answers(R: SeriesAnalysis) {
     $("ca2n").innerHTML =
       worst.map(y => `<span class="cpRow">${y.y} · ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") +
       `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` +
+      (t2 ? `<span class="cpRow">${t2.y} so far (${t2.span}): ${fmt(t2.cur)}, ${rankWords(t2.rank, t2.n)} for the same dates</span>` : "") +
       (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
   }
-  const v = verdict(R, CV.focus),
-    vi0 = epochs(CV.d!).vi0;
+  const v = verdict(R, CV.focus, sameDays(d)),
+    vi0 = epochs(d).vi0,
+    fi = (CV.focus[0] - d.y0) * 12 + CV.focus[1];
   $("cfM").value = String(CV.focus[1]);
   $("cfY").value = String(CV.focus[0]);
-  if (!v) {
+  if (!v && fi >= nMonths(d)) {
+    $("ca3").textContent = "No data yet";
+    $("ca3n").textContent = `The record runs to ${longDate(d.last_date ?? `${d.y1}-12-31`)}. Pick an earlier month.`;
+  } else if (!v) {
     $("ca3").textContent = "Outside the chosen years";
     $("ca3n").textContent = "Pick a month inside the years chosen at the top.";
+  } else if (v.noSame) {
+    $("ca3").textContent = "Not over yet";
+    $("ca3n").textContent = `${cap(nHot(v.f.h))} so far. A month that is not over cannot be set against whole months.`;
+  } else if (v.same && v.same.cur === 0 && v.same.past.every(x => x === 0)) {
+    $("ca3").textContent = "No hotspots";
+    $("ca3n").textContent = `No hotspots in ${v.same.span} in any year, so there is nothing to compare.`;
+  } else if (v.same) {
+    const sd = v.same;
+    $("ca3").innerHTML = `<span class="${v.cls}">${esc(v.label)}</span><small>${esc(v.mult)}</small>`;
+    $("ca3n").textContent =
+      `${MONL[v.fm]} ${v.fy} is not over. ${cap(nHot(sd.cur))} in ${sd.span}` +
+      (sd.hi - sd.lo >= 1 ? ` (likely ${fmt(sd.lo)} to ${fmt(sd.hi)})` : "") +
+      ` against a normal ${fmt(sd.med)} for the same days of ${sd.years[0]}–${sd.years[sd.years.length - 1]}; ` +
+      `${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n}. ` +
+      `Suomi NPP stopped on 2 November, so most of these days are NOAA-20 converted to Suomi NPP terms; past days Suomi NPP missed are filled the same way.`;
   } else if (R.ser.every(r => r.m !== v.fm || r.h === 0)) {
     $("ca3").textContent = "No hotspots";
     $("ca3n").textContent = `No hotspots in ${MONL[v.fm]} in any of these years, so there is nothing to compare.`;
@@ -274,7 +391,11 @@ function answers(R: SeriesAnalysis) {
     $("ca3").innerHTML = `<span class="${v.cls}">${esc(v.label)}</span><small>${esc(v.mult)}</small>`;
     $("ca3n").textContent =
       `${cap(nHot(v.f.h))} against a normal ${fmt(v.med)}; ${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n} ${MONL[v.fm]}s.` +
-      (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
+      (v.f.i < vi0
+        ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.`
+        : convNote(d, v.f.i)
+          ? ` Seen by VIIRS (Suomi NPP), with ${convNote(d, v.f.i)}.`
+          : " Seen directly by VIIRS.");
   }
 }
 
@@ -283,6 +404,7 @@ function calendarText(d: CountrySummary, R: SeriesAnalysis) {
   const peaks = new Array(12).fill(0);
   let n = 0;
   for (const y of R.years) {
+    if (y.part) continue;
     const rows = R.ser.filter(r => r.y === y.y);
     const top = rows.reduce((a, r) => (r.h > a.h ? r : a), rows[0]);
     if (top.h > 0) {
@@ -305,12 +427,17 @@ function calendarText(d: CountrySummary, R: SeriesAnalysis) {
     .querySelectorAll<HTMLButtonElement>("#cModeSeg button")
     .forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
   const vy = viirsYear(d);
-  $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}–${CV.yTo}` : "";
+  const pt = partOf(d),
+    toWords = pt && CV.yTo >= pt.y ? lastWords(d) : String(CV.yTo);
+  $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}–${toWords}` : "";
   $("cCalBotH").textContent = CV.yFrom < vy ? `Converted from MODIS, ${CV.yFrom}–${Math.min(vy - 1, CV.yTo)}` : "";
   $("cCalNote").textContent =
-    CV.mode === "count"
+    (CV.mode === "count"
       ? `The outlined month is the one tested at the top; click any month to test it instead.`
-      : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`;
+      : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`) +
+    (R.partYear && pt
+      ? ` ${pt.y} runs to ${pt.day} ${MONL[pt.m]}: the dashed ${MONL[pt.m]} is not over and is compared with the same days of past years, December is blank because it has not happened, and the starred total is so far. Months with days Suomi NPP missed use NOAA-20 for those days, converted; hover for which.`
+      : "");
   /* the legend: the same stepped classes the calendar is drawn with */
   const cc = calendarClasses(R);
   $("cCalLegend").innerHTML =
@@ -340,7 +467,10 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
           : meds[pk] > 0
             ? `A typical ${MONL[pk]} brings ${nHot(meds[pk])}; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}`
             : `Most months pass with no hotspots at all`;
-  $("cMonthsS").textContent = `Hotspots per month, ${span}, with ${fy} in red. Click a month to test it.`;
+  $("cMonthsS").textContent =
+    `Hotspots per month, ${span}, with ${fy} in red. ` +
+    (R.partYear && fy === R.partYear.y ? `Complete months only: ${MONL[partOf(d)!.m]} is not over. ` : "") +
+    `Click a month to test it.`;
   const w = R.ranked[0];
   $("cYearsT").textContent =
     R.total === 0
@@ -349,19 +479,29 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
         ? `${w.y} was the worst year, at ${times(w.h / R.mean)} the average`
         : `${fmt(w.h)} hotspots in ${w.y}`;
   $("cYearsS").textContent =
-    `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.`;
+    `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.` +
+    (R.partYear ? ` The dashed bar is ${R.partYear.y} so far, to ${lastWords(d)}; it is not ranked against whole years.` : "");
   const fyRow = R.years.find(y => y.y === fy),
-    rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0;
+    rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0,
+    t2 = fyRow?.part ? ytdOf(d) : null;
   $("cCumT").textContent =
-    !fyRow || R.total === 0
+    !fyRow || R.any === 0
       ? "How each year adds up"
-      : rank === 1
-        ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year`
-        : rank === R.years.length
-          ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years`
-          : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
-  $("cCumS").textContent = `Running total of hotspots from January, one line per year.`;
-  const ys = R.years,
+      : fyRow.part
+        ? t2
+          ? `${fy} so far: ${fmt(t2.cur)} hotspots by ${t2.span.replace("1 Jan–", "")}, ${rankWords(t2.rank, t2.n)} for the same dates`
+          : `${fy} so far: ${fmt(fyRow.h)} hotspots to ${lastWords(d)}`
+        : rank === 1
+          ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year`
+          : rank === R.years.length
+            ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years`
+            : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
+  $("cCumS").textContent =
+    `Running total of hotspots from January, one line per year.` +
+    (R.partYear
+      ? ` ${R.partYear.y}'s line stops at ${lastWords(d).replace(/ \d+$/, "")}; compare it with the other lines at the same point.`
+      : "");
+  const ys = R.years.filter(y => !y.part),
     avg = (a: number, b: number, k: "naive" | "h") => {
       const r = ys.filter(y => y.y >= a && y.y <= b);
       return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
@@ -380,7 +520,7 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
       ? "MODIS counted no hotspots here in 2007–2011, so the step at 2012 cannot be measured."
       : "The dashed line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step.";
   /* nothing to chart for a place with no hotspots in these years */
-  const none = R.total === 0;
+  const none = R.any === 0;
   $("cCharts").hidden = $("cRawFig").hidden = none;
   $("cNoFire").hidden = !none;
   $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span}, so there is nothing to chart.` : "";
@@ -408,6 +548,7 @@ function drawCharts() {
     return;
   }
   const N20 = d.monthly.N20,
+    y26 = d.y2026 && d.partial ? d.y2026 : null,
     vy = viirsYear(d),
     pick = (y: number, m: number) => {
       CV.focus = [y, m];
@@ -417,30 +558,54 @@ function drawCharts() {
     mode: CV.mode,
     focus: CV.focus,
     viirsYear: vy,
-    tip: (r: SeriesRow) =>
-      `${MONL[r.m]} ${r.y}: ${nHot(r.h)}\nNormal for ${MONL[r.m]}: ${fmt(r.med)}` +
-      (r.med > 0 || r.h > 0 ? ` (${times(r.ratio)} normal)` : "") +
-      `\n${r.src}` +
-      (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
-      `\nRaw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)` +
-      `\nClick to test this month`,
+    tip: (r: SeriesRow) => {
+      const cn = convNote(d, r.i),
+        k = r.i - (y26 ? partOf(d)!.i - (y26.v_obs.length - 1) : 0),
+        obs = y26 && k >= 0 && k < y26.v_obs.length ? y26.v_obs[k] : null;
+      return (
+        (r.part
+          ? `${MONL[r.m]} ${r.y}, ${partSpan(r.m, partOf(d)!.day)} so far: ${nHot(r.h)}\nNormal for the same days: ${fmt(r.med)}`
+          : `${MONL[r.m]} ${r.y}: ${nHot(r.h)}\nNormal for ${MONL[r.m]}: ${fmt(r.med)}`) +
+        (Number.isFinite(r.ratio) && (r.med > 0 || r.h > 0) ? ` (${times(r.ratio)} normal)` : "") +
+        `\n${r.src}` +
+        (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
+        (cn ? `\nIncludes ${cn}` : "") +
+        (obs != null
+          ? `\nRaw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(obs)} (its complete days), NOAA-20 ${fmt(N20[r.i])}${cn ? " (used only for the days Suomi NPP missed)" : " (not used)"}`
+          : `\nRaw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])}${cn ? " (used only for the days Suomi NPP missed)" : " (not used)"}`) +
+        `\nClick to test this month`
+      );
+    },
     click: r => pick(r.y, r.m),
   });
   seasonal($("cMonths"), R, CV.focus[0], m => pick(CV.focus[0], m));
   annual($("cYears"), R, {
     viirsYear: vy,
     focusYear: CV.focus[0],
-    tip: (y: YearRow) =>
-      `${y.y}: ${nHot(y.h)}` +
-      (R.mean > 0 ? `\n${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") +
-      (y.y < vy ? `\nEstimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") +
-      `\nClick to test ${MONL[CV.focus[1]]} ${y.y}`,
+    tip: (y: YearRow) => {
+      if (y.part) {
+        const t2 = ytdOf(d);
+        return (
+          `${y.y} so far, to ${lastWords(d)}: ${nHot(y.h)}` +
+          (t2 ? `\n${rankWords(t2.rank, t2.n)} for ${t2.span} (typical ${fmt(t2.med)})` : "") +
+          `\nNot ranked against whole years\nClick to test ${MONL[CV.focus[1]]} ${y.y}`
+        );
+      }
+      return (
+        `${y.y}: ${nHot(y.h)}` +
+        (R.mean > 0 ? `\n${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") +
+        (y.y < vy ? `\nEstimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") +
+        `\nClick to test ${MONL[CV.focus[1]]} ${y.y}`
+      );
+    },
     click: y => pick(y, CV.focus[1]),
   });
-  cumulative($("cCum"), R, CV.focus[0]);
+  const pp = partOf(d);
+  cumulative($("cCum"), R, CV.focus[0], pp && d.partial ? { frac: pp.day / d.partial.days_in_month, label: `${pp.day} ${MON[pp.m]}` } : null);
   seam($("cSeam"), R, vy);
+  /* whole years only: a year under way would read as a fall in every sensor */
   const from = { ...SENSOR_FROM, A: d.aqua_from[0] },
-    xs = R.years.map(y => y.y);
+    xs = R.years.filter(y => !y.part).map(y => y.y);
   sensorLines(
     $("cRaw"),
     xs,
@@ -523,6 +688,23 @@ function method(d: CountrySummary) {
     item(pc(val.annual_max_err), "error in the worst tested year") +
     item(pc(val.monthly_wape), "typical error of a converted month, weighted by size");
   $("cRateNote").textContent = d.rate_note;
+  const y26 = d.y2026,
+    p = partOf(d),
+    jc = y26?.join_check_2025;
+  $("cSatRule").textContent = p ? SAT_RULE : "Suomi NPP only from 2012; NOAA-20 is not added, which would count the same fires twice.";
+  $("c2026").hidden = !y26;
+  $("c2026").textContent = y26
+    ? `2026, to ${longDate(d.last_date!)}: from the FIRMS API (standard processing to July, near real time after), counted with the same filter. ` +
+      `${y26.mask_note.split(" The task first asked")[0]} ` +
+      (jc
+        ? `Rerun on 2025, this 2026 method differed from the published 2025 count for ${the(d.name)} by ${jc.V_pct >= 0 ? "+" : "−"}${Math.abs(jc.V_pct).toFixed(1)}%` +
+          (jc.warn ? `, more than the 5% most countries stay within, so read ${p!.y} against past years with that in mind.` : ".")
+        : "")
+    : "";
+  $("cLimits").textContent = p
+    ? `Limits. The record runs to ${longDate(d.last_date!)}, the last complete day; ${p.y} is a partial year, counted “so far” and compared only with the same dates in past years, and ${MONL[p.m]} ${p.y} covers days 1–${p.day}. ` +
+      `Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Suomi NPP outages from 2018 on are filled from NOAA-20 the same way as in ${p.y} (the published file keeps the archive's Suomi NPP count and gives the filled one alongside); earlier gaps and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.`
+    : `Limits. The record ends in December ${d.y1}. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.`;
   $("cFilter").textContent = d.filter;
   $("cCell").textContent = `${d.cell}°`;
   const row = (label: string, a: number[]) => `<tr><td>${label}</td>${a.map(r => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
@@ -540,7 +722,7 @@ function method(d: CountrySummary) {
           `<tr><td>${Number(r.y)}</td><td>${fmt(r.obs)}</td><td>${fmt(r.pred)}</td><td>${fmt(r.modis)}</td><td>${r.obs > 0 ? (r.pred >= r.obs ? "+" : "") + Math.round((r.pred / r.obs - 1) * 100) + "%" : "n/a"}</td></tr>`,
       )
       .join("");
-  const path = summaryPath(d.country),
+  const path = pathOf(d),
     url = fileUrl(path);
   $("cSrc").innerHTML =
     `Data: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(path)}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, ` +
@@ -554,12 +736,40 @@ function csv() {
     R = CV.R;
   if (!d || !R) return;
   const N20 = d.monthly.N20,
+    p = partOf(d),
+    conv = new Map((d.y2026?.conv_months ?? []).map(c => [c.i, c])),
     rows = [
-      "year,month,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_not_used",
+      "year,month,month_status,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs,noaa20_days_used_converted,noaa20_converted_snpp_terms,days_estimated_from_neighbours,estimated_snpp_terms",
     ];
-  R.ser.forEach(r =>
-    rows.push([r.y, r.m + 1, r.h.toFixed(2), r.lo.toFixed(2), r.hi.toFixed(2), `"${r.src}"`, r.T, r.A, r.V, N20[r.i]].join(",")),
-  );
+  /* 2026: harmonized = Suomi NPP on its complete days + NOAA-20 x rate on the days it missed, never both;
+     raw_snpp_viirs is then Suomi NPP's own complete days, and the range is that of the conversion */
+  const gaps = new Map((d.y2026?.hist_gaps ?? []).map(g => [g.i, g]));
+  R.ser.forEach(r => {
+    const c = conv.get(r.i),
+      g = gaps.get(r.i),
+      k = p && d.y2026 ? r.i - (p.i - (d.y2026.v_obs.length - 1)) : -1,
+      in26 = k >= 0 && !!d.y2026 && k < d.y2026.v_obs.length;
+    rows.push(
+      [
+        r.y,
+        r.m + 1,
+        r.part ? `partial_to_${d.last_date}` : "complete",
+        r.h.toFixed(2),
+        (in26 ? d.y2026!.v_lo[k] : r.lo).toFixed(2),
+        (in26 ? d.y2026!.v_hi[k] : r.hi).toFixed(2),
+        `"${c || g ? FILL_SRC : r.src}"`,
+        r.T,
+        r.A,
+        /* Suomi NPP as observed: in 2026 on the days it is used; for a past outage month, the whole month as archived */
+        in26 ? d.y2026!.v_obs[k] : r.V,
+        N20[r.i],
+        c ? `"${c.days.join(" ")}"` : g ? `"${g.days.join(" ")}"` : "",
+        c ? c.v_conv : g ? g.n20_conv : "",
+        c?.interp_days ? `"${c.interp_days.join(" ")}"` : "",
+        c?.interp_days ? (c.v_interp ?? "") : "",
+      ].join(","),
+    );
+  });
   save(`burn-calendar_${d.country}_${CV.yFrom}-${CV.yTo}.csv`, rows.join("\n"), $("cDlMsg"));
 }
 

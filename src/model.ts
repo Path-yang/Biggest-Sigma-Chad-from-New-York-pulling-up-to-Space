@@ -5,6 +5,7 @@ import type {
   HexState,
   MonthStat,
   Rates,
+  SameDays,
   Sel,
   SeriesAnalysis,
   SeriesRow,
@@ -12,8 +13,9 @@ import type {
   Town,
   Verdict,
   YearRow,
+  YearToDate,
 } from "./types";
-import { AQ0, D, MON, MONL, NAME, NM, VI0, Y0 } from "./data";
+import { AQ0, D, FILL_SRC, FULL_Y1, MON, MONL, NAME, NM, NMD, PART, VI0, Y0, fillDays } from "./data";
 import { S } from "./state";
 import { fmt, times } from "./util";
 
@@ -67,6 +69,9 @@ export function hexState(st: StateCode): HexState {
   }
   const rows = s.hex_rows;
   for (let p = 0; p < rows.length; p += 5) o.H[rows[p] * NM + rows[p + 1]] = harm(st, rows[p + 1], rows[p + 2], rows[p + 3], rows[p + 4]).h;
+  /* past Suomi NPP outage days, filled from NOAA-20 as 2026 is */
+  const g = s.gap_hex_rows ?? [];
+  for (let p = 0; p < g.length; p += 3) o.H[g[p] * NM + g[p + 1]] = Math.max(0, o.H[g[p] * NM + g[p + 1]] + g[p + 2]);
   o.x0 = Math.min(...o.X) - R;
   o.x1 = Math.max(...o.X) + R;
   o.y0 = Math.min(...o.Y) - R;
@@ -161,9 +166,146 @@ export function analyseFor(st: StateCode, sel: Sel): Analysis {
       V[i] += rows[p + 4];
     }
   }
-  const R = analyseSeries({ T, A, V, y0: Y0, yFrom: S.yFrom, yTo: S.yTo, vi0: VI0, harm: (i, t, a, v) => harm(st, i, t, a, v) });
+  /* days Suomi NPP missed: in 2026 the rows already hold NOAA-20 converted for them; for past outages (2018-2025) the
+     change from filling them the same way is kept apart, so the raw Suomi NPP count stays as observed */
+  const G = new Float64Array(NM),
+    grows = (byCounty ? s.gap_county_rows : s.gap_hex_rows) ?? [];
+  for (let p = 0; p < grows.length; p += 3) {
+    const k = grows[p];
+    if (byCounty ? sel.type === "state" || k === sel.ci : mask![k]) G[grows[p + 1]] += grows[p + 2];
+  }
+  const gaps = new Map((s.hist_gaps ?? []).map(g => [g.i, g])),
+    m26 = new Map((s.y2026?.months ?? []).map(m => [m.i, m]));
+  const filled = (i: number, t: number, a: number, v: number) => {
+    const x = harm(st, i, t, a, v);
+    if (i < VI0) return x;
+    const f = fillDays(i, st);
+    if (!f.n20.length && !f.interp.length) return x;
+    const h = Math.max(0, v + G[i]);
+    let lo = h,
+      hi = h;
+    /* ranges from the conversion are known for the whole state */
+    const g = gaps.get(i),
+      m = m26.get(i);
+    if (sel.type === "state" && g) {
+      lo = h - (g.filled - g.lo);
+      hi = h + (g.hi - g.filled);
+    } else if (sel.type === "state" && m) {
+      lo = Math.min(h, m.lo);
+      hi = Math.max(h, m.hi);
+    }
+    return { h, lo, hi, src: FILL_SRC };
+  };
+  const R = analyseSeries({
+    T,
+    A,
+    V,
+    y0: Y0,
+    yFrom: S.yFrom,
+    yTo: S.yTo,
+    vi0: VI0,
+    nm: NMD,
+    partI: PART ? PART.i : -1,
+    partMed: sameDaysFor(st, sel)?.med ?? null,
+    harm: filled,
+  });
   return { st, ...R };
 }
+/* ---------- the partial last month and year (2026 to 14 November) ---------- */
+/** "1–14 Nov" */
+export const partSpan = (m: number, day: number) => `1–${day} ${MON[m]}`;
+const median = (a: number[]) => {
+  const z = a.slice().sort((x, y) => x - y),
+    h = (z.length - 1) / 2;
+  return z.length ? (z[Math.floor(h)] + z[Math.ceil(h)]) / 2 : 0;
+};
+/** the partial month against the same days in the Suomi NPP years, for the whole state or one county (the only areas
+ * data.js holds daily history for); null for other areas */
+export function sameDaysFor(st: StateCode, sel: Sel): SameDays | null {
+  const p = D.states[st].partial;
+  if (!p || !PART || (sel.type !== "state" && sel.type !== "county")) return null;
+  const span = partSpan(p.m - 1, p.day_to);
+  /* past years with Suomi NPP outage days in the span are filled from NOAA-20, as 2026 is */
+  if (sel.type === "state") {
+    const past = p.state_filled ?? p.state;
+    return { span, cur: p.state_2026, lo: p.state_2026_lo, hi: p.state_2026_hi, years: p.years, past, med: p.state_filled_median ?? median(past) };
+  }
+  const past = p.county_filled?.[sel.ci] ?? p.county[sel.ci],
+    cur = p.county_2026[sel.ci];
+  return past ? { span, cur, lo: cur, hi: cur, years: p.years, past, med: median(past) } : null;
+}
+/** the partial year against the same span of every past year from 2012 (the Suomi NPP years): whole months up to the
+ * partial one, plus the partial month's days where the area has them for past years (pastPart) */
+export function yearToDate(
+  R: SeriesAnalysis,
+  pastPart: ((y: number) => number | undefined) | null,
+  range?: { lo: number; hi: number } | null,
+): YearToDate | null {
+  const pr = R.ser.find(r => r.part);
+  if (!pr) return null;
+  const withPart = !!pastPart,
+    py = pr.y,
+    pm = pr.m,
+    years: number[] = [],
+    past: number[] = [];
+  const sumOf = (y: number) => {
+    let a = 0;
+    for (const r of R.ser) if (r.y === y && r.m < pm) a += r.h;
+    return a;
+  };
+  for (const yr of R.years) {
+    if (yr.y >= py || yr.y < 2012) continue;
+    const extra = withPart ? pastPart!(yr.y) : 0;
+    if (extra === undefined) continue;
+    years.push(yr.y);
+    past.push(sumOf(yr.y) + extra);
+  }
+  if (years.length < 3) return null;
+  const cur = sumOf(py) + (withPart ? pr.h : 0),
+    day = PART ? PART.day : 0,
+    span = withPart ? `1 Jan–${day} ${MON[pm]}` : pm > 1 ? `Jan–${MON[pm - 1]}` : "January";
+  return {
+    span,
+    withPart,
+    y: py,
+    cur,
+    lo: range ? range.lo : cur,
+    hi: range ? range.hi : cur,
+    years,
+    past,
+    med: median(past),
+    rank: past.filter(v => v > cur).length + 1,
+    n: past.length + 1,
+  };
+}
+/** the year-to-date comparison for an area of a state: with the partial month's days for the state and its counties */
+export function ytdFor(R: SeriesAnalysis, st: StateCode, sel: Sel): YearToDate | null {
+  const s = D.states[st],
+    p = s.partial,
+    sd = sameDaysFor(st, sel);
+  if (!p || !sd) return yearToDate(R, null);
+  let range: { lo: number; hi: number } | null = null;
+  if (sel.type === "state" && s.y2026) {
+    const ms = s.y2026.months;
+    range = { lo: ms.reduce((a, x) => a + x.lo, 0), hi: ms.reduce((a, x) => a + x.hi, 0) };
+  }
+  return yearToDate(
+    R,
+    y => {
+      const k = sd.years.indexOf(y);
+      return k < 0 ? undefined : sd.past[k];
+    },
+    range,
+  );
+}
+/** "the 3rd most of 15 years", "the most of 15", "the fewest of 15" */
+export function rankWords(rank: number, n: number) {
+  const ord = (k: number) => k + (k % 100 >= 11 && k % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][k % 10] || "th");
+  return rank === 1 ? `the most of ${n} years` : rank === n ? `the fewest of ${n} years` : `the ${ord(rank)} most of ${n} years`;
+}
+/** one sentence on the partial year, compared like for like */
+export const ytdSentence = (t: YearToDate) =>
+  `${t.y} so far (${t.span}): ${fmt(t.cur)} ${fmt(t.cur) === "1" ? "hotspot" : "hotspots"}${t.hi - t.lo >= 1 ? `, likely ${fmt(t.lo)} to ${fmt(t.hi)}` : ""}, ${rankWords(t.rank, t.n)} for the same dates (typical ${fmt(t.med)}).`;
 /** monthly counts of one place, as arrays indexed by month from January of y0 */
 export interface SeriesInput {
   T: ArrayLike<number>;
@@ -173,16 +315,34 @@ export interface SeriesInput {
   yFrom: number;
   yTo: number;
   vi0: number;
+  /** months with data from January of y0; later months are left out, not counted as zero */
+  nm?: number;
+  /** index of the partial last month, or -1 */
+  partI?: number;
+  /** the normal for the partial month's days (the median of the same days in past years), when known */
+  partMed?: number | null;
   harm: (i: number, T: number, A: number, V: number) => Harmonized;
 }
 /** the harmonized series of one place over the chosen years, with its monthly and yearly summaries */
 export function analyseSeries(o: SeriesInput): SeriesAnalysis {
-  const { T, A, V } = o;
+  const { T, A, V } = o,
+    partI = o.partI ?? -1,
+    nm = o.nm ?? Infinity,
+    /* the first month that is not complete: the partial one, else the end of the data */
+    fullEnd = partI >= 0 ? partI : nm;
   const ser: SeriesRow[] = [];
-  for (let i = (o.yFrom - o.y0) * 12; i < (o.yTo - o.y0 + 1) * 12; i++)
-    ser.push(
-      Object.assign({ i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V[i] }, o.harm(i, T[i], A[i], V[i])) as SeriesRow,
-    );
+  for (let i = (o.yFrom - o.y0) * 12, end = Math.min((o.yTo - o.y0 + 1) * 12, nm); i < end; i++) {
+    const r = Object.assign(
+      { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V[i] },
+      o.harm(i, T[i], A[i], V[i]),
+    ) as SeriesRow;
+    if (i >= fullEnd) r.part = true;
+    ser.push(r);
+  }
+  const fullYear = (y: number) => (y - o.y0 + 1) * 12 <= fullEnd,
+    /* with only the partial year chosen, it stands in for the complete ones */
+    useAll = !ser.some(r => fullYear(r.y)),
+    counted = (y: number) => useAll || fullYear(y);
   const quant = (a: number[], q: number) => {
     const z = a.slice().sort((x, y) => x - y),
       p = (z.length - 1) * q,
@@ -190,36 +350,61 @@ export function analyseSeries(o: SeriesInput): SeriesAnalysis {
     return z[f] + (z[Math.min(z.length - 1, f + 1)] - z[f]) * (p - f);
   };
   const stats: MonthStat[] = MON.map((_, m) => {
-    const a = ser.filter(r => r.m === m).map(r => r.h);
-    return { med: quant(a, 0.5), q1: quant(a, 0.25), q3: quant(a, 0.75), sum: a.reduce((x, y) => x + y, 0) };
+    const a = ser.filter(r => r.m === m && !r.part).map(r => r.h),
+      s = ser.filter(r => r.m === m && counted(r.y)).reduce((x, r) => x + r.h, 0);
+    return a.length ? { med: quant(a, 0.5), q1: quant(a, 0.25), q3: quant(a, 0.75), sum: s } : { med: NaN, q1: NaN, q3: NaN, sum: s };
   });
   ser.forEach(r => {
-    r.med = stats[r.m].med;
-    r.ratio = (r.h + 1) / (r.med + 1);
+    r.med = r.part ? (o.partMed ?? NaN) : stats[r.m].med;
+    r.ratio = Number.isFinite(r.med) ? (r.h + 1) / (r.med + 1) : NaN;
   });
   const years: YearRow[] = [];
   for (let y = o.yFrom; y <= o.yTo; y++) {
     const rr = ser.filter(r => r.y === y),
       sum = (k: "h" | "lo" | "hi") => rr.reduce((a, r) => a + r[k], 0);
-    years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
+    if (!rr.length) continue;
+    const row: YearRow = {
+      y,
+      h: sum("h"),
+      lo: sum("lo"),
+      hi: sum("hi"),
+      naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0),
+    };
+    if (!fullYear(y)) row.part = true;
+    years.push(row);
   }
-  const total = stats.reduce((a, z) => a + z.sum, 0),
+  const counts = years.filter(y => counted(y.y)),
+    total = stats.reduce((a, z) => a + z.sum, 0),
     order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum),
-    ranked = years.slice().sort((a, b) => b.h - a.h);
-  return { ser, stats, years, total, mean: total / years.length, order, ranked };
+    ranked = counts.slice().sort((a, b) => b.h - a.h);
+  return {
+    ser,
+    stats,
+    years,
+    total,
+    any: ser.reduce((a, r) => a + r.h, 0),
+    mean: counts.length ? total / counts.length : 0,
+    order,
+    ranked,
+    partYear: years.find(y => y.part) ?? null,
+  };
 }
-export function verdict(R: SeriesAnalysis, focus: number[] = S.focus): Verdict | null {
+export function verdict(R: SeriesAnalysis, focus: number[] = S.focus, sd: SameDays | null = null): Verdict | null {
   const [fy, fm] = focus,
     f = R.ser.find(r => r.y === fy && r.m === fm);
   if (!f) return null;
-  const same = R.ser.filter(r => r.m === fm).map(r => r.h),
+  /* a partial month is compared only with the same days of past years, never with whole months */
+  if (f.part && !sd) return { f, fm, fy, label: "Not over yet", cls: "", rank: 0, n: 0, med: NaN, mult: "", noSame: true };
+  const cur = f.part ? sd!.cur : f.h,
+    same = f.part ? [...sd!.past, cur] : R.ser.filter(r => r.m === fm && !r.part).map(r => r.h),
     n = same.length,
-    rank = same.filter(v => v > f.h).length + 1,
-    pct = (same.filter(v => v < f.h).length / Math.max(1, n - 1)) * 100,
-    med = R.stats[fm].med;
+    rank = same.filter(v => v > cur).length + 1,
+    /* mid-rank: years that tie with it count half below, so a quiet zero among many zeros reads as typical */
+    pct = ((same.filter(v => v < cur).length + (same.filter(v => v === cur).length - 1) / 2) / Math.max(1, n - 1)) * 100,
+    med = f.part ? sd!.med : R.stats[fm].med;
   let label = "Typical",
     cls = "";
-  if (!(f.h === 0 && med === 0)) {
+  if (!(cur === 0 && med === 0)) {
     if (pct >= 90) {
       label = "Unusually high";
       cls = "hi";
@@ -243,13 +428,21 @@ export function verdict(R: SeriesAnalysis, focus: number[] = S.focus): Verdict |
     rank,
     n,
     med,
-    mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots"),
+    mult:
+      med > 0 && cur > 0
+        ? times(cur / med) + (f.part ? ` a normal ${sd!.span}` : " a normal " + MON[fm])
+        : cur === 0
+          ? "No hotspots" + (f.part ? ` in ${sd!.span}` : "")
+          : fmt(cur) + (fmt(cur) === "1" ? " hotspot" : " hotspots") + (f.part ? ` in ${sd!.span}` : ""),
+    same: f.part ? sd! : undefined,
   };
 }
-/* how often has it burned in a given calendar month? Uses the VIIRS years, which see small fires too */
+/* how often has it burned in a given calendar month? Uses the VIIRS years, which see small fires too, and complete
+   years only, so every calendar month is measured over the same years (2026 is still under way) */
 export const riskYears = () => {
-  const a = Math.max(S.yFrom, 2012);
-  return a <= S.yTo ? [a, S.yTo] : [S.yFrom, S.yTo];
+  const a = Math.max(S.yFrom, 2012),
+    b = Math.min(S.yTo, FULL_Y1);
+  return a <= b ? [a, b] : [Math.min(S.yFrom, FULL_Y1), Math.min(S.yTo, FULL_Y1)];
 };
 export function riskFor(R: Analysis, m: number) {
   const [a, b] = riskYears(),
@@ -316,10 +509,13 @@ export function countyRisk(st: StateCode, m: number) {
     })
     .sort((x, y) => y.e - x.e || y.p - x.p);
 }
-export const leadText = (R: SeriesAnalysis) =>
-  R.total === 0
+export const leadText = (R: SeriesAnalysis, ytd: YearToDate | null = null) =>
+  R.any === 0
     ? "No fire hotspots were detected here in these years. Try a larger area."
-    : `Fire activity here peaks in ${MONL[R.order[0].m]}. ${R.ranked[0].y} was the most active year on record, ${times(R.ranked[0].h / R.mean).replace("×", "")} times an average year.`;
+    : R.total === 0
+      ? `No fire hotspots were detected here in the complete years chosen.${ytd ? " " + ytdSentence(ytd) : ""}`
+      : `Fire activity here peaks in ${MONL[R.order[0].m]}. ${R.ranked[0].y} was the most active ${R.ranked[0].part ? "year so far" : "complete year on record"}, ${times(R.ranked[0].h / R.mean).replace("×", "")} times an average year.` +
+        (ytd ? " " + ytdSentence(ytd) : "");
 const kmBetween = (lon1: number, lat1: number, lon2: number, lat2: number) =>
   Math.hypot((lon1 - lon2) * 111.32 * Math.cos((lat1 * Math.PI) / 180), (lat1 - lat2) * 110.57);
 function nearestTown(st: StateCode, lon: number, lat: number) {

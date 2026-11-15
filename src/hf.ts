@@ -5,9 +5,13 @@ import type { CountryIndexEntry, CountrySummary } from "./types";
    ===================================================================== */
 export const HF_DATASET = "rogeryzd/firms-active-fire-by-country";
 export const HF_PAGE = `https://huggingface.co/datasets/${HF_DATASET}`;
-/** v2 drops cell-years any sensor flags as a static source; see the dataset card */
-export const SUMMARY_DIR = "summary/v2";
-export const summaryPath = (k: string) => `${SUMMARY_DIR}/${encodeURIComponent(k)}.json`;
+/** v3 is v2 (which drops cell-years any sensor flags as a static source; see the dataset card) with 2026 to date
+ * added; v2 is the fallback when v3 does not arrive or does not check out */
+export const SUMMARY_DIR = "summary/v3";
+const FALLBACK_DIR = "summary/v2";
+export const summaryPath = (k: string, dir = SUMMARY_DIR) => `${dir}/${encodeURIComponent(k)}.json`;
+/** the file a summary came from: its version picks the folder */
+export const pathOf = (d: CountrySummary) => summaryPath(d.country, `summary/v${d.v}`);
 export const fileUrl = (path: string) => `${HF_PAGE}/resolve/main/${path}`;
 
 /** bytes received so far, and the expected total when the server says */
@@ -52,9 +56,11 @@ const isNums = (x: unknown, n?: number): x is number[] =>
   Array.isArray(x) && (n === undefined || x.length === n) && x.every(v => typeof v === "number");
 const isNumOrNull = (x: unknown) => x === null || typeof x === "number";
 function isSummary(x: unknown, k: string): x is CountrySummary {
-  if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
+  if (!isObj(x) || (x.v !== 2 && x.v !== 3) || x.country !== k || typeof x.name !== "string") return false;
   if (typeof x.y0 !== "number" || typeof x.y1 !== "number" || x.y1 < x.y0) return false;
-  const nm = (x.y1 - x.y0 + 1) * 12,
+  /* v3's last year is partial: its arrays stop at n_months, and 2026 comes with its comparisons */
+  if (x.v === 3 && !isV3(x)) return false;
+  const nm = x.v === 3 ? (x.n_months as number) : (x.y1 - x.y0 + 1) * 12,
     mo = x.monthly,
     val = x.val,
     src = x.source,
@@ -89,6 +95,34 @@ function isSummary(x: unknown, k: string): x is CountrySummary {
     typeof src.files === "number"
   );
 }
+function isV3(x: Record<string, unknown>) {
+  const p = x.partial,
+    y = x.y2026,
+    nm = x.n_months;
+  if (typeof nm !== "number" || typeof x.last_date !== "string" || !isObj(p) || !isObj(y)) return false;
+  if (typeof x.y0 !== "number" || nm > ((x.y1 as number) - x.y0 + 1) * 12 || p.i !== nm - 1) return false;
+  const sd = y.same_days,
+    ytd = y.ytd,
+    jc = y.join_check_2025;
+  const cmp = (c: unknown) =>
+    isObj(c) &&
+    isNums(c.V) &&
+    isObj(c.V_stats) &&
+    ["cur", "cur_lo", "cur_hi", "rank"].every(s => typeof c[s] === "number") &&
+    isNums(c.years, 2);
+  return (
+    ["v_obs", "v_conv", "v_lo", "v_hi"].every(s => isNums(y[s])) &&
+    Array.isArray(y.conv_months) &&
+    y.conv_months.every(c => isObj(c) && typeof c.i === "number" && isNums(c.days)) &&
+    cmp(sd) &&
+    cmp(ytd) &&
+    isObj(jc) &&
+    typeof jc.warn === "boolean" &&
+    (y.hist_gaps === undefined ||
+      (Array.isArray(y.hist_gaps) &&
+        y.hist_gaps.every(g => isObj(g) && ["i", "filled", "lo", "hi"].every(k => typeof g[k] === "number") && isNums(g.days))))
+  );
+}
 const isIndexEntry = (x: unknown): x is CountryIndexEntry =>
   isObj(x) && typeof x.country === "string" && typeof x.name === "string" && typeof x.file === "string";
 
@@ -107,11 +141,14 @@ export function loadSummary(k: string, onProgress: Progress | null): Promise<Cou
     return had.p;
   }
   const tell = { listen: onProgress },
-    p = fetchText(fileUrl(summaryPath(k)), () => tell.listen).then(text => {
-      const data: unknown = JSON.parse(text);
-      if (!isSummary(data, k)) throw new Error("The file from Hugging Face is not in the expected format");
-      return data;
-    });
+    get = (dir: string) =>
+      fetchText(fileUrl(summaryPath(k, dir)), () => tell.listen).then(text => {
+        const data: unknown = JSON.parse(text);
+        if (!isSummary(data, k)) throw new Error("The file from Hugging Face is not in the expected format");
+        return data;
+      }),
+    /* the record with 2026 to date; if it fails, the 2001-2025 record */
+    p = get(SUMMARY_DIR).catch(() => get(FALLBACK_DIR));
   p.catch(() => SUMMARIES.delete(k));
   SUMMARIES.set(k, { p, tell });
   return p;
@@ -120,11 +157,13 @@ let index: Promise<CountryIndexEntry[]> | null = null;
 /** the list of every country in the dataset, including any without an outline in world.js */
 export function loadIndex(): Promise<CountryIndexEntry[]> {
   if (!index) {
-    index = fetchText(fileUrl(`${SUMMARY_DIR}/index.json`), () => null).then(text => {
-      const data: unknown = JSON.parse(text);
-      if (!isObj(data) || !Array.isArray(data.countries)) throw new Error("The country index is not in the expected format");
-      return data.countries.filter(isIndexEntry);
-    });
+    const get = (dir: string) =>
+      fetchText(fileUrl(`${dir}/index.json`), () => null).then(text => {
+        const data: unknown = JSON.parse(text);
+        if (!isObj(data) || !Array.isArray(data.countries)) throw new Error("The country index is not in the expected format");
+        return data.countries.filter(isIndexEntry);
+      });
+    index = get(SUMMARY_DIR).catch(() => get(FALLBACK_DIR));
     index.catch(() => (index = null));
   }
   return index;

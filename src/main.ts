@@ -1,5 +1,5 @@
 import type { CalendarMode, Layer, Palette, SheetTab, StateCode } from "./types";
-import { MON, MONL, NAME, PRESET, SLUG, STS, Y0, Y1 } from "./data";
+import { FULL_Y1, MON, MONL, NAME, PRESET, SLUG, STS, Y0, Y1 } from "./data";
 import { S } from "./state";
 import { $ } from "./util";
 import { hexState } from "./model";
@@ -130,7 +130,9 @@ function heroSearch() {
 function init() {
   const yo: string[] = [];
   for (let y = Y0; y <= Y1; y++) yo.push(`<option>${y}</option>`);
-  $("yFrom").innerHTML = $("yTo").innerHTML = $("fY").innerHTML = yo.join("");
+  $("yTo").innerHTML = $("fY").innerHTML = yo.join("");
+  /* the first year must be a complete one: a range holding only the part year has no normal to compare with */
+  $("yFrom").innerHTML = yo.slice(0, FULL_Y1 - Y0 + 1).join("");
   $("yFrom").value = String(Y0);
   $("yTo").value = String(Y1);
   $("fM").innerHTML = MON.map((m, i) => `<option value="${i}">${m}</option>`).join("");
