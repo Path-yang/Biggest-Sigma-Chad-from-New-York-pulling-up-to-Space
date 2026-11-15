@@ -44,6 +44,15 @@ input[type=number]{width:84px}
 .heroBar{position:absolute;left:0;right:0;bottom:28px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:0 16px}
 #hero.noglobe .heroBar{bottom:auto;top:46%}
 .pick.hover{border-color:var(--ember)}
+.heroKey{position:absolute;left:22px;top:22px;margin:0;padding:12px 14px;border-radius:14px;background:rgba(19,26,40,.72);border:1px solid var(--line);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);max-width:240px;font-size:12px;color:var(--ink2)}
+.heroKey p{margin:0}
+.heroKey .hkT{font-weight:600;color:var(--ink);margin-bottom:6px}
+.heroKey .hkS{display:none;align-items:center;gap:8px;font:500 11px var(--font-m)}
+.heroKey canvas{width:120px;height:8px;border-radius:4px;image-rendering:pixelated}
+.heroKey .hkN{display:none;margin-top:6px;font-size:11px}
+.heroKey.ready .hkS{display:flex}.heroKey.ready .hkN{display:block}.heroKey.ready .hkW{display:none}
+#hero.noglobe .heroKey{display:none}
+@media (max-width:760px){.heroKey{left:16px;top:16px;padding:9px 11px;max-width:calc(100% - 32px)}.heroKey .hkN{display:none!important}}
 .mark{position:absolute;left:22px;bottom:34px;margin:0;font:700 15px var(--font-d);letter-spacing:-.01em;color:var(--ink2)}
 @media (max-width:760px){.mark{display:none}}
 .heroFind{flex:1 1 100%;display:flex;justify-content:center;gap:8px}
@@ -203,6 +212,12 @@ th{color:var(--muted);font-weight:400}
   <button class="tag" id="tagCA" type="button" data-st="CA">California</button>
   <button class="tag" id="tagC" type="button" hidden></button>
   <p class="mark">Burn Calendar</p>
+  <div class="heroKey" id="heroKey" hidden>
+    <p class="hkT">Fire hotspots a year per 1,000 km²</p>
+    <p class="hkW">Loading every country from Hugging Face…</p>
+    <div class="hkS"><span id="heroLo"></span><canvas id="heroRamp" width="160" height="8" aria-hidden="true"></canvas><span id="heroHi"></span></div>
+    <p class="hkN">NASA FIRMS, 2001–2025, live from Hugging Face. Click any country.</p>
+  </div>
   <div class="heroBar">
     <form class="heroFind" id="heroForm" role="search">
       <input id="heroFind" list="countryList" placeholder="Find a country or territory…" aria-label="Find a country" autocomplete="off" enterkeyhint="go">
@@ -418,6 +433,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

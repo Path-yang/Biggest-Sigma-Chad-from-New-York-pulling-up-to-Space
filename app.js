@@ -1626,6 +1626,68 @@ ${showLabel()}`) + "\nClick to zoom in"
     return Math.min(360, z - a);
   }
 
+  // src/fireglobe.ts
+  var FIRE_YEARS = 25;
+  var R_KM = 6371.0088;
+  var STOPS = [
+    { c: [150, 30, 20], a: 0.16 },
+    { c: [220, 50, 26], a: 0.32 },
+    { c: [255, 112, 32], a: 0.46 },
+    { c: [255, 190, 64], a: 0.58 },
+    { c: [255, 240, 170], a: 0.7 }
+  ];
+  function fireColour(t) {
+    t = Math.max(0, Math.min(1, t)) * (STOPS.length - 1);
+    const i = Math.min(STOPS.length - 2, Math.floor(t)), f = t - i, a = STOPS[i], b = STOPS[i + 1];
+    return { c: a.c.map((v, k) => Math.round(v + (b.c[k] - v) * f)), a: a.a + (b.a - a.a) * f };
+  }
+  var css2 = (x) => `rgba(${x.c[0]},${x.c[1]},${x.c[2]},${x.a.toFixed(3)})`;
+  function areaKm2(c) {
+    let sum = 0;
+    for (const r of c.r) {
+      let s = 0;
+      for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2)
+        s += (r[j] - r[i]) * Math.PI / 180 * (Math.sin(r[j + 1] * Math.PI / 180) + Math.sin(r[i + 1] * Math.PI / 180));
+      sum += Math.abs(s) / 2;
+    }
+    return sum * R_KM * R_KM;
+  }
+  var quantile = (s, q) => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
+  function buildFireLayer(index2, width = 2048) {
+    const total = new Map(index2.map((e) => [e.country, e.total])), raw = [];
+    for (const c of WORLD) {
+      const tot = total.get(c.k), area = areaKm2(c);
+      if (!tot || !(tot > 0) || !(area > 0)) continue;
+      const perYear = tot / FIRE_YEARS;
+      raw.push({ c, area, perYear, density: perYear / area * 1e3 });
+    }
+    const logs = raw.map((x) => Math.log10(x.density)).sort((a, b) => a - b), l0 = logs.length ? quantile(logs, 0.05) : 0, l1 = logs.length ? Math.max(l0 + 0.5, quantile(logs, 0.97)) : 1, stats = /* @__PURE__ */ new Map();
+    for (const x of raw) stats.set(x.c.k, { perYear: x.perYear, density: x.density, t: (Math.log10(x.density) - l0) / (l1 - l0) });
+    const h = width / 2, cv = document.createElement("canvas");
+    cv.width = width;
+    cv.height = h;
+    const g = cv.getContext("2d"), X = (lon) => (lon + 180) / 360 * width, Y = (lat) => (90 - lat) / 180 * h;
+    raw.sort((a, b) => b.area - a.area);
+    for (const x of raw) {
+      const col = css2(fireColour(stats.get(x.c.k).t));
+      g.fillStyle = col;
+      g.beginPath();
+      for (const r of x.c.r) {
+        g.moveTo(X(r[0]), Y(r[1]));
+        for (let i = 2; i < r.length; i += 2) g.lineTo(X(r[i]), Y(r[i + 1]));
+        g.closePath();
+      }
+      g.fill();
+      const b = x.c.b;
+      if (X(b[2]) - X(b[0]) < 3 && Y(b[1]) - Y(b[3]) < 3) {
+        g.beginPath();
+        g.arc(X(x.c.c[0]), Y(x.c.c[1]), 2, 0, 2 * Math.PI);
+        g.fill();
+      }
+    }
+    return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
+  }
+
   // src/country.ts
   var CV = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, focus: [2025, 0], mode: "count" };
   var SENSOR_FROM = { T: 2e3, V: 2012, N20: 2018 };
@@ -2291,6 +2353,25 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
     const stars = new T.Points(sg, starMat);
     stars.rotation.set(0.4, 0, 0.2);
     scene.add(stars);
+    const fireM = new T.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), fireMesh = new T.Mesh(new T.SphereGeometry(1.001, 128, 64), fireM);
+    fireMesh.visible = false;
+    grp.add(fireMesh);
+    let fireStats = /* @__PURE__ */ new Map(), fireT0 = 0;
+    loadIndex().then((idx) => {
+      const L = buildFireLayer(idx);
+      if (!L.stats.size) return;
+      const ft = new T.CanvasTexture(L.canvas);
+      ft.minFilter = T.LinearFilter;
+      fireM.map = ft;
+      fireM.needsUpdate = true;
+      fireMesh.visible = true;
+      fireStats = L.stats;
+      fireT0 = performance.now();
+      showKey(L.lo, L.hi);
+      if (hov) tagC.textContent = tagText(hov);
+    }).catch(() => {
+      $("heroKey").hidden = true;
+    });
     const tops = [], RT = 1.05;
     G.st = {};
     for (const st of STS) {
@@ -2361,9 +2442,13 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
       const sp2 = c && spans.get(c.k);
       hlLine.visible = !!sp2 && sp2[1] > 0;
       if (sp2) hlGeo.setDrawRange(sp2[0], sp2[1]);
-      tagC.textContent = c ? c.n : "";
+      tagC.textContent = c ? tagText(c) : "";
       if (!c) tagC.hidden = true;
     };
+    function tagText(c) {
+      const f = fireStats.get(c.k);
+      return f ? `${c.n} \xB7 ${short(f.perYear)} fires a year` : c.n;
+    }
     tagC.onclick = () => {
       if (hov) goCountry(hov.k);
     };
@@ -2516,6 +2601,7 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
         cam.position.z = camZ;
       }
       halo.position.copy(grp.position);
+      if (fireT0) fireM.opacity = reduced ? 1 : Math.min(1, (now - fireT0) / 1200);
       if (!reduced) {
         stars.rotation.y += dt * 0.012;
         stars.rotation.x += dt * 3e-3;
@@ -2550,9 +2636,21 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
       requestAnimationFrame(frame);
     }
     addEventListener("resize", size);
+    $("heroKey").hidden = false;
     cam.position.set(0, 0, camZ);
     G.ok = true;
     if (!$("hero").hidden) G.reset();
+  }
+  function showKey(lo, hi) {
+    const cv = $("heroRamp"), g = cv.getContext("2d");
+    for (let x = 0; x < cv.width; x++) {
+      const f = fireColour(x / (cv.width - 1));
+      g.fillStyle = `rgb(${f.c[0]},${f.c[1]},${f.c[2]})`;
+      g.fillRect(x, 0, 1, cv.height);
+    }
+    $("heroLo").textContent = fmt(lo);
+    $("heroHi").textContent = fmt(hi) + "+";
+    $("heroKey").classList.add("ready");
   }
 
   // src/main.ts

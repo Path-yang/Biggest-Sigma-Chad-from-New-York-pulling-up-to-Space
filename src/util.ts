@@ -5,6 +5,7 @@ interface ElementById {
   calRamp: HTMLCanvasElement;
   cCalRamp: HTMLCanvasElement;
   cMapRamp: HTMLCanvasElement;
+  heroRamp: HTMLCanvasElement;
   cMap: HTMLCanvasElement;
   cFrom: HTMLSelectElement;
   cTo: HTMLSelectElement;

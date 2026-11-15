@@ -1,7 +1,9 @@
 import type * as Three from "three";
 import type { StateCode, WorldCountry } from "./types";
 import { D, STS } from "./data";
-import { $, ease, reduced } from "./util";
+import { $, ease, fmt, reduced, short } from "./util";
+import { loadIndex } from "./hf";
+import { buildFireLayer, fireColour, type FireStat } from "./fireglobe";
 import { go, goCountry } from "./views";
 import { WORLD, countryAt, cutEdge, lonSpan } from "./world";
 
@@ -145,6 +147,30 @@ export async function globeInit() {
   const stars = new T.Points(sg, starMat);
   stars.rotation.set(0.4, 0, 0.2);
   scene.add(stars);
+  /* every country tinted by how much it burns, painted once index.json arrives from Hugging Face; fades in */
+  const fireM = new T.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    fireMesh = new T.Mesh(new T.SphereGeometry(1.001, 128, 64), fireM);
+  fireMesh.visible = false;
+  grp.add(fireMesh);
+  let fireStats = new Map<string, FireStat>(),
+    fireT0 = 0;
+  loadIndex()
+    .then(idx => {
+      const L = buildFireLayer(idx);
+      if (!L.stats.size) return;
+      const ft = new T.CanvasTexture(L.canvas);
+      ft.minFilter = T.LinearFilter;
+      fireM.map = ft;
+      fireM.needsUpdate = true;
+      fireMesh.visible = true;
+      fireStats = L.stats;
+      fireT0 = performance.now();
+      showKey(L.lo, L.hi);
+      if (hov) tagC.textContent = tagText(hov);
+    })
+    .catch(() => {
+      $("heroKey").hidden = true;
+    });
   /* raised, glowing states */
   const tops: Three.Mesh[] = [],
     RT = 1.05;
@@ -236,9 +262,13 @@ export async function globeInit() {
     const sp = c && spans.get(c.k);
     hlLine.visible = !!sp && sp[1] > 0;
     if (sp) hlGeo.setDrawRange(sp[0], sp[1]);
-    tagC.textContent = c ? c.n : "";
+    tagC.textContent = c ? tagText(c) : "";
     if (!c) tagC.hidden = true;
   };
+  function tagText(c: WorldCountry) {
+    const f = fireStats.get(c.k);
+    return f ? `${c.n} · ${short(f.perYear)} fires a year` : c.n;
+  }
   tagC.onclick = () => {
     if (hov) goCountry(hov.k);
   };
@@ -429,6 +459,7 @@ export async function globeInit() {
       cam.position.z = camZ;
     }
     halo.position.copy(grp.position);
+    if (fireT0) fireM.opacity = reduced ? 1 : Math.min(1, (now - fireT0) / 1200);
     if (!reduced) {
       stars.rotation.y += dt * 0.012;
       stars.rotation.x += dt * 0.003;
@@ -464,7 +495,21 @@ export async function globeInit() {
     requestAnimationFrame(frame);
   }
   addEventListener("resize", size);
+  $("heroKey").hidden = false;
   cam.position.set(0, 0, camZ);
   G.ok = true;
   if (!$("hero").hidden) G.reset();
+}
+/** the legend under the globe: the colour scale and the densities at its two ends */
+function showKey(lo: number, hi: number) {
+  const cv = $("heroRamp"),
+    g = cv.getContext("2d")!;
+  for (let x = 0; x < cv.width; x++) {
+    const f = fireColour(x / (cv.width - 1));
+    g.fillStyle = `rgb(${f.c[0]},${f.c[1]},${f.c[2]})`;
+    g.fillRect(x, 0, 1, cv.height);
+  }
+  $("heroLo").textContent = fmt(lo);
+  $("heroHi").textContent = fmt(hi) + "+";
+  $("heroKey").classList.add("ready");
 }
