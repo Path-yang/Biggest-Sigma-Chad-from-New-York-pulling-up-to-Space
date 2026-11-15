@@ -1,0 +1,6 @@
+# Local FIRMS data and API key (too large / private for git)
+data/
+data/fires_combined.csv
+.env
+.DS_Store
+__pycache__/
