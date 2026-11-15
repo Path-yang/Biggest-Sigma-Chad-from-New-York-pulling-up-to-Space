@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["scripts/world_outlook_today.ts", "scripts/node-shim.d.ts", "src/globals.d.ts"]
+}

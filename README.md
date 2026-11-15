@@ -16,12 +16,13 @@ python3 -m http.server 8000
 
 Then go to <http://localhost:8000>.
 
-The page fetches five things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), street-map tiles from OpenStreetMap (one test tile when the page opens, the rest when you zoom far in), the weather forecast from Open-Meteo for the 14-day outlook (when you open New York or California), and, when you open a country, that country's summary file from the Hugging Face dataset described below. Without a connection it uses system fonts, shows plain buttons and the country search in place of the globe, draws its own roads in place of the street map, and says the outlook is unavailable with a Retry button; country views need the connection.
+The page fetches five things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), street-map tiles from OpenStreetMap (one test tile when the page opens, the rest when you zoom far in), the weather forecast from Open-Meteo for the 14-day outlooks (when you open New York or California, or any country), and, when you open a country, that country's summary file from the Hugging Face dataset described below. Without a connection it uses system fonts, shows plain buttons and the country search in place of the globe, draws its own roads in place of the street map, and says the outlook is unavailable with a Retry button; country views need the connection.
 
 ## What you can do
 
 - Start on a globe and pick New York or California, or compare the two states side by side.
-- Click any country on the globe, or search for it, to open its own page: busiest months, worst years, a month-by-month calendar, a map of where it burns, the evidence for the conversion and a CSV of the monthly series. Its data is fetched from Hugging Face when you open it.
+- Click any country on the globe, or search for it, to open its own page: busiest months, worst years, a month-by-month calendar, a map of where it burns, the evidence for the conversion and a CSV of the monthly series. Its data is fetched from Hugging Face when you open it. Its **Next 14 days** section gives the chance that each of its regions (about 280 km across) has a busier fortnight than usual, from Open-Meteo's forecast, with how it was tested (see [Global 2-week outlook](#global-2-week-outlook)).
+- Switch the globe to **Next 14 days** to see every country coloured by how the forecast weather moves its chance of a busier fortnight than usual (from the daily snapshot).
 - Drill into the hexagon map: click a county, then a hexagon, then keep zooming to 2 km hexagons, roads, and fire and EMS stations.
 - Switch the map between past hotspots and the chance of fire in a chosen month. The chance can be **past odds** (how often the place burned in that month) or the **forecast for 2026 or 2027**. In California a switch shows **large fires only** (1,000 acres or more, from CAL FIRE's fire perimeter maps), for both past odds and the forecast.
 - Switch the map to **Next 14 days**: each county's chance of at least one hotspot from today through the next 13 days, from Open-Meteo's live weather forecast, coloured by how much the weather raises or lowers it. The full data ranks the counties to watch and shows how the outlook was tested.
@@ -48,6 +49,8 @@ The page fetches five things from the network: its fonts (Google Fonts), three.j
 | `response.js` | Drive times from fire and EMS stations to every hexagon, and a rule for estimating drive time from straight-line distance. Built by `scripts/build_response.py` from OpenStreetMap. |
 | `forecast.js` | The chance of fire in every hexagon and county for each month of 2026 and 2027, the backtest against past odds, and California's large-fire layer (history and forecast). Built by `scripts/build_forecast.py`; the large-fire layer comes from `scripts/build_large_fires.py` and `scripts/build_large_layer.py` through `forecast_inputs/large.json`. |
 | `outlook.js` | For the 14-day outlook: each county's usual chance of a hotspot for every day of the year, its weather point, the weather model's coefficients and the backtest. Built by `scripts/build_outlook.py`. The page fetches the weather itself. |
+| `world_outlook.js` | For the global 14-day outlook: about 2,100 regions on a 2.5° grid, each one's usual chance for every half-month, its weather climate, its weather point and the per-region correction for Open-Meteo, the model's coefficients and the backtest. Built by `scripts/build_world_outlook.py`. The country page loads it (0.34 MB compressed) when a country first opens and fetches the weather itself. |
+| `world_outlook_today.json` | The daily snapshot of the global outlook: every region's chance from that day's Open-Meteo forecast, and each country's summary for the globe. Written by `scripts/world_outlook_today.ts`, run twice a day by `.github/workflows/world-outlook-today.yml`. |
 | `data.js` | The data, about 3.7 MB: monthly counts per county and per hexagon, the 2 km hexagon detail, county outlines, roads, towns, fire and EMS stations, the globe's outlines and Earth texture, exchange rates and validation results. |
 | `app.js` | The page's logic, built from `src/`. It is committed so that the site needs no build step. It loads `response.js`, `forecast.js` and `outlook.js` itself when a state view first opens (`src/extras.ts`), so the globe does not wait for them. |
 | `src/` | The TypeScript source for `app.js`. |
@@ -64,7 +67,7 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=15`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. Raise the number when a file changes (for the last three, in `src/extras.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=16`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. It loads `world_outlook.js?v=2` when a country page first opens; that number is in `src/wol.ts`. Raise the number when a file changes (for the last four, in `src/extras.ts` or `src/wol.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
 
 ## Method
 
@@ -287,6 +290,50 @@ Part of each gain needs no weather: refitting the usual odds alone (the second r
 - The 14 days start on the county's local date as Open-Meteo reports it.
 
 Rebuild `outlook.js` with `.venv/bin/python scripts/build_outlook.py [--cache DIR] [--out outlook.js]`. With its weather cache it runs in seconds; without one it downloads about 4,400 Open-Meteo calls of ERA5 weather (about 25 minutes). Then raise `outlook.js?v=` in `index.html`.
+
+## Global 2-week outlook
+
+Every country page has a **Next 14 days** section, and the globe has a **Next 14 days** view. Both give the chance that **the 14 days starting today bring more VIIRS (Suomi NPP) hotspots than the region's usual (median) fortnight for this half of the month**, 2012–2025. Where the usual count is 0, that means at least one hotspot. The country page shows each region's chance next to the model's chance with average weather, colours each region by the difference, writes a one-line summary weighted by where the country's fire usually is, and ranks the regions where the weather moves the odds most. The globe colours each country by that fire-weighted difference.
+
+**It answers "will satellites see more fire than usual here this fortnight?", not "is there a fire danger warning".** Hotspots are satellite detections, not fires, and many are farm or managed burns. Clouds and rain also hide fires from the satellite, so part of the rain effect is fewer detections, not fewer fires.
+
+**Sources.** Fire history: [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) VIIRS Suomi NPP hotspots, 2012–2025, from the yearly country files (type 0, confidence nominal or high, industrial sites removed). Training weather: [NASA POWER](https://power.larc.nasa.gov/) daily data (MERRA-2): maximum temperature, dew point and rain. Live weather: the [Open-Meteo](https://open-meteo.com/) forecast (free, no key, data CC BY 4.0): daily maximum temperature, mean dew point and rain, for the past 30 days and the next 14.
+
+**How it is built** (`scripts/build_world_outlook.py`).
+
+- **Regions.** A 2.5° grid (bands of 2.5° latitude, with fewer columns towards the poles, so cells are about 280 km across). Every cell with hotspots on at least 28 distinct days in 2012–2025 is a region: 2,104 of the 2,578 cells with any hotspot. Each region's weather is read at one point, the centre of its busiest 0.5° patch. Regions cross borders; a country page uses the regions holding at least 0.1% of its hotspots and draws the rest grey.
+- **Usual chance.** For each region and half-month, the share of past fortnights that were busier than the median, pooled over nearby days.
+- **Model.** One logistic regression for all regions, 6 numbers: the usual chance (log-odds) and four weather anomalies, each standardised against the region's own POWER climate for the day of the year: mean maximum temperature, mean daily minimum humidity and total rain over the next 14 days, and total rain over the past 30 days. Wind was tried and dropped (it added nothing).
+- **Open-Meteo on POWER's footing.** The two sources disagree. Per region, the page subtracts the average gap in temperature and dew point and scales rain, learned from 48 days both sources cover (14 August to 30 September 2026). That correction does not carry over to other months: a review re-ran it on 13–30 October and 1–12 November 2026 and the two sources' predicted chances agreed about as poorly as with no correction (correlation 0.60–0.68, against 0.65 uncorrected), and live mid-November forecasts showed a standardised humidity spread of about 2 instead of 1.
+- **Fitted for that gap.** So the shipped model is fitted on weather inputs blurred by the full gap between the sources (Gaussian error with standard deviations 2.0 for temperature, 1.85 for humidity, 1.1 and 1.35 for rain, in standardised units; that is at or above 1.25 times the measured mean uncorrected gap). Its weather effects are smaller than a model fitted on clean inputs, which is right for inputs that are this far off.
+- **"Normal".** The colours, the summaries and the rankings compare the chance with the same model's chance for average weather (every anomaly 0), so they show the weather's effect alone.
+
+**Backtest.** Each year 2012–2025 was left out in turn and predicted by a model fitted on the other years, with issue dates every 7 days in every region (1.48 million fortnights). **No test used a real forecast.** The next 14 days' weather in the test is NASA POWER, the weather that actually happened; the "with the gap" rows add simulated errors of the size above.
+
+| Brier skill against the usual odds alone | |
+| --- | --- |
+| Usual odds, recalibrated (no weather) | −0.3% |
+| Past 30 days of rain only (needs no forecast) | +1.0% |
+| Fitted on clean inputs, observed next 14 days + past 30 (the first version) | +8.9% |
+| The same, with errors the size of the gap in August–September | +5.3% |
+| The same, with errors the size of the full gap | **−2.0%**: worse than the usual odds |
+| **Fitted for the gap (the model used), observed weather** | **+6.6%** (AUC 0.646 → 0.740) |
+| **The model used, with errors the size of the full gap** | **+4.3%** (AUC 0.706) |
+
+The model used beat the usual odds in every held-out year with observed weather (+5.8% to +7.9%). With the gap added, by continent: Europe +6.1%, South America +6.0%, Asia +4.7%, North and Central America +4.4%, Oceania +3.0%, Africa +1.8%; by latitude: tropics +4.8%, subtropics +3.2%, temperate +4.8%, boreal +2.3%. Each country page quotes its own two numbers and its zone's. A country's numbers cover the regions its page forecasts, each weighted by its share of the country's hotspots, so a neighbour's fire in a shared cell counts only as much as the country's own.
+
+**Limits, plainly.**
+
+- **The live outlook may do no better than the usual odds.** +4.3% simulates a different weather source, not a forecast: forecasts add their own errors, more so in the second week, and archived 14-day forecasts were not tested. The pages call it a hint, not a warning.
+- **No outlook in 47 of 220 countries.** A country gets an outlook only where the test with the full gap beat the usual odds by at least 1% (a margin for the forecast's own errors). That leaves out deserts, small islands and parts of West Africa (Sudan, Chad, Niger, Nigeria, Cameroon, Senegal, Liberia, Saudi Arabia, Egypt, Libya, Iceland, Greenland and others). Their pages say so and fetch no forecast, and the globe draws them dark grey. Within other countries, 506 of the 2,104 regions did not beat the usual odds with the gap; they are hatched on the map and marked in the list.
+- **Weather outside the 2012–2025 record is left out.** When a region's forecast is more than 3.5 standard deviations from its usual weather for the date (about 1 in 100 fortnights in the POWER record), the model would be extrapolating. The page shows the region in grey and leaves it out of the summary and the ranking. This happens far more often live (on 15 November 2026: 23 of 186 regions in Russia, 18 of 73 in Indonesia). That may be unusual weather or a gap between the sources: a review found POWER's own 2026 data that far out in about 11% of mid-September windows, so we cannot tell which. If less than 75% of a country's fire has a usable forecast, the page says there is no reliable outlook today and does not sum up the country.
+- In the test with the gap, predictions were well calibrated (the top bin, 0.81, came true 0.79 of the time); the page still shows "over 85%" above 85%.
+- 14 tiny territories have too little fire history for a region, and 4 countries had no vegetation-fire hotspots at all once offshore and industrial detections are removed (Maldives, Marshall Islands, Monaco, South Georgia); their pages say so.
+- It does not know about fires burning now.
+
+**The daily snapshot.** `.github/workflows/world-outlook-today.yml` runs `npm run outlook-today` (`scripts/world_outlook_today.ts`) twice a day on GitHub's servers, and once whenever `world_outlook.js` or the outlook code changes on `main`. It fetches the forecast for all 2,104 regions in 9 requests of up to 250 points, 32 seconds apart (about 2,100 Open-Meteo calls, under the free limits of 600 a minute and 10,000 a day), works out every region with the page's own code (`src/wol.ts`), and commits `world_outlook_today.json` (about 40 KB). If a request still fails after retries, nothing is written and the old file stays. The globe's **Next 14 days** button appears only when that file is less than 36 hours old. Country pages read it first, so a visitor makes no weather calls. Without a fresh snapshot a country page fetches its own regions from Open-Meteo, about one call per region in parallel batches of 50 points (15 for Kenya, 116 for Brazil, 186 for Russia), kept in memory and in the browser's storage for 3 hours. You can also run `npm run outlook-today` by hand and commit the file.
+
+Rebuild `world_outlook.js` with `.venv/bin/python scripts/build_world_outlook.py` (stages `extract`, `regions`, `fetch`, `overlap`, `model`; see the script). The NASA POWER download takes about 22 minutes and the model stage about 12. The Open-Meteo overlap days used for the correction can no longer be fetched, so keep the build's cache.
 
 ## World fire data
 
