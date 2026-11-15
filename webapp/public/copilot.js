@@ -247,10 +247,51 @@ const Copilot = (() => {
     if (opened && innerWidth > 900) input.focus();
   }
 
+  /* ------------------------------------------------- dragging the window */
+  // Drag the header to move the chat window anywhere over the map; double-click the header to put it back.
+  let pos = null;                                                // { left, top } in px within the map area, or null for the default spot
+  try { pos = JSON.parse(sessionStorage.getItem("cp-pos")) || null; } catch { pos = null; }
+  function applyPos() {
+    const st = root.style;
+    if (!pos || root.classList.contains("wide") || innerWidth <= 900) { st.left = st.top = st.bottom = st.transform = st.maxHeight = ""; root.classList.remove("moved"); return; }
+    const box = root.parentElement.getBoundingClientRect(), w = root.offsetWidth;
+    pos.left = Math.max(8, Math.min(box.width - w - 8, pos.left)); pos.top = Math.max(8, Math.min(box.height - 160, pos.top));
+    st.left = pos.left + "px"; st.top = pos.top + "px"; st.bottom = "auto"; st.transform = "none";
+    st.maxHeight = Math.max(240, box.height - pos.top - 16) + "px";
+    root.classList.add("moved");
+  }
+  function initDrag() {
+    const head = root.querySelector(".cp-head");
+    let start = null;
+    head.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || e.target.closest("button") || root.classList.contains("wide") || innerWidth <= 900) return;
+      const r = root.getBoundingClientRect(), box = root.parentElement.getBoundingClientRect();
+      start = { x: e.clientX, y: e.clientY, left: r.left - box.left, top: r.top - box.top };
+      head.setPointerCapture(e.pointerId); root.classList.add("dragging"); e.preventDefault();
+    });
+    head.addEventListener("pointermove", e => {
+      if (!start) return;
+      pos = { left: start.left + e.clientX - start.x, top: start.top + e.clientY - start.y };
+      applyPos();
+    });
+    const end = () => {
+      if (!start) return;
+      start = null; root.classList.remove("dragging");
+      try { sessionStorage.setItem("cp-pos", JSON.stringify(pos)); } catch { /* fine */ }
+    };
+    head.addEventListener("pointerup", end); head.addEventListener("pointercancel", end);
+    head.addEventListener("dblclick", e => {
+      if (e.target.closest("button")) return;
+      pos = null; try { sessionStorage.removeItem("cp-pos"); } catch { /* fine */ }
+      applyPos();
+    });
+    window.addEventListener("resize", applyPos);
+  }
+
   /* ---------------------------------------------------------- big view */
   let backdrop;
   function setWide(on) {
-    root.classList.toggle("wide", on); backdrop.hidden = !on;
+    root.classList.toggle("wide", on); backdrop.hidden = !on; applyPos();
     const b = root.querySelector("#cpWide"); b.setAttribute("aria-pressed", on); b.title = on ? "Back to the side" : "Expand"; b.ariaLabel = on ? "Shrink the copilot" : "Expand the copilot";
     scroll();
   }
@@ -324,7 +365,7 @@ const Copilot = (() => {
   /* --------------------------------------------------------------- window */
   function open() {
     if (!root) return;
-    opened = true; root.classList.add("open", "anim"); root.addEventListener("animationend", () => root.classList.remove("anim"), { once: true }); document.getElementById("cpLaunch").hidden = true; document.getElementById("mapwrap").classList.add("cp-open");
+    opened = true; root.classList.add("open"); applyPos(); if (!pos) root.classList.add("anim"); root.addEventListener("animationend", () => root.classList.remove("anim"), { once: true }); document.getElementById("cpLaunch").hidden = true; document.getElementById("mapwrap").classList.add("cp-open");
     connect().catch(() => {});
     if (innerWidth > 900) setTimeout(() => input.focus(), 150);
   }
@@ -359,6 +400,7 @@ const Copilot = (() => {
     log = root.querySelector("#cpLog"); input = root.querySelector("#cpInput"); sendBtn = root.querySelector("#cpSend");
     log.appendChild(welcome());
     root.querySelector("#cpClose").onclick = () => { setWide(false); voiceStop(); close(); };
+    initDrag();
     root.querySelector("#cpWide").onclick = () => setWide(!root.classList.contains("wide"));
     root.querySelector("#cpMic").onclick = () => voice ? voiceStop() : voiceStart();
     root.querySelector("#cpVEnd").onclick = voiceStop;

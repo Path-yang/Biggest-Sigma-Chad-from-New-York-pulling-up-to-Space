@@ -14,6 +14,10 @@
 #copilot.open { display: flex; }
 #copilot.open.anim { animation: cp-in .18s ease-out; }
 @keyframes cp-in { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.cp-head { cursor: grab; user-select: none; touch-action: none; }
+#copilot.dragging .cp-head { cursor: grabbing; }
+#copilot.dragging { box-shadow: 0 24px 70px #000e; }
+#copilot.wide .cp-head { cursor: default; }
 .cp-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line); }
 .cp-title { flex: 1; min-width: 0; line-height: 1.25; }
 .cp-title b { display: block; font-size: 15px; }
