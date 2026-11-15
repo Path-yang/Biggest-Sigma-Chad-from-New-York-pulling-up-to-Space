@@ -9,13 +9,13 @@ import { WORLD } from "./world";
 /** years the index totals cover (2001–2025) */
 export const FIRE_YEARS = 25;
 const R_KM = 6371.0088;
-/** low to high: faint ember, red, orange, pale yellow; the alpha rises with it so quiet countries stay see-through */
+/** low to high: pale yellow, orange, red, deep maroon; darker and more opaque means more fire */
 const STOPS: { c: RGB; a: number }[] = [
-  { c: [150, 30, 20], a: 0.16 },
-  { c: [220, 50, 26], a: 0.32 },
-  { c: [255, 112, 32], a: 0.46 },
-  { c: [255, 190, 64], a: 0.58 },
-  { c: [255, 240, 170], a: 0.7 },
+  { c: [255, 232, 150], a: 0.18 },
+  { c: [255, 180, 60], a: 0.34 },
+  { c: [244, 110, 30], a: 0.5 },
+  { c: [196, 42, 20], a: 0.66 },
+  { c: [110, 10, 8], a: 0.82 },
 ];
 export function fireColour(t: number): { c: RGB; a: number } {
   t = Math.max(0, Math.min(1, t)) * (STOPS.length - 1);
