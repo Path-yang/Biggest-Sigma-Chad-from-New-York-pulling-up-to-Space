@@ -20,7 +20,7 @@ const TOOL = {
 export async function voiceSession(request, env) {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
   const origin = request.headers.get("origin") || "";
-  if (origin && !/^https:\/\/nasa\.ojassurana\.com$|^http:\/\/localhost(:\d+)?$/.test(origin)) return new Response("Forbidden", { status: 403 });
+  if (origin && !/^https:\/\/(www\.)?hotspotters\.compare$|^http:\/\/localhost(:\d+)?$/.test(origin)) return new Response("Forbidden", { status: 403 });
   if (!env.OPENAI_API_KEY) return Response.json({ error: "Voice is not configured." }, { status: 503 });
   const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",

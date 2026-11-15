@@ -900,7 +900,7 @@ function dlPng() {
     if (yr && yr.n) c.fillText(fmt(yr.sum) + (yr.complete ? "" : "*"), W - 20, yy + ch / 2 + 4);
   });
   c.textAlign = "left"; c.fillStyle = "#98a0b3"; c.font = "12px system-ui, sans-serif";
-  c.fillText("* incomplete month or year. A hotspot is a satellite pixel flagged as burning, not a count of fires. nasa.ojassurana.com", 20, H - 20);
+  c.fillText("* incomplete month or year. A hotspot is a satellite pixel flagged as burning, not a count of fires. hotspotters.compare", 20, H - 20);
   cv.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `hotspotters_${slug()}.png`; a.click(); });
 }
 

@@ -20,5 +20,8 @@
     "GEOCODER_URL": "https://nominatim.openstreetmap.org/search",
     "GEOCODER_USER_AGENT": "HotSpotters/0.1 (NASA Space Apps hackathon prototype)"
   },
-  "routes": [{ "pattern": "nasa.ojassurana.com", "custom_domain": true }]
+  "routes": [
+    { "pattern": "hotspotters.compare", "custom_domain": true },
+    { "pattern": "www.hotspotters.compare", "custom_domain": true }
+  ]
 }

@@ -5,7 +5,7 @@
 
 const Copilot = (() => {
   const TONES = ["#ff8a3d", "#5aa9e6", "#c9a3ff", "#7fd1ae"], WATCH = { high: "#ff5a3d", elevated: "#ffb347" };
-  const HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "nasa.ojassurana.com" : location.host;
+  const HOST = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "hotspotters.compare" : location.host;
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
   const num = n => Math.round(n).toLocaleString("en-US");

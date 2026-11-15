@@ -1,6 +1,6 @@
 // Ask the deployed copilot one question and print what comes back.
 const q = process.argv[2], ctx = process.argv[3] ? JSON.parse(process.argv[3]) : {};
-const ws = new WebSocket(`wss://nasa.ojassurana.com/agents/fire-copilot/test-${Date.now()}`);
+const ws = new WebSocket(`wss://hotspotters.compare/agents/fire-copilot/test-${Date.now()}`);
 const t0 = Date.now(); let text = "";
 ws.onopen = () => {};
 ws.onmessage = e => {
