@@ -38,7 +38,7 @@ export interface MapData {
 
 /** the [lat_index, lon_index] of every cell. Files built before the fix of 14 November 2026 wrote a cell west of
     Greenwich as lat - 1, lon + 100000; undo that if it ever arrives. Correct files pass unchanged. */
-function cellIndexes(d: CountrySummary) {
+export function cellIndexes(d: CountrySummary) {
   const n = d.cells.length / 2,
     la = new Int32Array(n),
     lo = new Int32Array(n),
@@ -84,6 +84,14 @@ function pad(b: number[]): [number, number, number, number] {
   return [b[0] - px, Math.max(-85, b[1] - py), b[2] + px, Math.min(85, b[3] + py)];
 }
 
+/** the centre longitude everything is unwrapped around: the label point, else the median square */
+export function centreLon(d: CountrySummary, lo = cellIndexes(d).lo) {
+  const shape = shapeOf(d.country);
+  if (shape) return shape.c[0];
+  if (!lo.length) return (d.bbox[0] + d.bbox[2]) / 2;
+  const ls = Array.from(lo, v => v * d.cell).sort((a, b) => a - b);
+  return ls[Math.floor(ls.length / 2)];
+}
 export function mapData(d: CountrySummary, yFrom: number, yTo: number): MapData {
   const shape = shapeOf(d.country),
     cell = d.cell,
@@ -100,12 +108,7 @@ export function mapData(d: CountrySummary, yFrom: number, yTo: number): MapData 
     modis[c] += d.cell_rows[p + 3];
     viirs[c] += d.cell_rows[p + 4];
   }
-  /* the centre longitude everything is unwrapped around: the label point, else the median square */
-  let lon0 = shape ? shape.c[0] : (d.bbox[0] + d.bbox[2]) / 2;
-  if (!shape && nc) {
-    const ls = Array.from(lo, v => v * cell).sort((a, b) => a - b);
-    lon0 = ls[Math.floor(ls.length / 2)];
-  }
+  const lon0 = centreLon(d, lo);
   let x0 = Infinity,
     x1 = -Infinity,
     y0 = Infinity,

@@ -77,6 +77,12 @@ function spread(items: EndLabel[], ymax: number, H: number, mT: number, mB: numb
     out = items.map(it => ({ ...it, py: px(it.v), dy: 0 })).sort((a, b) => a.py - b.py);
   for (let i = 1; i < out.length; i++)
     if (out[i].py + out[i].dy - (out[i - 1].py + out[i - 1].dy) < 15) out[i].dy = out[i - 1].py + out[i - 1].dy + 15 - out[i].py;
+  /* pushed below the plot, the lowest label would sit on the month or year ticks: lift the stack back up */
+  const floor = H - mB - 6;
+  for (let i = out.length - 1; i >= 0; i--) {
+    const lim = i === out.length - 1 ? floor : out[i + 1].py + out[i + 1].dy - 15;
+    if (out[i].py + out[i].dy > lim) out[i].dy = lim - out[i].py;
+  }
   return out;
 }
 function endLabels(Plot: any, items: ReturnType<typeof spread>, x: number) {
@@ -703,5 +709,86 @@ export function sensorLines(el: HTMLElement, xs: number[], per: SensorLine[]) {
     }),
   );
   fig.setAttribute("aria-label", "Raw detections per year from each satellite");
+  mount(el, fig);
+}
+
+/* ---------- the 2026-2027 forecast, by calendar month ---------- */
+export interface ForecastMonth {
+  m: number;
+  mean: number;
+  lo: number;
+  med: number;
+  hi: number;
+  /** the median of this calendar month, 2001-2025 */
+  typ: number;
+  pAny: number;
+  pAbove: number;
+  /** what 2026 brought, where the record has it; `part` marks a month that is not over */
+  obs?: number | null;
+  part?: string;
+}
+/** the 80% range as a pale band, the forecast's middle outcome in ink, and the typical month of 2001-2025 dashed */
+/** an expected count as whole hotspots: "fewer than 1", never "0.3" */
+const whole = (v: number) => (v === 0 ? "0" : v < 1 ? "fewer than 1" : fmt(Math.round(v)));
+export function forecastMonths(el: HTMLElement, rows: ForecastMonth[], year: number) {
+  const Plot = Pl(),
+    W = el.clientWidth || 600,
+    ph = phone(W),
+    H = ph ? 240 : 280,
+    mT = 16,
+    mB = 30,
+    /* a month that is not over would read as a quiet month: it is in the tooltip only */
+    seen = rows.filter(r => r.obs != null && !r.part),
+    ymax = yTop(Math.max(1e-9, ...rows.flatMap(r => [r.hi, r.med, r.typ, r.part ? 0 : (r.obs ?? 0)]))),
+    pc = (p: number) => (p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%"),
+    labs = spread(
+      [
+        { v: rows[11].typ, text: "Typical", fill: TYPICAL },
+        { v: rows[11].med, text: seen.length ? "Forecast" : String(year), fill: INK },
+      ],
+      ymax,
+      H,
+      mT,
+      mB,
+    );
+  const fig = Plot.plot(
+    base(W, H, {
+      marginTop: mT,
+      marginBottom: mB,
+      marginLeft: 44,
+      marginRight: 72,
+      x: {
+        domain: [0, 11],
+        ticks: MON.map((_, m) => m).filter(m => !ph || m % 2 === 0),
+        tickFormat: (m: number) => MON[m],
+        label: null,
+        tickSize: 0,
+      },
+      y: yAxis(ymax),
+      marks: [
+        Plot.areaY(rows, { x: "m", y1: "lo", y2: "hi", fill: "#e0dace" }),
+        Plot.lineY(rows, { x: "m", y: "typ", stroke: TYPICAL, strokeWidth: 2, strokeDasharray: "4,3" }),
+        Plot.lineY(rows, { x: "m", y: "med", stroke: INK, strokeWidth: 2.2 }),
+        Plot.dot(rows, { x: "m", y: "med", fill: INK, r: 2.4 }),
+        Plot.dot(seen, { x: "m", y: "obs", fill: RED, r: 3.6, stroke: PAPER, strokeWidth: 1 }),
+        ...endLabels(Plot, labs, 11),
+        Plot.ruleX(rows, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
+        Plot.tip(
+          rows,
+          Plot.pointerX({
+            x: "m",
+            y: "med",
+            ...TIP,
+            title: (r: ForecastMonth) =>
+              `${MONL[r.m]} ${year}\nMiddle outcome: ${whole(r.med)} hotspots\n8 in 10 between ${whole(r.lo)} and ${whole(r.hi)}\nExpected (mean): ${whole(r.mean)}` +
+              `\nTypical ${MONL[r.m]}, 2001–2025: ${whole(r.typ)}\nChance of more than typical: ${pc(r.pAbove)}` +
+              (r.pAny < 0.995 ? `\nChance of any hotspot: ${pc(r.pAny)}` : "") +
+              (r.obs != null ? `\nSeen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.obs < r.lo || r.obs > r.hi ? ", outside the range" : ", inside the range"}` : ""),
+          }),
+        ),
+      ],
+    }),
+  );
+  fig.setAttribute("aria-label", `Forecast hotspots by month in ${year}, with the 80% range and the typical month of 2001 to 2025`);
   mount(el, fig);
 }
