@@ -148,6 +148,8 @@ function monthRun(ms: number[]) {
 }
 
 export const countryOpen = () => CV.k !== null;
+/** the FIRMS name of the country on screen, or null */
+export const countryKey = () => CV.k || null;
 export function openCountry(k: string) {
   if (CV.k === k && CV.d) return;
   CV.k = k;

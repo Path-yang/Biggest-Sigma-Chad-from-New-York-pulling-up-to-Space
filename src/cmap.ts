@@ -492,3 +492,121 @@ function addLayers(map: any, d: CountrySummary, live: Live) {
 }
 /** the map needs telling when its box changes size while it was hidden */
 export const resizeMap = () => L?.map?.resize();
+
+/* ---------- what the fire copilot (copilot.ts) reads from and draws on the map ---------- */
+export type Box = [number, number, number, number];
+export type MapView = { lat: number; lon: number; zoom: number; bbox: Box };
+/** a shape the copilot puts on the map: a GeoJSON polygon, or a box drawn as a dashed frame */
+export type MapMark = { name: string; tone: string; geometry: { type: string; coordinates: unknown } | null; box: Box | null };
+
+const r2 = (x: number) => Math.round(x * 100) / 100;
+/** the FIRMS name of the country on the map, once the map can be used */
+export const mapCountry = () => (L && L.ready ? L.k : null);
+/** where the map is looking, in plain -180 to 180 longitudes, or null before the map is ready */
+export function mapView(): MapView | null {
+  if (!L || !L.ready) return null;
+  const m = L.map,
+    c = m.getCenter(),
+    b = m.getBounds(),
+    shift = near(c.lng, 0) - c.lng;
+  return {
+    lat: r2(c.lat),
+    lon: r2(c.lng + shift),
+    zoom: r2(m.getZoom()),
+    bbox: [
+      r2(Math.max(-180, b.getWest() + shift)),
+      r2(Math.max(-85, b.getSouth())),
+      r2(Math.min(180, b.getEast() + shift)),
+      r2(Math.min(85, b.getNorth())),
+    ],
+  };
+}
+/** the longitude the map unwraps around, so outside shapes land on the same copy of the world */
+const lon0 = () => (L ? (shapeOf(L.k)?.c[0] ?? 0) : 0);
+const boxNear = (b: Box): Box => {
+  const off = near((b[0] + b[2]) / 2, lon0()) - (b[0] + b[2]) / 2;
+  return [b[0] + off, b[1], b[2] + off, b[3]];
+};
+function shiftCoords(c: unknown, off: number): unknown {
+  if (!Array.isArray(c)) return c;
+  if (typeof c[0] === "number" && typeof c[1] === "number") return [c[0] + off, c[1], ...c.slice(2)];
+  return c.map(x => shiftCoords(x, off));
+}
+/** frame a box; pad keeps it clear of anything floating over the map */
+export function mapFocus(b: Box, pad: { right: number; bottom: number }, maxZoom = 9) {
+  if (!L || !L.ready) return false;
+  const nb = boxNear(b),
+    host = L.map.getContainer() as HTMLElement,
+    room = (n: number, size: number) => Math.max(16, Math.min(n, size - 140));
+  L.map.fitBounds([nb.slice(0, 2), nb.slice(2)], {
+    padding: { top: 24, left: 24, right: room(pad.right + 24, host.clientWidth), bottom: room(pad.bottom + 24, host.clientHeight) },
+    duration: 900,
+    maxZoom,
+  });
+  return true;
+}
+/** draw the copilot's shapes over the squares (an empty list clears them) */
+export function mapMarks(marks: MapMark[]) {
+  if (!L || !L.ready) return false;
+  const map = L.map,
+    off = (b: Box) => near((b[0] + b[2]) / 2, lon0()) - (b[0] + b[2]) / 2;
+  const features = marks.flatMap(mk => {
+    if (mk.geometry && mk.box) {
+      const o = off(mk.box);
+      return [
+        {
+          type: "Feature",
+          properties: { name: mk.name, tone: mk.tone, frame: 0 },
+          geometry: { type: mk.geometry.type, coordinates: shiftCoords(mk.geometry.coordinates, o) },
+        },
+      ];
+    }
+    if (mk.geometry) return [{ type: "Feature", properties: { name: mk.name, tone: mk.tone, frame: 0 }, geometry: mk.geometry }];
+    if (!mk.box) return [];
+    const [w, s, e, n] = boxNear(mk.box);
+    return [
+      {
+        type: "Feature",
+        properties: { name: mk.name, tone: mk.tone, frame: 1 },
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [w, s],
+            [e, s],
+            [e, n],
+            [w, n],
+            [w, s],
+          ],
+        },
+      },
+    ];
+  });
+  const data = { type: "FeatureCollection", features };
+  if (map.getSource("ask")) {
+    map.getSource("ask").setData(data);
+    return true;
+  }
+  if (!features.length) return true;
+  const labels = map.getLayer("water_name_point_label") ? "water_name_point_label" : undefined;
+  map.addSource("ask", { type: "geojson", data });
+  const isFrame = (v: number) => ["==", ["get", "frame"], v];
+  map.addLayer(
+    { id: "ask-fill", type: "fill", source: "ask", filter: isFrame(0), paint: { "fill-color": ["get", "tone"], "fill-opacity": 0.1 } },
+    labels,
+  );
+  map.addLayer(
+    { id: "ask-line", type: "line", source: "ask", filter: isFrame(0), paint: { "line-color": ["get", "tone"], "line-width": 2.2 } },
+    labels,
+  );
+  map.addLayer(
+    {
+      id: "ask-frame",
+      type: "line",
+      source: "ask",
+      filter: isFrame(1),
+      paint: { "line-color": ["get", "tone"], "line-width": 2, "line-dasharray": [3, 2] },
+    },
+    labels,
+  );
+  return true;
+}

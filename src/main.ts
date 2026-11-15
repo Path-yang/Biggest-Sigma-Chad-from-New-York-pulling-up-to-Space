@@ -16,6 +16,7 @@ import { WORLD } from "./world";
 import { respEvents } from "./respui";
 import { oddsEvents } from "./fcui";
 import { olEvents, olStart } from "./olui";
+import { copilotInit } from "./copilot";
 
 /** a place the hero's search can open: a country by its FIRMS name, or one of the two detailed states */
 type Findable = { name: string; k: string } | { name: string; st: StateCode };
@@ -292,6 +293,7 @@ function init() {
   respEvents();
   oddsEvents();
   olEvents();
+  copilotInit();
   let rt: number | undefined;
   addEventListener("resize", () => {
     clearTimeout(rt);
