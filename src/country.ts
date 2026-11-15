@@ -10,6 +10,8 @@ import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
 import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
 import { areasReset, areasStart } from "./areas";
+import { fcClose, fcEvents, fcOpen, fcResize, fcStart } from "./cfore";
+import { stClose, stEvents, stOpen, stStart } from "./cstn";
 
 /* =====================================================================
    COUNTRY VIEW: one country's summary, fetched from Hugging Face when the reader opens it, laid out as a
@@ -149,6 +151,8 @@ function monthRun(ms: number[]) {
 }
 
 export const countryOpen = () => CV.k !== null;
+/** the FIRMS name of the country on screen, or null */
+export const countryKey = () => CV.k || null;
 export function openCountry(k: string) {
   if (CV.k === k && CV.d) return;
   areasReset();
@@ -162,6 +166,8 @@ export function openCountry(k: string) {
   $("cName").textContent = nameOf(k);
   $("cCrumb").textContent = "Fire, month by month";
   requestAnimationFrame(() => el.classList.add("in"));
+  fcOpen(k);
+  stOpen(k);
   load();
   olOpen(k);
 }
@@ -171,6 +177,8 @@ export function closeCountry() {
   CV.mapKey = "";
   areasReset();
   olClose();
+  fcClose();
+  stClose();
   destroyMap();
   const el = $("country");
   el.classList.remove("in");
@@ -182,6 +190,8 @@ export function countryMissing(slug: string) {
   CV.d = CV.R = null;
   areasReset();
   olClose();
+  fcClose();
+  stClose();
   destroyMap();
   loadFonts();
   const el = $("country");
@@ -246,6 +256,9 @@ function start(d: CountrySummary) {
   $("cName").textContent = d.name;
   renderCountry();
   areasStart(d);
+  /* the forecast and the fire stations are fetched only now, so they never compete with the summary */
+  fcStart(d);
+  stStart(d);
 }
 
 const FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
@@ -812,6 +825,8 @@ export function countryEvents() {
   );
   $("cDl").onclick = csv;
   olEventsWorld();
+  fcEvents();
+  stEvents();
   /* the charts are drawn to their box's width; redraw them when it changes */
   let rt: number | undefined,
     lastW = 0;
@@ -822,6 +837,7 @@ export function countryEvents() {
       if (!CV.d || $("country").hidden || w === lastW) return;
       lastW = w;
       drawCharts();
+      fcResize();
     }, 150);
   });
 }
