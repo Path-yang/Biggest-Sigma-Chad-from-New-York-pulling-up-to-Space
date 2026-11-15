@@ -131,7 +131,8 @@ export function calendar(top: HTMLElement, bottom: HTMLElement, R: SeriesAnalysi
     mL = ph ? 38 : 44,
     mR = ph ? 44 : 64,
     color = calendarScale(R, o.mode),
-    totals = new Map(R.years.map(y => [y.y, y.h]));
+    totals = new Map(R.years.map(y => [y.y, y.h])),
+    partYears = new Set(R.years.filter(y => y.part).map(y => y.y));
   const part = (el: HTMLElement, rows: SeriesRow[], head: boolean) => {
     if (!rows.length) {
       el.replaceChildren();
@@ -151,10 +152,15 @@ export function calendar(top: HTMLElement, bottom: HTMLElement, R: SeriesAnalysi
             { x: "m", y: "y", fill: "h", inset: 1 },
           )
         : null,
+      /* the month still under way: hatched over its colour, with a dashed edge */
+      Plot.cell(
+        rows.filter(r => r.part),
+        { x: "m", y: "y", fill: "url(#cpPartHatch)", stroke: INK2, strokeWidth: 1, strokeDasharray: "2,2", inset: 1.5 },
+      ),
       f ? Plot.cell([f], { x: "m", y: "y", fill: "none", stroke: INK, strokeWidth: 2, inset: 0 }) : null,
       Plot.text(years, {
         y: (d: number) => d,
-        text: (d: number) => total(totals.get(d) ?? 0),
+        text: (d: number) => total(totals.get(d) ?? 0) + (partYears.has(d) ? "*" : ""),
         frameAnchor: "right",
         dx: 10,
         textAnchor: "start",
@@ -195,6 +201,11 @@ export function calendar(top: HTMLElement, bottom: HTMLElement, R: SeriesAnalysi
       }),
     );
     fig.setAttribute("aria-label", `Hotspots per month, ${years[years.length - 1]} to ${years[0]}`);
+    if (rows.some(r => r.part))
+      fig.insertAdjacentHTML(
+        "afterbegin",
+        `<defs><pattern id="cpPartHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="5" fill="${INK}" fill-opacity=".28"/></pattern></defs>`,
+      );
     mount<SeriesRow>(el, fig, o.click);
   };
   part(
@@ -218,13 +229,15 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
     mT = 16,
     mB = 30,
     st = R.stats.map((s, m) => {
-      const v = R.ser.filter(r => r.m === m).map(r => r.h);
-      return { m, ...s, min: Math.min(...v), max: Math.max(...v) };
+      const v = R.ser.filter(r => r.m === m && !r.part).map(r => r.h);
+      return { m, ...s, min: v.length ? Math.min(...v) : 0, max: v.length ? Math.max(...v) : 0 };
     }),
-    yr = R.ser.filter(r => r.y === year),
+    /* the chosen year's complete months: a month under way is not set against whole months */
+    yr = R.ser.filter(r => r.y === year && !r.part),
+    yEnd = yr.length ? yr[yr.length - 1] : null,
     ymax = yTop(Math.max(1e-9, ...st.map(s => s.max))),
     labs = spread(
-      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...(yr.length ? [{ v: yr[11].h, text: String(year), fill: RED }] : [])],
+      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...(yEnd && yEnd.m === 11 ? [{ v: yEnd.h, text: String(year), fill: RED }] : [])],
       ymax,
       H,
       mT,
@@ -237,7 +250,7 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
         b = Math.min(11, a + 1);
       return f(a) + (f(b) - f(a)) * (k - a);
     },
-    lines = (k: number) => [at(m => st[m].med, k), ...(yr.length ? [at(m => yr[m].h, k)] : [])],
+    lines = (k: number) => [at(m => st[m].med, k), ...(yr.length ? [at(m => yr[Math.min(m, yr.length - 1)].h, k)] : [])],
     monthPx = (W - 44 - 64) / 11,
     /* the spot inside a band, over the label's width, furthest from the band's edges and from both lines */
     place = (lo: (m: number) => number, hi: (m: number) => number, t: string) => {
@@ -303,6 +316,20 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
         yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: RED, strokeWidth: 2.5 }) : null,
         yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: RED, r: 2.6 }) : null,
         ...endLabels(Plot, labs, 11),
+        /* a year that stops early is named at its last month, above the line */
+        yEnd && yEnd.m < 11
+          ? Plot.text([yEnd], {
+              x: "m",
+              y: "h",
+              text: () => `${year} to ${MON[yEnd.m]}`,
+              dy: -11,
+              fill: RED,
+              fontWeight: 600,
+              stroke: PAPER,
+              strokeWidth: 3,
+              paintOrder: "stroke",
+            })
+          : null,
         Plot.ruleX(st, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
         Plot.tip(
           st,
@@ -312,7 +339,7 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
             ...TIP,
             title: (s: (typeof st)[number]) =>
               `${MONL[s.m]}\nTypical (median): ${fmt(s.med)} hotspots\nMiddle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}\nRange: ${fmt(s.min)} to ${fmt(s.max)}` +
-              (yr.length ? `\n${year}: ${fmt(yr[s.m].h)}` : "") +
+              (yr[s.m] ? `\n${year}: ${fmt(yr[s.m].h)}` : yr.length ? `\n${year}: not over yet` : "") +
               `\nClick to test ${MONL[s.m]} ${year} at the top`,
           }),
         ),
@@ -369,7 +396,26 @@ export function annual(
       },
       y: yAxis(ymax),
       marks: [
-        Plot.barY(ys, { x: "y", y: "h", fill }),
+        Plot.barY(
+          ys.filter(y => !y.part),
+          { x: "y", y: "h", fill },
+        ),
+        /* the year under way: its total so far, as a dashed outline */
+        Plot.barY(
+          ys.filter(y => y.part),
+          {
+            x: "y",
+            y: "h",
+            fill: (y: YearRow) => (y.y === o.focusYear ? "#f2c9cf" : "#efebe3"),
+            stroke: (y: YearRow) => (y.y === o.focusYear ? RED : INK2),
+            strokeWidth: 1.2,
+            strokeDasharray: "3,2",
+          },
+        ),
+        Plot.text(
+          ys.filter(y => y.part),
+          { x: "y", y: "h", text: () => "so far", dy: -8, fill: INK2, fontSize: 11, stroke: PAPER, strokeWidth: 3, paintOrder: "stroke" },
+        ),
         Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK, strokeOpacity: 0.45 }),
         R.mean > 0 ? Plot.ruleY([R.mean], { stroke: INK, strokeDasharray: "3,3", strokeOpacity: 0.8 }) : null,
         R.mean > 0
@@ -405,22 +451,29 @@ export function annual(
 }
 
 /* ---------- running total through the year, one line per year ---------- */
-export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number) {
+/** part.frac: the share of the partial month that has data (14/30): its point sits that far into the month, so the
+ * line of the year under way stops at the date it reaches, not at the end of the month; label: "14 Nov" */
+export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number, part: { frac: number; label: string } | null = null) {
   const Plot = Pl(),
     W = el.clientWidth || 600,
     ph = phone(W),
     H = ph ? 240 : 280,
     mT = 16,
     mB = 30,
-    rows: { y: number; m: number; c: number }[] = [];
+    rows: { y: number; m: number; x: number; c: number }[] = [];
+  const partRows = new Set<string>();
   for (const yr of R.years) {
     let c = 0;
-    for (const r of R.ser.filter(r => r.y === yr.y)) rows.push({ y: yr.y, m: r.m, c: (c += r.h) });
+    for (const r of R.ser.filter(r => r.y === yr.y)) {
+      rows.push({ y: yr.y, m: r.m, x: r.part && part ? r.m - 1 + part.frac : r.m, c: (c += r.h) });
+      if (r.part) partRows.add(yr.y + "|" + r.m);
+    }
   }
   const worst = R.ranked[0]?.y,
     has = rows.some(r => r.y === year),
     ymax = yTop(Math.max(1e-9, ...rows.map(r => r.c))),
-    endOf = (y: number) => rows.find(r => r.y === y && r.m === 11)?.c ?? 0,
+    endOf = (y: number) => rows.filter(r => r.y === y).pop()?.c ?? 0,
+    yearEnd = (y: number) => rows.filter(r => r.y === y).pop()?.x ?? 11,
     labs = spread(
       [
         ...(has ? [{ v: endOf(year), text: String(year), fill: RED }] : []),
@@ -448,26 +501,48 @@ export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number) {
       marks: [
         Plot.lineY(
           rows.filter(r => r.y !== year && r.y !== worst),
-          { x: "m", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 },
+          { x: "x", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 },
         ),
         worst !== undefined && worst !== year
           ? Plot.lineY(
               rows.filter(r => r.y === worst),
-              { x: "m", y: "c", stroke: INK, strokeWidth: 1.5 },
+              { x: "x", y: "c", stroke: INK, strokeWidth: 1.5 },
             )
           : null,
         Plot.lineY(
           rows.filter(r => r.y === year),
-          { x: "m", y: "c", stroke: RED, strokeWidth: 2.5 },
+          { x: "x", y: "c", stroke: RED, strokeWidth: 2.5 },
         ),
-        ...endLabels(Plot, labs, 11),
+        ...endLabels(
+          Plot,
+          labs.filter(l => yearEnd(+l.text) === 11),
+          11,
+        ),
+        /* a year under way is named where its line stops */
+        ...labs
+          .filter(l => yearEnd(+l.text) < 11)
+          .map(l =>
+            Plot.text([l], {
+              x: () => yearEnd(+l.text),
+              y: () => l.v,
+              text: () => l.text + " so far",
+              dx: 6,
+              textAnchor: "start",
+              fill: l.fill,
+              fontWeight: 600,
+              stroke: PAPER,
+              strokeWidth: 3,
+              paintOrder: "stroke",
+            }),
+          ),
         Plot.tip(
           rows,
           Plot.pointer({
-            x: "m",
+            x: "x",
             y: "c",
             ...TIP,
-            title: (r: (typeof rows)[number]) => `${r.y}, January to ${MONL[r.m]}\n${fmt(r.c)} hotspots so far`,
+            title: (r: (typeof rows)[number]) =>
+              `${r.y}, ${partRows.has(r.y + "|" + r.m) ? `1 January to ${part ? part.label : MONL[r.m] + " (month not over)"}` : `January to ${MONL[r.m]}`}\n${fmt(r.c)} hotspots so far`,
           }),
         ),
       ],
@@ -485,7 +560,8 @@ export function seam(el: HTMLElement, R: SeriesAnalysis, viirsYear: number) {
     H = ph ? 240 : 280,
     mT = 22,
     mB = 30,
-    ys = R.years,
+    /* whole years only: a year under way would look like a drop */
+    ys = R.years.filter(y => !y.part).length ? R.years.filter(y => !y.part) : R.years,
     last = ys[ys.length - 1],
     band = ys.filter(y => y.y <= viirsYear),
     ymax = yTop(Math.max(1e-9, ...ys.map(y => Math.max(y.h, y.naive)), ...band.map(y => y.hi))),

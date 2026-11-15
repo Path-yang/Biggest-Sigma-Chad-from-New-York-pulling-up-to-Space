@@ -1,5 +1,5 @@
 import type { Bounds, HexState, Ring, View, ViewTarget } from "./types";
-import { D, MON, MONL, NBR, NM, Y0 } from "./data";
+import { D, FULL_I, FULL_Y1, LAST_WORDS, MON, MONL, NBR, NM, Y0, Y1, isPartYear, span } from "./data";
 import { S } from "./state";
 import { $, ease, fmt, reduced, short } from "./util";
 import { LUT, colT, pop } from "./color";
@@ -37,6 +37,12 @@ export const V: View = {
 };
 /** the chance-of-fire layer on screen, with its colour scale */
 let CH: Chance | null = null;
+/** the years the 2 km hexagons' year bits cover, from 2012; the last one may be partial */
+const FINE_YEARS = Y1 - 2012 + 1,
+  FINE_SPAN = isPartYear(Y1) ? `2012 to ${LAST_WORDS}` : `2012–${Y1}`,
+  /* the chance shading counts complete years only, like the hexagon layer (2012 to the last complete year) */
+  FINE_FULL = FULL_Y1 - 2012 + 1,
+  FINE_FULL_BITS = (1 << FINE_FULL) - 1;
 /** 0..1 on the colour scale for a chance */
 const chT = (v: number) => (CH ? Math.min(1, Math.pow(v / CH.max, CH.pow)) : v);
 /** 2 km detail exists only for past hotspots and past odds of any fire */
@@ -133,9 +139,9 @@ export function selBounds(): Bounds {
 export const showLabel = () => {
   const sh = S.show;
   return sh.t === "all"
-    ? `All hotspots, ${S.yFrom} to ${S.yTo}`
+    ? `All hotspots, ${span(S.yFrom, S.yTo)}`
     : sh.t === "year"
-      ? `Hotspots in ${sh.y}`
+      ? `Hotspots in ${sh.y}${isPartYear(sh.y) ? ` so far, to ${LAST_WORDS}` : ""}`
       : sh.t === "cmonth"
         ? `A typical ${MONL[sh.m]}`
         : `${MONL[sh.m]} ${sh.y}`;
@@ -162,8 +168,10 @@ export function mapValues() {
       if (sh.t === "all") for (let i = i0; i < i1; i++) a += hx.H[b + i];
       else if (sh.t === "year") for (let i = (sh.y - Y0) * 12, e = i + 12; i < e; i++) a += hx.H[b + i];
       else if (sh.t === "cmonth") {
-        for (let i = i0 + sh.m; i < i1; i += 12) a += hx.H[b + i];
-        a /= S.yTo - S.yFrom + 1;
+        /* the average over complete months only: a month still under way, or not yet come, is not a zero */
+        let n = 0;
+        for (let i = i0 + sh.m; i < i1 && i <= FULL_I; i += 12, n++) a += hx.H[b + i];
+        a /= Math.max(1, n);
       } else a = hx.H[b + (sh.y - Y0) * 12 + sh.m];
       v[k] = a;
       if (a > max) max = a;
@@ -214,7 +222,7 @@ function legend() {
           : `Chance of fire in ${MONL[S.rm]}: share of years ${a} to ${b} with a hotspot`
       : sh.t === "cmonth"
         ? `Average hotspots per hexagon in ${MONL[sh.m]}`
-        : `Hotspots per hexagon, ${sh.t === "year" ? sh.y : sh.t === "ym" ? MON[sh.m] + " " + sh.y : S.yFrom + " to " + S.yTo}`;
+        : `Hotspots per hexagon, ${sh.t === "year" ? sh.y + (isPartYear(sh.y) ? " so far" : "") : sh.t === "ym" ? MON[sh.m] + " " + sh.y + ((sh.y - Y0) * 12 + sh.m > FULL_I ? " so far" : "") : span(S.yFrom, S.yTo)}`;
   let g = "";
   [0, 0.25, 0.5, 0.75, 1].forEach((t, i) => {
     const r = 5.5 + 7.5 * t,
@@ -468,7 +476,7 @@ export function mapDraw() {
       const x = sx(f.X[j]),
         y = sy(f.Y[j]);
       if (x < -fr || y < -fr || x > V.W + fr || y > V.H + fr) continue;
-      const t = ch ? pop(f.ym[j]) / 14 : Math.log1p(f.c[j]) / lm;
+      const t = ch ? pop(f.ym[j] & FINE_FULL_BITS) / FINE_FULL : Math.log1p(f.c[j]) / lm;
       c.fillStyle = colT(lut, t);
       hexPath(x, y, fx, fy, 0.5 + 0.5 * t);
       c.fill();
@@ -691,7 +699,7 @@ export function mapEvents() {
       if (j >= 0)
         showTip(
           e,
-          `${county ? county + "\n" : ""}${fmt(f.c[j])} hotspots in this 2 km hexagon since 2012\nBurned in ${pop(f.ym[j])} of 14 years, last in ${2012 + 31 - Math.clz32(f.ym[j])}\nMonths with fire: ${MON.filter((_, m) => (f.mm[j] >> m) & 1).join(", ")}${notFireTip(k)}${respTip(k) || "\nClick to zoom in"}`,
+          `${county ? county + "\n" : ""}${fmt(f.c[j])} hotspots in this 2 km hexagon since 2012\nBurned in ${pop(f.ym[j])} of ${FINE_YEARS} years (${FINE_SPAN}), last in ${2012 + 31 - Math.clz32(f.ym[j])}\nMonths with fire: ${MON.filter((_, m) => (f.mm[j] >> m) & 1).join(", ")}${notFireTip(k)}${respTip(k) || "\nClick to zoom in"}`,
         );
       else if (k >= 0) showTip(e, `${county}\nNo hotspots detected here since 2012${respTip(k)}`);
       else hideTip();

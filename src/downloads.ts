@@ -1,5 +1,5 @@
 import type { StateCode } from "./types";
-import { D, NM, Y0 } from "./data";
+import { D, FILL_SRC, FULL_I, LAST_DATE, LAST_I, NM, Y0, fillDays } from "./data";
 import { S } from "./state";
 import { $ } from "./util";
 import { analyseFor, harm, hexState, notFire, riskYears, selMask } from "./model";
@@ -32,28 +32,72 @@ export async function save(filename: string, data: string, msg: HTMLElement = $(
     msg.textContent = "Downloads are not available in this view.";
   }
 }
+/** MODIS columns after the last MODIS month in data.js are blank: MODIS was not fetched for 2026 */
+const modisThrough = () => {
+  const t = D.meta.modis_through;
+  return t ? (t[0] - Y0) * 12 + t[1] - 1 : NM - 1;
+};
+/** how complete a month is: "complete", "partial_to_2026-11-14" */
+export const monthStatus = (i: number) => (i <= FULL_I ? "complete" : i <= LAST_I ? `partial_to_${LAST_DATE}` : "no_data");
+/** the days of month i in state st that Suomi NPP missed and NOAA-20 filled, converted to Suomi NPP terms
+ * ("2026-03-10 2026-03-11"; past outages too), and the days estimated from the days either side */
+function fillDates(i: number, st: StateCode) {
+  const f = fillDays(i, st),
+    pre = `${Y0 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}-`,
+    iso = (d: number[]) => d.map(x => pre + String(x).padStart(2, "0")).join(" ");
+  return { n20: iso(f.n20), interp: iso(f.interp), any: f.n20.length + f.interp.length > 0 };
+}
 export function csvCal() {
-  const R = analyseFor(S.st!, S.sel),
+  const st = S.st!,
+    s = D.states[st],
+    R = analyseFor(st, S.sel),
+    mt = modisThrough(),
+    whole = S.sel.type === "state",
+    m26 = new Map((s.y2026?.months ?? []).map(m => [m.i, m])),
+    gaps = new Map((s.hist_gaps ?? []).map(g => [g.i, g])),
     rows = [
-      "year,month,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,median_for_calendar_month,ratio_to_median",
+      "year,month,month_status,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_on_filled_days,noaa20_converted_snpp_terms,days_from_noaa20_converted,days_estimated_from_neighbours,median_for_calendar_month,ratio_to_median",
     ];
-  R.ser.forEach(r =>
+  /* a partial month's median and ratio are for the same days of past years (blank where the area has none). On months
+     with days from NOAA-20, raw_snpp_viirs is Suomi NPP as observed; the per-day split is known for the whole state
+     only, so for a county or smaller area those columns are blank on 2026 months with filled days */
+  R.ser.forEach(r => {
+    const f = fillDates(r.i, st),
+      m = m26.get(r.i),
+      g = gaps.get(r.i);
+    let snpp: string | number = r.V,
+      n20raw: string | number = "",
+      n20conv: string | number = "";
+    if (f.any && m) {
+      snpp = whole ? m.snpp : "";
+      n20raw = whole ? m.n20_raw : "";
+      n20conv = whole ? m.n20_converted : "";
+    } else if (f.any && g) {
+      n20raw = whole ? g.n20_gap : "";
+      n20conv = (r.h - (r.V - (whole ? g.snpp_gap : 0))).toFixed(2);
+      if (!whole) n20conv = "";
+    }
     rows.push(
       [
         r.y,
         r.m + 1,
+        monthStatus(r.i),
         r.h.toFixed(2),
         r.lo.toFixed(2),
         r.hi.toFixed(2),
-        `"${r.src}"`,
-        r.T,
-        r.A,
-        r.V,
-        r.med.toFixed(2),
+        `"${f.any ? FILL_SRC : r.src}"`,
+        r.i > mt ? "" : r.T,
+        r.i > mt ? "" : r.A,
+        snpp,
+        n20raw,
+        n20conv,
+        f.n20,
+        f.interp,
+        Number.isFinite(r.med) ? r.med.toFixed(2) : "",
         r.med > 0 ? (r.h / r.med).toFixed(3) : "",
       ].join(","),
-    ),
-  );
+    );
+  });
   save(`burn-calendar_${selSlug()}_${S.yFrom}-${S.yTo}.csv`, rows.join("\n"));
 }
 export function csvHot() {
@@ -61,15 +105,21 @@ export function csvHot() {
     hx = hexState(S.st!),
     mask = selMask(),
     cr = s.hex_rows,
+    mt = modisThrough(),
+    gapHex = new Map<number, number>(),
     rows = [
-      "hex_center_lat,hex_center_lon,county,year,month,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,harmonized_viirs_equivalent,source",
+      "hex_center_lat,hex_center_lon,county,year,month,month_status,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,harmonized_viirs_equivalent,source,days_from_noaa20_converted,days_estimated_from_neighbours",
     ];
-  for (let p = 0; p < cr.length; p += 5) {
-    const k = cr[p],
-      i = cr[p + 1],
-      y = Y0 + Math.floor(i / 12);
-    if (!mask[k] || y < S.yFrom || y > S.yTo) continue;
-    const h = harm(S.st!, i, cr[p + 2], cr[p + 3], cr[p + 4]);
+  /* past Suomi NPP outage days filled from NOAA-20: the change per hexagon-month */
+  const gh = s.gap_hex_rows ?? [];
+  for (let p = 0; p < gh.length; p += 3) gapHex.set(gh[p] * NM + gh[p + 1], gh[p + 2]);
+  const push = (k: number, i: number, T: number, A: number, V: number) => {
+    const y = Y0 + Math.floor(i / 12);
+    if (!mask[k] || y < S.yFrom || y > S.yTo) return;
+    const h = harm(S.st!, i, T, A, V),
+      f = fillDates(i, S.st!),
+      dh = gapHex.get(k * NM + i) ?? 0;
+    gapHex.delete(k * NM + i);
     rows.push(
       [
         hx.Y[k].toFixed(3),
@@ -77,14 +127,21 @@ export function csvHot() {
         `"${s.counties[hx.c[k]].name}"`,
         y,
         (i % 12) + 1,
-        cr[p + 2],
-        cr[p + 3],
-        cr[p + 4],
-        h.h.toFixed(2),
-        `"${h.src}"`,
+        monthStatus(i),
+        i > mt ? "" : T,
+        i > mt ? "" : A,
+        /* Suomi NPP as observed; blank on 2026 months with days from NOAA-20, whose per-hexagon split is not kept */
+        f.any && y >= 2026 ? "" : V,
+        Math.max(0, h.h + dh).toFixed(2),
+        `"${f.any ? FILL_SRC : h.src}"`,
+        f.n20,
+        f.interp,
       ].join(","),
     );
-  }
+  };
+  for (let p = 0; p < cr.length; p += 5) push(cr[p], cr[p + 1], cr[p + 2], cr[p + 3], cr[p + 4]);
+  /* hexagon-months that Suomi NPP saw nothing in but NOAA-20 did, on past outage days */
+  [...gapHex.keys()].forEach(key => push(Math.floor(key / NM), key % NM, 0, 0, 0));
   save(`hotspots-hex_${selSlug()}_${S.yFrom}-${S.yTo}.csv`, rows.join("\n"));
 }
 

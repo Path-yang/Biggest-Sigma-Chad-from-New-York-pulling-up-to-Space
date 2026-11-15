@@ -1,5 +1,5 @@
 import type { StateCode } from "./types";
-import { NAME, PRESET, SLUG, STS } from "./data";
+import { FOCUS0, NAME, PRESET, SLUG, STS } from "./data";
 import { S } from "./state";
 import { $ } from "./util";
 import { hexState } from "./model";
@@ -31,7 +31,7 @@ function openState(st: StateCode, fresh?: boolean) {
   respReset();
   V.mask = null;
   V.fineOn = false;
-  S.focus = PRESET[st].focus.slice();
+  S.focus = FOCUS0.slice();
   setDraw(false);
   $("hero").hidden = true;
   G.stop && G.stop();

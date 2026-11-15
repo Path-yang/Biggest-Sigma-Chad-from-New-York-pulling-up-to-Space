@@ -20,6 +20,63 @@ export interface Meta {
   aqua_from: [number, number];
   /** upper edges of the size bins that pick a range multiplier from StateData.pi */
   bins: number[];
+  /** the last day with data, "2026-11-14"; absent in a file that ends with a complete year */
+  last_date?: string;
+  /** the last month index with data; months after it have no data */
+  last_i?: number;
+  /** the partial last month: 1-based month m, covering days 1 to day_to */
+  partial?: { i: number; y: number; m: number; day_to: number; days_in_month: number };
+  /** [year, month] of the last MODIS month in the file; later MODIS columns are 0 because MODIS was not fetched */
+  modis_through?: [number, number];
+  viirs_2026?: { snpp_days: number; n20_days: number; n20_dates: string[]; note: string };
+}
+/** one month of 2026 in a state: Suomi NPP terms, with the days filled from NOAA-20 */
+export interface StateMonth2026 {
+  i: number;
+  v: number;
+  v_exact: number;
+  lo: number;
+  hi: number;
+  snpp: number;
+  n20_raw: number;
+  n20_converted: number;
+  days_snpp: number;
+  days_n20: number;
+  /** days both satellites missed the state's overpasses (12 Oct 2026): the mean of the days either side */
+  days_interp?: number;
+  interp?: number;
+}
+/** a past month (2018-2025) with Suomi NPP outage days, filled from NOAA-20 the way 2026 is */
+export interface HistGap {
+  i: number;
+  days: number[];
+  filled: number;
+  lo: number;
+  hi: number;
+}
+/** the same days of the partial month (1-14 November) in every Suomi NPP year, for the state and each county */
+export interface StatePartial {
+  i: number;
+  y: number;
+  m: number;
+  day_from: number;
+  day_to: number;
+  years: number[];
+  state: number[];
+  state_median: number;
+  state_2026: number;
+  state_2026_lo: number;
+  state_2026_hi: number;
+  county: number[][];
+  county_median: number[];
+  county_2026: number[];
+  /** the same, with past Suomi NPP outage days filled from NOAA-20 as 2026 is */
+  state_filled?: number[];
+  state_filled_median?: number;
+  county_filled?: number[][];
+  county_filled_median?: number[];
+  filled_years?: number[];
+  note: string;
 }
 export interface County {
   fips: string;
@@ -56,6 +113,20 @@ export interface StateData {
   /** longitude is multiplied by this to give map x, so shapes keep their proportions */
   hex_k: number;
   calib_n: { modis: number; viirs: number };
+  partial?: StatePartial;
+  y2026?: {
+    months: StateMonth2026[];
+    /** the state's days from NOAA-20 and the days interpolated, "2026-03-09" */
+    n20_dates?: string[];
+    interp_dates?: string[];
+    ratio_n20_to_snpp: { r_all: number; r: number[] };
+    ratio_note: string;
+  };
+  /** flat rows of three: county or hexagon index, month index, change from filling past Suomi NPP outage days */
+  gap_county_rows?: number[];
+  gap_hex_rows?: number[];
+  /** the state's past outage months, filled */
+  hist_gaps?: (HistGap & { v: number; snpp_gap: number; n20_gap: number })[];
 }
 export interface CountyGeo {
   f: string;
@@ -217,6 +288,8 @@ export interface SeriesRow extends Harmonized {
   V: number;
   med: number;
   ratio: number;
+  /** the partial last month: its count runs only to the last day with data */
+  part?: boolean;
 }
 export interface MonthStat {
   med: number;
@@ -230,6 +303,37 @@ export interface YearRow {
   lo: number;
   hi: number;
   naive: number;
+  /** a year only partly in the record (2026 to date): its total is "so far" */
+  part?: boolean;
+}
+/** the current partial year against the same span of every past year */
+export interface YearToDate {
+  /** the span as words, "1 Jan–14 Nov" */
+  span: string;
+  /** whole months it covers (0..mEnd-1) and whether the partial month's days are in it */
+  withPart: boolean;
+  y: number;
+  cur: number;
+  lo: number;
+  hi: number;
+  /** past years and their counts for the same span */
+  years: number[];
+  past: number[];
+  med: number;
+  /** 1 = the most of all years (past and current) */
+  rank: number;
+  n: number;
+}
+/** the partial month against the same days of the month in past years */
+export interface SameDays {
+  /** "1–14 Nov" */
+  span: string;
+  cur: number;
+  lo: number;
+  hi: number;
+  years: number[];
+  past: number[];
+  med: number;
 }
 /** what harmonization needs from a place: its exchange rates and range multipliers */
 export interface Rates {
@@ -246,12 +350,20 @@ export interface Epochs {
 }
 export interface SeriesAnalysis {
   ser: SeriesRow[];
+  /** per calendar month over complete months only; sum is over complete years only */
   stats: MonthStat[];
   years: YearRow[];
+  /** hotspots in the complete years */
   total: number;
+  /** hotspots in everything shown, the partial year included: 0 means none at all */
+  any: number;
+  /** an average complete year */
   mean: number;
   order: { m: number; sum: number }[];
+  /** complete years, most active first; the partial year is never ranked against them */
   ranked: YearRow[];
+  /** the partial year, when it is among the chosen years */
+  partYear: YearRow | null;
 }
 export interface Analysis extends SeriesAnalysis {
   st: StateCode;
@@ -266,6 +378,10 @@ export interface Verdict {
   n: number;
   med: number;
   mult: string;
+  /** set when the tested month is partial: it was compared with the same days of past years */
+  same?: SameDays;
+  /** the tested month is partial and no same-days history exists for this area */
+  noSame?: boolean;
 }
 
 /* ---------- map view ---------- */
@@ -335,8 +451,71 @@ export interface SensorSeries {
   /** VIIRS NOAA-20, not used in the harmonized record */
   N20: number[];
 }
+/** summary v3: what 2026 is made of, and the like-for-like comparisons of the partial month and year */
+export interface CountryStats {
+  min: number;
+  q25: number;
+  median: number;
+  q75: number;
+  max: number;
+}
+export interface Country2026 {
+  /** Suomi NPP observed on its complete days, Jan..Nov 2026 */
+  v_obs: number[];
+  /** NOAA-20 converted to Suomi NPP terms, on the days Suomi NPP missed */
+  v_conv: number[];
+  v_lo: number[];
+  v_hi: number[];
+  /** months with converted days; m is 1-based */
+  conv_months: {
+    i: number;
+    m: number;
+    days: number[];
+    /** days both satellites missed this country's overpasses (12 Oct 2026): the mean of the days either side */
+    interp_days?: number[];
+    v_interp?: number;
+    n_days: number;
+    n20: number;
+    rate: number;
+    v_conv: number;
+    v_obs: number;
+    v: number;
+    v_lo: number;
+    v_hi: number;
+  }[];
+  /** the partial month's days (1-14 November) in every Suomi NPP year, gap-filled like 2026 */
+  same_days: {
+    m: number;
+    day0: number;
+    day1: number;
+    years: [number, number];
+    V: number[];
+    V_stats: CountryStats;
+    cur: number;
+    cur_lo: number;
+    cur_hi: number;
+    rank: number;
+  };
+  /** 1 January to the last day, every Suomi NPP year */
+  ytd: {
+    to: string;
+    years: [number, number];
+    V: number[];
+    V_stats: CountryStats;
+    cur: number;
+    cur_lo: number;
+    cur_hi: number;
+    rank: number;
+    note?: string;
+  };
+  /** the 2026 method rerun on 2025 against the published 2025: % difference */
+  join_check_2025: { V_pct: number; N20_pct: number; warn: boolean };
+  /** past months with Suomi NPP outage days, filled from NOAA-20 the way 2026 is (v2's value kept in monthly) */
+  hist_gaps?: (HistGap & { v2: number; n20_conv: number })[];
+  mask_note: string;
+}
 export interface CountrySummary extends Rates {
-  v: 2;
+  v: 2 | 3;
   country: string;
   name: string;
   y0: number;
@@ -360,7 +539,13 @@ export interface CountrySummary extends Rates {
   /** flat rows of five: cell index, year index, harmonized count, raw MODIS Terra+Aqua, raw Suomi NPP */
   cell_rows: number[];
   totals: { T: number; A: number; V: number; N20: number };
-  source: { dataset: string; firms_updated: string; files: number };
+  source: { dataset: string; firms_updated: string; files: number; y2026?: string };
+  /** v3: the last complete day, the months with data, and the partial last month (1-based m) */
+  last_date?: string;
+  n_months?: number;
+  partial?: { y: number; m: number; i: number; day0: number; day1: number; days_in_month: number };
+  sensor_last?: { T: string; A: string; V: string; N20: string };
+  y2026?: Country2026;
 }
 export interface CountryIndexEntry {
   country: string;
@@ -369,6 +554,9 @@ export interface CountryIndexEntry {
   bytes: number;
   bbox: [number, number, number, number];
   total: number;
+  /** v3: the 2001-2025 part of total, and 2026 to date */
+  total_2001_2025?: number;
+  total_2026?: number;
 }
 
 /* ---------- response.js: drive times from fire and EMS stations (OpenStreetMap roads) ---------- */

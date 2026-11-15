@@ -2,7 +2,7 @@ import type { Analysis, FcBacktest, FireKind, LargeBacktest, Odds, StateCode } f
 import { D, MON, MONL, NAME } from "./data";
 import { S } from "./state";
 import { $, fmt } from "./util";
-import { hexState, notFireNote, riskFor, selMask } from "./model";
+import { hexState, notFireNote, riskFor, riskYears, selMask } from "./model";
 import { hideTip, showTip } from "./tooltip";
 import { stopPlay } from "./play";
 import { render } from "./render";
@@ -70,8 +70,8 @@ export function renderOdds() {
     const [a, b] = largeYears();
     h = `<b>Past odds of a large fire</b> (1,000+ acres)<span class="more"> on CAL FIRE's fire perimeter maps</span> in ${mo}, ${a}–${b}. History, not a forecast.`;
   } else {
-    const [a, b] = [Math.max(S.yFrom, 2012), S.yTo];
-    h = `<b>Past odds</b>: share of ${mo}s ${a <= b ? `${a}–${b}` : `${S.yFrom}–${S.yTo}`} with a hotspot. History, not a forecast.`;
+    const [a, b] = riskYears();
+    h = `<b>Past odds</b>: share of ${mo}s ${a < b ? `${a}–${b}` : a} with a hotspot<span class="more">, complete years only</span>. History, not a forecast.`;
   }
   if (!L) h += ` <span title="${esc(NY_WHY)}">Large fires: California only.</span>`;
   $("oddsNote").innerHTML = h;
@@ -182,7 +182,7 @@ export function renderForecastSheet() {
   $("fcVerdict").innerHTML = v;
   const same = [fcSame(st, "any") && "hexagons", fcSame(st, "any", true) && "counties"].filter(Boolean) as string[];
   $("fcNote").textContent =
-    `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone: no weather, fuel or ignitions. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` +
+    `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone, to December 2025: no weather, fuel or ignitions, and none of the 2026 data now on the calendar. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` +
     (same.length
       ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.`
       : "");

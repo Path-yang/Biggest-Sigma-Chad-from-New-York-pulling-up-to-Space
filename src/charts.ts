@@ -1,5 +1,5 @@
-import type { CalendarMode, SeriesAnalysis, SeriesRow } from "./types";
-import { MON, MONL, VI0 } from "./data";
+import type { Analysis, CalendarMode, SeriesAnalysis, SeriesRow } from "./types";
+import { LAST_WORDS, MON, MONL, VI0, fillNote } from "./data";
 import { S } from "./state";
 import { fmt, short } from "./util";
 import { div, inkOn, rgb, seq } from "./color";
@@ -18,6 +18,8 @@ interface BarOptions {
   sel: number;
   /** bars drawn striped (converted from MODIS) instead of solid */
   hatch?: (i: number) => boolean;
+  /** bars drawn as a dashed outline: a total so far, for a year that is not over */
+  part?: (i: number) => boolean;
   /** range whiskers, drawn on the bars where whisk(i) is true */
   lo?: number[];
   hi?: number[];
@@ -105,7 +107,11 @@ export function bars(el: HTMLElement, xs: (string | number)[], vals: number[], o
       w = Math.max(1, bw - 3),
       y = Y(v),
       cx = x + w / 2;
-    s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
+    s +=
+      o.part && o.part(i)
+        ? `<rect x="${x + 0.75}" y="${y}" width="${Math.max(0.5, w - 1.5)}" height="${Math.max(0.5, m.t + ph - y - 0.75)}" rx="3" fill="rgba(255,138,61,.25)" stroke="${o.sel === i ? "#fff" : "#ff8a3d"}" stroke-width="${o.sel === i ? 2 : 1.3}" stroke-dasharray="3 2"/>` +
+          (n < 40 ? `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">so far</text>` : "")
+        : `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
     if (o.lo && o.whisk!(i))
       s += `<line x1="${cx}" x2="${cx}" y1="${Y(o.lo[i])}" y2="${Y(o.hi![i])}" stroke="#dfe5ee" stroke-width="1.3"/>`;
     if (o.top && o.top.includes(i)) s += `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">${xs[i]}</text>`;
@@ -203,7 +209,8 @@ export function calendarInto(el: HTMLElement, R: SeriesAnalysis, o: CalendarOpti
     yFrom = R.years[0].y,
     yTo = R.years[R.years.length - 1].y,
     focus = o.focusYM || S.focus,
-    vi0 = o.vi0 ?? VI0;
+    vi0 = o.vi0 ?? VI0,
+    st = (R as Partial<Analysis>).st ?? S.st!;
   el.style.gridTemplateColumns = cmp ? "34px repeat(12,minmax(0,1fr))" : "44px repeat(12,minmax(0,1fr)) 70px";
   let h =
     `<div></div>` +
@@ -214,20 +221,41 @@ export function calendarInto(el: HTMLElement, R: SeriesAnalysis, o: CalendarOpti
       h += `<div class="split">${cmp ? "converted from MODIS below" : "seen by VIIRS above · converted from MODIS below"}</div>`;
     h += `<div class="y">${y}</div>`;
     for (let m = 0; m < 12; m++) {
-      const r = R.ser[(y - yFrom) * 12 + m],
-        c = o.mode === "anom" ? div(Math.log2(r.ratio) / 3) : r.h === 0 ? [22, 28, 40] : seq(0.06 + (0.94 * Math.log1p(r.h)) / lmax);
-      h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
+      const r = R.ser[(y - yFrom) * 12 + m];
+      /* a month after the end of the record: no data, not zero */
+      if (!r) {
+        h += `<div class="c none" aria-label="${MON[m]} ${y}: no data yet"></div>`;
+        continue;
+      }
+      const c =
+          o.mode === "anom"
+            ? Number.isFinite(r.ratio)
+              ? div(Math.log2(r.ratio) / 3)
+              : [60, 66, 78]
+            : r.h === 0
+              ? [22, 28, 40]
+              : seq(0.06 + (0.94 * Math.log1p(r.h)) / lmax),
+        nd = r.i >= vi0 && !!fillNote(r.i, st);
+      h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}${r.part ? " part" : ""}${nd && !cmp ? " n20" : ""}" data-i="${r.i}" style="background-color:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots${r.part ? " so far" : ""}">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
     }
-    if (!cmp) h += `<div class="t">${fmt(R.years[y - yFrom].h)}</div>`;
+    const yr = R.years.find(z => z.y === y);
+    if (!cmp) h += yr?.part ? `<div class="t part">${fmt(yr.h)}<small>so far</small></div>` : `<div class="t">${fmt(yr ? yr.h : 0)}</div>`;
   }
   el.innerHTML = h;
-  el.querySelectorAll<HTMLButtonElement>(".c").forEach(b => {
+  el.querySelectorAll<HTMLButtonElement>("button.c").forEach(b => {
     const r = R.ser[+b.dataset.i! - R.ser[0].i];
+    const nd = r.i >= vi0 ? fillNote(r.i, st) : "";
     b.onmousemove = e =>
       showTip(
         e,
-        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}\nNormal for ${MON[r.m]}: ${fmt(r.med)}\n${r.src}` +
-          (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
+        (r.part
+          ? `${MONL[r.m]} ${r.y} so far, to ${LAST_WORDS}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}\n` +
+            (Number.isFinite(r.med)
+              ? `Normal for the same days: ${fmt(r.med)}`
+              : "The month is not over; no same-days history for this area")
+          : `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}\nNormal for ${MON[r.m]}: ${fmt(r.med)}`) +
+          (nd ? `\nVIIRS Suomi NPP, with ${nd}` : `\n${r.src}`) +
+          (r.i < vi0 || (nd && r.hi - r.lo >= 1) ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
           (o.more ? "\n" + o.more(r) : ""),
       );
     b.onmouseleave = hideTip;

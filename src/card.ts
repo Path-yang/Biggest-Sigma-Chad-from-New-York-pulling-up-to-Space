@@ -1,8 +1,8 @@
 import type { Analysis } from "./types";
-import { D, MON, NAME, STS } from "./data";
+import { D, LAST_I, LAST_WORDS, MON, NAME, STS, Y0, span } from "./data";
 import { S } from "./state";
 import { $, fmt } from "./util";
-import { hexState, leadText, placeName, stationsFor, verdict } from "./model";
+import { hexState, leadText, placeName, sameDaysFor, stationsFor, verdict, ytdFor } from "./model";
 import { setCounty, showLabel } from "./map";
 import { chanceCard } from "./fcui";
 import { olCard } from "./olui";
@@ -15,13 +15,13 @@ export function renderCard(R: Analysis) {
     sl = S.sel,
     cty = (ci: number) => D.states[S.st!].counties[ci].name + " County";
   $("place").textContent = placeName();
-  $("lead").textContent = leadText(R);
+  $("lead").textContent = leadText(R, ytdFor(R, S.st!, sl));
   $("crumb").innerHTML =
     (sl.type === "state"
       ? "State"
       : `<button type="button" data-go="state">${NAME[S.st!]}</button>` +
         (sl.type === "hex" ? ` › <button type="button" data-ci="${hx.c[sl.k]}">${cty(hx.c[sl.k])}</button>` : "")) +
-    ` · ${S.yFrom}–${S.yTo}`;
+    ` · ${span(S.yFrom, S.yTo)}`;
   $("crumb")
     .querySelectorAll("button")
     .forEach(b => (b.onclick = () => setCounty(b.dataset.go ? null : +b.dataset.ci!)));
@@ -48,9 +48,15 @@ export function renderCard(R: Analysis) {
         .map(y => y.y)
         .join(", ")
     : "None";
-  const v = verdict(R);
-  $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}`;
-  $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : "Outside these years";
+  const v = verdict(R, S.focus, sameDaysFor(S.st!, sl)),
+    future = (S.focus[0] - Y0) * 12 + S.focus[1] > LAST_I;
+  $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}` + (v?.same ? ` (${v.same.span})` : "");
+  $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : future ? `No data yet` : "Outside these years";
+  $("c3").parentElement!.title = v?.same
+    ? `${v.same.span} ${S.focus[0]} so far, against the same days of ${v.same.years[0]}–${v.same.years[v.same.years.length - 1]}`
+    : v?.noSame
+      ? `The month is not over: the record runs to ${LAST_WORDS}. Choose the state or a county to compare its first days with the same days of past years.`
+      : "";
   const cc = olCard() || chanceCard(R);
   $("c4q").textContent = cc.q;
   $("c4").textContent = cc.v;
@@ -67,8 +73,12 @@ export function renderTimeline(R: Analysis) {
   let g = "";
   ys.forEach((y, i) => {
     const h = Math.max(2, 32 * Math.sqrt(y.h / mx)),
-      on = y.y === cur;
-    g += `<rect x="${i * bw + 1.5}" y="${38 - h}" width="${bw - 3}" height="${h}" rx="2" fill="${on ? "#ff8a3d" : cur == null ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.28)"}"/>`;
+      on = y.y === cur,
+      fill = on ? "#ff8a3d" : cur == null ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.28)";
+    /* the year still under way is drawn as an outline: its total is so far */
+    g += y.part
+      ? `<rect x="${i * bw + 2}" y="${38.5 - h}" width="${bw - 4}" height="${h - 1}" rx="2" fill="${on ? fill : "none"}" stroke="${on ? "#ff8a3d" : fill}" stroke-width="1" stroke-dasharray="2 1.5"/>`
+      : `<rect x="${i * bw + 1.5}" y="${38 - h}" width="${bw - 3}" height="${h}" rx="2" fill="${fill}"/>`;
     if (on || (i % 4 === 0 && (cur == null || Math.abs(y.y - cur) > 2)))
       g += `<text x="${(i + 0.5) * bw}" y="51" text-anchor="middle" ${on ? 'class="hl"' : ""}>${y.y}</text>`;
   });
@@ -82,9 +92,9 @@ export function renderTimeline(R: Analysis) {
   tr.setAttribute("aria-valuemax", String(S.yTo));
   tr.setAttribute("aria-valuenow", String(cur == null ? S.yTo : cur));
   tr.setAttribute("aria-valuetext", cur == null ? "All years" : String(cur));
-  const yr = cur != null ? ys[cur - S.yFrom] : null;
+  const yr = cur != null ? (ys.find(y => y.y === cur) ?? null) : null;
   $("tlLabel").innerHTML = yr
-    ? `<b>${cur}</b>${fmt(yr.h)} hotspots${cur! < 2012 ? " (converted from MODIS)" : ""}`
+    ? `<b>${cur}</b>${fmt(yr.h)} hotspots${cur! < 2012 ? " (converted from MODIS)" : yr.part ? ` so far, to ${LAST_WORDS}` : ""}`
     : S.layer === "chance"
       ? "Drag along the years to see where each one burned"
       : S.show.t === "all"

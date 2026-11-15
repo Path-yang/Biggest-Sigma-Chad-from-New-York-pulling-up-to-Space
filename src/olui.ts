@@ -255,7 +255,8 @@ export function renderOutlookSheet() {
   $("olHow").innerHTML =
     `Each county's <b>usual chance</b> is how often VIIRS saw a hotspot there in the same 14-day window of the year, ${so.climatology.years[0]}–${so.climatology.years[1]}. ` +
     `A small model (a logistic regression, fitted on ${so.metrics.years[0]}–${so.metrics.years[so.metrics.years.length - 1]}) nudges it with ${OM}'s ECMWF weather: rain and drying over the past 30 days and the next 14, above all the number of dry days ahead. ` +
-    `<b>The test is generous:</b> it gave the model the weather that actually happened, and even then it beat the usual odds by only ${(sk.bss * 100).toFixed(1)}%. A real forecast goes wrong, more so in the second week, so expect less; real forecasts were not tested, because Open-Meteo's archive of past forecasts was beyond its free daily limit.`;
+    `<b>The test is generous:</b> it gave the model the weather that actually happened, and even then it beat the usual odds by only ${(sk.bss * 100).toFixed(1)}%. A real forecast goes wrong, more so in the second week, so expect less; real forecasts were not tested, because Open-Meteo's archive of past forecasts was beyond its free daily limit. ` +
+    `The usual odds and the model were built from data to ${so.climatology.years[1]} and are left as they were: the 2026 hotspots now on the calendar are not in them.`;
   const recal = bt["recalibrated climatology"],
     /* Brier skill against the recalibrated usual odds, from the two skills against the usual odds */
     beyond = (s: OutlookScore) => (recal ? 1 - (1 - s.bss) / (1 - recal.bss) : null),

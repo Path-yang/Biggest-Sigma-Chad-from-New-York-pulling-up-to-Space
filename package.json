@@ -2,7 +2,7 @@
   "name": "burn-calendar",
   "version": "2.0.0",
   "private": true,
-  "description": "Burn Calendar: one consistent fire-hotspot record for New York and California, 2001 to 2025",
+  "description": "Burn Calendar: one consistent fire-hotspot record for New York and California, 2001 to 14 November 2026",
   "scripts": {
     "build": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=app.js",
     "watch": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=app.js --watch",

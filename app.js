@@ -26,6 +26,38 @@
   var SLUG = { NY: "new-york", CA: "california" };
   var LAND_KM2 = { NY: 122057, CA: 403466 };
   var STC = { NY: "#6fa8ff", CA: "#ff8a3d" };
+  var LAST_I = D.meta.last_i ?? NM - 1;
+  var NMD = LAST_I + 1;
+  var PART = D.meta.partial ? { i: D.meta.partial.i, y: D.meta.partial.y, m: D.meta.partial.m - 1, day: D.meta.partial.day_to, days: D.meta.partial.days_in_month } : null;
+  var FULL_I = PART ? PART.i - 1 : LAST_I;
+  var FULL_Y1 = Y0 + Math.floor((FULL_I + 1) / 12) - 1;
+  var LAST_DATE = D.meta.last_date ?? `${Y1}-12-31`;
+  var lastDay = LAST_DATE.split("-").map(Number);
+  var LAST_WORDS = `${lastDay[2]} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][lastDay[1] - 1]} ${lastDay[0]}`;
+  var FOCUS0 = [Y0 + Math.floor(FULL_I / 12), FULL_I % 12];
+  var span = (a, b) => b > FULL_Y1 ? a === b ? `${b} to ${LAST_WORDS.replace(/ \d+$/, "")}` : `${a}\u2013${LAST_WORDS}` : a === b ? String(a) : `${a}\u2013${b}`;
+  var isPartYear = (y) => y > FULL_Y1;
+  var SAT_RULE = "Suomi NPP only from 2012; NOAA-20 is not added (that would count the same fires twice). It stands in, converted to Suomi NPP terms, only on days Suomi NPP missed: every day from 2 November 2026, when Suomi NPP stopped, its outage days in March to October 2026 and in 2018\u20132025, and 2026 days on which its partial data missed this place's overpasses. On 12 October 2026 both satellites missed many places; there the day is the mean of the days either side.";
+  var FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
+  var dayRun = (days, m) => (days.length > 1 && days[days.length - 1] - days[0] === days.length - 1 ? `${days[0]}\u2013${days[days.length - 1]}` : days.join(", ")) + ` ${MON[m]}`;
+  function fillDays(i, st) {
+    const s = D.states[st], y = Y0 + Math.floor(i / 12), pre = `${y}-${String(i % 12 + 1).padStart(2, "0")}-`, pick = (a) => (a ?? []).filter((d) => d.startsWith(pre)).map((d) => +d.slice(8));
+    if (y >= 2026)
+      return { n20: pick(s.y2026?.n20_dates ?? D.meta.viirs_2026?.n20_dates), interp: pick(s.y2026?.interp_dates) };
+    const g = s.hist_gaps?.find((x) => x.i === i);
+    return { n20: g ? g.days : [], interp: [] };
+  }
+  function n20Days(i, st) {
+    const d = fillDays(i, st).n20;
+    return d.length ? `${d.length} ${d.length === 1 ? "day" : "days"} (${dayRun(d, i % 12)})` : "";
+  }
+  function fillNote(i, st) {
+    const f = fillDays(i, st), a = n20Days(i, st), past = Y0 + Math.floor(i / 12) < 2026;
+    return [
+      a && `${a} from NOAA-20 converted to Suomi NPP terms${past ? " (Suomi NPP outage)" : ""}`,
+      f.interp.length ? `${dayRun(f.interp, i % 12)} estimated from the days either side (both satellites missed this area)` : ""
+    ].filter(Boolean).join("; ");
+  }
   var VI0 = (D.meta.viirs_from[0] - Y0) * 12 + D.meta.viirs_from[1] - 1;
   var AQ0 = (D.meta.aqua_from[0] - Y0) * 12 + D.meta.aqua_from[1] - 1;
   var PRESET = {
@@ -59,7 +91,7 @@
     sel: { type: "state" },
     yFrom: Y0,
     yTo: Y1,
-    focus: [2024, 10],
+    focus: FOCUS0.slice(),
     mode: "count",
     pal: "fire",
     stn: true,
@@ -121,13 +153,15 @@
     }
     const rows = s.hex_rows;
     for (let p = 0; p < rows.length; p += 5) o.H[rows[p] * NM + rows[p + 1]] = harm(st, rows[p + 1], rows[p + 2], rows[p + 3], rows[p + 4]).h;
+    const g = s.gap_hex_rows ?? [];
+    for (let p = 0; p < g.length; p += 3) o.H[g[p] * NM + g[p + 1]] = Math.max(0, o.H[g[p] * NM + g[p + 1]] + g[p + 2]);
     o.x0 = Math.min(...o.X) - R;
     o.x1 = Math.max(...o.X) + R;
     o.y0 = Math.min(...o.Y) - R;
     o.y1 = Math.max(...o.Y) + R;
     o.geo = D.geo[st];
     o.geoByFips = {};
-    o.geo.forEach((g) => o.geoByFips[g.f] = g);
+    o.geo.forEach((g2) => o.geoByFips[g2.f] = g2);
     const dt = D.detail[st], cn = dt.ctx.length / 3;
     o.cn = cn;
     o.cX = new Float32Array(cn);
@@ -200,42 +234,172 @@
         V4[i] += rows[p + 4];
       }
     }
-    const R = analyseSeries({ T, A, V: V4, y0: Y0, yFrom: S.yFrom, yTo: S.yTo, vi0: VI0, harm: (i, t, a, v) => harm(st, i, t, a, v) });
+    const G2 = new Float64Array(NM), grows = (byCounty ? s.gap_county_rows : s.gap_hex_rows) ?? [];
+    for (let p = 0; p < grows.length; p += 3) {
+      const k = grows[p];
+      if (byCounty ? sel.type === "state" || k === sel.ci : mask[k]) G2[grows[p + 1]] += grows[p + 2];
+    }
+    const gaps = new Map((s.hist_gaps ?? []).map((g) => [g.i, g])), m26 = new Map((s.y2026?.months ?? []).map((m) => [m.i, m]));
+    const filled = (i, t, a, v) => {
+      const x = harm(st, i, t, a, v);
+      if (i < VI0) return x;
+      const f = fillDays(i, st);
+      if (!f.n20.length && !f.interp.length) return x;
+      const h = Math.max(0, v + G2[i]);
+      let lo = h, hi = h;
+      const g = gaps.get(i), m = m26.get(i);
+      if (sel.type === "state" && g) {
+        lo = h - (g.filled - g.lo);
+        hi = h + (g.hi - g.filled);
+      } else if (sel.type === "state" && m) {
+        lo = Math.min(h, m.lo);
+        hi = Math.max(h, m.hi);
+      }
+      return { h, lo, hi, src: FILL_SRC };
+    };
+    const R = analyseSeries({
+      T,
+      A,
+      V: V4,
+      y0: Y0,
+      yFrom: S.yFrom,
+      yTo: S.yTo,
+      vi0: VI0,
+      nm: NMD,
+      partI: PART ? PART.i : -1,
+      partMed: sameDaysFor(st, sel)?.med ?? null,
+      harm: filled
+    });
     return { st, ...R };
   }
+  var partSpan = (m, day) => `1\u2013${day} ${MON[m]}`;
+  var median = (a) => {
+    const z = a.slice().sort((x, y) => x - y), h = (z.length - 1) / 2;
+    return z.length ? (z[Math.floor(h)] + z[Math.ceil(h)]) / 2 : 0;
+  };
+  function sameDaysFor(st, sel) {
+    const p = D.states[st].partial;
+    if (!p || !PART || sel.type !== "state" && sel.type !== "county") return null;
+    const span3 = partSpan(p.m - 1, p.day_to);
+    if (sel.type === "state") {
+      const past2 = p.state_filled ?? p.state;
+      return { span: span3, cur: p.state_2026, lo: p.state_2026_lo, hi: p.state_2026_hi, years: p.years, past: past2, med: p.state_filled_median ?? median(past2) };
+    }
+    const past = p.county_filled?.[sel.ci] ?? p.county[sel.ci], cur2 = p.county_2026[sel.ci];
+    return past ? { span: span3, cur: cur2, lo: cur2, hi: cur2, years: p.years, past, med: median(past) } : null;
+  }
+  function yearToDate(R, pastPart, range) {
+    const pr = R.ser.find((r) => r.part);
+    if (!pr) return null;
+    const withPart = !!pastPart, py = pr.y, pm2 = pr.m, years = [], past = [];
+    const sumOf = (y) => {
+      let a = 0;
+      for (const r of R.ser) if (r.y === y && r.m < pm2) a += r.h;
+      return a;
+    };
+    for (const yr of R.years) {
+      if (yr.y >= py || yr.y < 2012) continue;
+      const extra = withPart ? pastPart(yr.y) : 0;
+      if (extra === void 0) continue;
+      years.push(yr.y);
+      past.push(sumOf(yr.y) + extra);
+    }
+    if (years.length < 3) return null;
+    const cur2 = sumOf(py) + (withPart ? pr.h : 0), day = PART ? PART.day : 0, span3 = withPart ? `1 Jan\u2013${day} ${MON[pm2]}` : pm2 > 1 ? `Jan\u2013${MON[pm2 - 1]}` : "January";
+    return {
+      span: span3,
+      withPart,
+      y: py,
+      cur: cur2,
+      lo: range ? range.lo : cur2,
+      hi: range ? range.hi : cur2,
+      years,
+      past,
+      med: median(past),
+      rank: past.filter((v) => v > cur2).length + 1,
+      n: past.length + 1
+    };
+  }
+  function ytdFor(R, st, sel) {
+    const s = D.states[st], p = s.partial, sd = sameDaysFor(st, sel);
+    if (!p || !sd) return yearToDate(R, null);
+    let range = null;
+    if (sel.type === "state" && s.y2026) {
+      const ms = s.y2026.months;
+      range = { lo: ms.reduce((a, x) => a + x.lo, 0), hi: ms.reduce((a, x) => a + x.hi, 0) };
+    }
+    return yearToDate(
+      R,
+      (y) => {
+        const k = sd.years.indexOf(y);
+        return k < 0 ? void 0 : sd.past[k];
+      },
+      range
+    );
+  }
+  function rankWords(rank, n) {
+    const ord = (k) => k + (k % 100 >= 11 && k % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][k % 10] || "th");
+    return rank === 1 ? `the most of ${n} years` : rank === n ? `the fewest of ${n} years` : `the ${ord(rank)} most of ${n} years`;
+  }
+  var ytdSentence = (t) => `${t.y} so far (${t.span}): ${fmt(t.cur)} ${fmt(t.cur) === "1" ? "hotspot" : "hotspots"}${t.hi - t.lo >= 1 ? `, likely ${fmt(t.lo)} to ${fmt(t.hi)}` : ""}, ${rankWords(t.rank, t.n)} for the same dates (typical ${fmt(t.med)}).`;
   function analyseSeries(o) {
-    const { T, A, V: V4 } = o;
+    const { T, A, V: V4 } = o, partI = o.partI ?? -1, nm = o.nm ?? Infinity, fullEnd = partI >= 0 ? partI : nm;
     const ser = [];
-    for (let i = (o.yFrom - o.y0) * 12; i < (o.yTo - o.y0 + 1) * 12; i++)
-      ser.push(
-        Object.assign({ i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V4[i] }, o.harm(i, T[i], A[i], V4[i]))
+    for (let i = (o.yFrom - o.y0) * 12, end = Math.min((o.yTo - o.y0 + 1) * 12, nm); i < end; i++) {
+      const r = Object.assign(
+        { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V4[i] },
+        o.harm(i, T[i], A[i], V4[i])
       );
+      if (i >= fullEnd) r.part = true;
+      ser.push(r);
+    }
+    const fullYear = (y) => (y - o.y0 + 1) * 12 <= fullEnd, useAll = !ser.some((r) => fullYear(r.y)), counted = (y) => useAll || fullYear(y);
     const quant = (a, q) => {
       const z = a.slice().sort((x, y) => x - y), p = (z.length - 1) * q, f = Math.floor(p);
       return z[f] + (z[Math.min(z.length - 1, f + 1)] - z[f]) * (p - f);
     };
     const stats = MON.map((_, m) => {
-      const a = ser.filter((r) => r.m === m).map((r) => r.h);
-      return { med: quant(a, 0.5), q1: quant(a, 0.25), q3: quant(a, 0.75), sum: a.reduce((x, y) => x + y, 0) };
+      const a = ser.filter((r) => r.m === m && !r.part).map((r) => r.h), s = ser.filter((r) => r.m === m && counted(r.y)).reduce((x, r) => x + r.h, 0);
+      return a.length ? { med: quant(a, 0.5), q1: quant(a, 0.25), q3: quant(a, 0.75), sum: s } : { med: NaN, q1: NaN, q3: NaN, sum: s };
     });
     ser.forEach((r) => {
-      r.med = stats[r.m].med;
-      r.ratio = (r.h + 1) / (r.med + 1);
+      r.med = r.part ? o.partMed ?? NaN : stats[r.m].med;
+      r.ratio = Number.isFinite(r.med) ? (r.h + 1) / (r.med + 1) : NaN;
     });
     const years = [];
     for (let y = o.yFrom; y <= o.yTo; y++) {
       const rr = ser.filter((r) => r.y === y), sum = (k) => rr.reduce((a, r) => a + r[k], 0);
-      years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
+      if (!rr.length) continue;
+      const row = {
+        y,
+        h: sum("h"),
+        lo: sum("lo"),
+        hi: sum("hi"),
+        naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0)
+      };
+      if (!fullYear(y)) row.part = true;
+      years.push(row);
     }
-    const total2 = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
-    return { ser, stats, years, total: total2, mean: total2 / years.length, order, ranked };
+    const counts = years.filter((y) => counted(y.y)), total2 = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = counts.slice().sort((a, b) => b.h - a.h);
+    return {
+      ser,
+      stats,
+      years,
+      total: total2,
+      any: ser.reduce((a, r) => a + r.h, 0),
+      mean: counts.length ? total2 / counts.length : 0,
+      order,
+      ranked,
+      partYear: years.find((y) => y.part) ?? null
+    };
   }
-  function verdict(R, focus = S.focus) {
+  function verdict(R, focus = S.focus, sd = null) {
     const [fy, fm] = focus, f = R.ser.find((r) => r.y === fy && r.m === fm);
     if (!f) return null;
-    const same = R.ser.filter((r) => r.m === fm).map((r) => r.h), n = same.length, rank = same.filter((v) => v > f.h).length + 1, pct4 = same.filter((v) => v < f.h).length / Math.max(1, n - 1) * 100, med = R.stats[fm].med;
+    if (f.part && !sd) return { f, fm, fy, label: "Not over yet", cls: "", rank: 0, n: 0, med: NaN, mult: "", noSame: true };
+    const cur2 = f.part ? sd.cur : f.h, same = f.part ? [...sd.past, cur2] : R.ser.filter((r) => r.m === fm && !r.part).map((r) => r.h), n = same.length, rank = same.filter((v) => v > cur2).length + 1, pct4 = (same.filter((v) => v < cur2).length + (same.filter((v) => v === cur2).length - 1) / 2) / Math.max(1, n - 1) * 100, med = f.part ? sd.med : R.stats[fm].med;
     let label = "Typical", cls = "";
-    if (!(f.h === 0 && med === 0)) {
+    if (!(cur2 === 0 && med === 0)) {
       if (pct4 >= 90) {
         label = "Unusually high";
         cls = "hi";
@@ -259,12 +423,13 @@
       rank,
       n,
       med,
-      mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots")
+      mult: med > 0 && cur2 > 0 ? times(cur2 / med) + (f.part ? ` a normal ${sd.span}` : " a normal " + MON[fm]) : cur2 === 0 ? "No hotspots" + (f.part ? ` in ${sd.span}` : "") : fmt(cur2) + (fmt(cur2) === "1" ? " hotspot" : " hotspots") + (f.part ? ` in ${sd.span}` : ""),
+      same: f.part ? sd : void 0
     };
   }
   var riskYears = () => {
-    const a = Math.max(S.yFrom, 2012);
-    return a <= S.yTo ? [a, S.yTo] : [S.yFrom, S.yTo];
+    const a = Math.max(S.yFrom, 2012), b = Math.min(S.yTo, FULL_Y1);
+    return a <= b ? [a, b] : [Math.min(S.yFrom, FULL_Y1), Math.min(S.yTo, FULL_Y1)];
   };
   function riskFor(R, m) {
     const [a, b] = riskYears(), rows = R.ser.filter((r) => r.m === m && r.y >= a && r.y <= b), hit = rows.filter((r) => r.h > 0), z = hit.map((r) => r.h).sort((x, y) => x - y);
@@ -313,7 +478,7 @@
       };
     }).sort((x, y) => y.e - x.e || y.p - x.p);
   }
-  var leadText = (R) => R.total === 0 ? "No fire hotspots were detected here in these years. Try a larger area." : `Fire activity here peaks in ${MONL[R.order[0].m]}. ${R.ranked[0].y} was the most active year on record, ${times(R.ranked[0].h / R.mean).replace("\xD7", "")} times an average year.`;
+  var leadText = (R, ytd = null) => R.any === 0 ? "No fire hotspots were detected here in these years. Try a larger area." : R.total === 0 ? `No fire hotspots were detected here in the complete years chosen.${ytd ? " " + ytdSentence(ytd) : ""}` : `Fire activity here peaks in ${MONL[R.order[0].m]}. ${R.ranked[0].y} was the most active ${R.ranked[0].part ? "year so far" : "complete year on record"}, ${times(R.ranked[0].h / R.mean).replace("\xD7", "")} times an average year.` + (ytd ? " " + ytdSentence(ytd) : "");
   var kmBetween = (lon1, lat1, lon2, lat2) => Math.hypot((lon1 - lon2) * 111.32 * Math.cos(lat1 * Math.PI / 180), (lat1 - lat2) * 110.57);
   function nearestTown(st, lon, lat) {
     let best = null, bd = 1e9;
@@ -486,7 +651,7 @@
     let s = HATCH(hid) + grid(W, m, ph, ymax, short, 2);
     vals.forEach((v, i) => {
       const x = m.l + bw * i + 1.5, w = Math.max(1, bw - 3), y = Y(v), cx = x + w / 2;
-      s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
+      s += o.part && o.part(i) ? `<rect x="${x + 0.75}" y="${y}" width="${Math.max(0.5, w - 1.5)}" height="${Math.max(0.5, m.t + ph - y - 0.75)}" rx="3" fill="rgba(255,138,61,.25)" stroke="${o.sel === i ? "#fff" : "#ff8a3d"}" stroke-width="${o.sel === i ? 2 : 1.3}" stroke-dasharray="3 2"/>` + (n < 40 ? `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">so far</text>` : "") : `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
       if (o.lo && o.whisk(i))
         s += `<line x1="${cx}" x2="${cx}" y1="${Y(o.lo[i])}" y2="${Y(o.hi[i])}" stroke="#dfe5ee" stroke-width="1.3"/>`;
       if (o.top && o.top.includes(i)) s += `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">${xs[i]}</text>`;
@@ -559,7 +724,7 @@
     };
   }
   function calendarInto(el, R, o) {
-    const lmax = Math.log1p(Math.max(1, ...R.ser.map((r) => r.h))), cmp = !!o.compact, yFrom = R.years[0].y, yTo = R.years[R.years.length - 1].y, focus = o.focusYM || S.focus, vi0 = o.vi0 ?? VI0;
+    const lmax = Math.log1p(Math.max(1, ...R.ser.map((r) => r.h))), cmp = !!o.compact, yFrom = R.years[0].y, yTo = R.years[R.years.length - 1].y, focus = o.focusYM || S.focus, vi0 = o.vi0 ?? VI0, st = R.st ?? S.st;
     el.style.gridTemplateColumns = cmp ? "34px repeat(12,minmax(0,1fr))" : "44px repeat(12,minmax(0,1fr)) 70px";
     let h = `<div></div>` + MON.map((m) => `<div class="h">${cmp ? m[0] : m}</div>`).join("") + (cmp ? "" : `<div class="h" style="text-align:right">Year total</div>`);
     for (let y = yTo; y >= yFrom; y--) {
@@ -567,19 +732,28 @@
         h += `<div class="split">${cmp ? "converted from MODIS below" : "seen by VIIRS above \xB7 converted from MODIS below"}</div>`;
       h += `<div class="y">${y}</div>`;
       for (let m = 0; m < 12; m++) {
-        const r = R.ser[(y - yFrom) * 12 + m], c = o.mode === "anom" ? div(Math.log2(r.ratio) / 3) : r.h === 0 ? [22, 28, 40] : seq(0.06 + 0.94 * Math.log1p(r.h) / lmax);
-        h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
+        const r = R.ser[(y - yFrom) * 12 + m];
+        if (!r) {
+          h += `<div class="c none" aria-label="${MON[m]} ${y}: no data yet"></div>`;
+          continue;
+        }
+        const c = o.mode === "anom" ? Number.isFinite(r.ratio) ? div(Math.log2(r.ratio) / 3) : [60, 66, 78] : r.h === 0 ? [22, 28, 40] : seq(0.06 + 0.94 * Math.log1p(r.h) / lmax), nd = r.i >= vi0 && !!fillNote(r.i, st);
+        h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}${r.part ? " part" : ""}${nd && !cmp ? " n20" : ""}" data-i="${r.i}" style="background-color:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots${r.part ? " so far" : ""}">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
       }
-      if (!cmp) h += `<div class="t">${fmt(R.years[y - yFrom].h)}</div>`;
+      const yr = R.years.find((z) => z.y === y);
+      if (!cmp) h += yr?.part ? `<div class="t part">${fmt(yr.h)}<small>so far</small></div>` : `<div class="t">${fmt(yr ? yr.h : 0)}</div>`;
     }
     el.innerHTML = h;
-    el.querySelectorAll(".c").forEach((b) => {
+    el.querySelectorAll("button.c").forEach((b) => {
       const r = R.ser[+b.dataset.i - R.ser[0].i];
+      const nd = r.i >= vi0 ? fillNote(r.i, st) : "";
       b.onmousemove = (e) => showTip(
         e,
-        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}
-Normal for ${MON[r.m]}: ${fmt(r.med)}
-${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more ? "\n" + o.more(r) : "")
+        (r.part ? `${MONL[r.m]} ${r.y} so far, to ${LAST_WORDS}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}
+` + (Number.isFinite(r.med) ? `Normal for the same days: ${fmt(r.med)}` : "The month is not over; no same-days history for this area") : `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}
+Normal for ${MON[r.m]}: ${fmt(r.med)}`) + (nd ? `
+VIIRS Suomi NPP, with ${nd}` : `
+${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more ? "\n" + o.more(r) : "")
       );
       b.onmouseleave = hideTip;
       if (o.click) b.onclick = () => o.click(r);
@@ -725,7 +899,7 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
   function closestAt(st, k, lon = hexLon(st, k), lat = hexLat(st, k)) {
     const r = respOf(st);
     if (!r || k < 0) return null;
-    const hx = hexState(st), off = gcKm(lon, lat, hexLon(st, k), hexLat(st, k)), far = off >= LEG_KM && r.e10[k] !== -9999, eK = extraOf(r, k), leg = far ? estMin(r.cal, off, 0, eK) : 0, fj = hx.f.key.get(hexKey(lon * hx.K, lat, hx.f.R)), fs = fj === void 0 ? -1 : r.fine.s[fj], fine = fs >= 0 ? { i: fs, name: hx.stn.names[fs][0], min: r.fine.min10[fj] / 10 } : null, rows = [];
+    const hx = hexState(st), off = gcKm(lon, lat, hexLon(st, k), hexLat(st, k)), far = off >= LEG_KM && r.e10[k] !== -9999, eK = extraOf(r, k), leg = far ? estMin(r.cal, off, 0, eK) : 0, fj = hx.f.key.get(hexKey(lon * hx.K, lat, hx.f.R)), fs = fj === void 0 || fj >= r.fine.n ? -1 : r.fine.s[fj], fine = fs >= 0 ? { i: fs, name: hx.stn.names[fs][0], min: r.fine.min10[fj] / 10 } : null, rows = [];
     for (let j = 0; j < 3; j++) {
       const i = r.top[3 * k + j];
       if (i < 0) break;
@@ -815,7 +989,7 @@ ${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more
     const key = st + "|" + m, hit = splitCache.get(key);
     if (hit) return hit;
     const hx = hexState(st), f = hx.f, r = respOf(st), bit = 1 << m, acc = Array.from({ length: hx.n }, () => /* @__PURE__ */ new Map());
-    for (let j = 0; j < f.n; j++) {
+    for (let j = 0, nj = Math.min(f.n, r.fine.n); j < nj; j++) {
       if (!(f.mm[j] & bit)) continue;
       const k = hx.key.get(hexKey(f.X[j], f.Y[j], hx.R));
       if (k === void 0) continue;
@@ -1454,37 +1628,65 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
       msg.textContent = "Downloads are not available in this view.";
     }
   }
+  var modisThrough = () => {
+    const t = D.meta.modis_through;
+    return t ? (t[0] - Y0) * 12 + t[1] - 1 : NM - 1;
+  };
+  var monthStatus = (i) => i <= FULL_I ? "complete" : i <= LAST_I ? `partial_to_${LAST_DATE}` : "no_data";
+  function fillDates(i, st) {
+    const f = fillDays(i, st), pre = `${Y0 + Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, "0")}-`, iso = (d) => d.map((x) => pre + String(x).padStart(2, "0")).join(" ");
+    return { n20: iso(f.n20), interp: iso(f.interp), any: f.n20.length + f.interp.length > 0 };
+  }
   function csvCal() {
-    const R = analyseFor(S.st, S.sel), rows = [
-      "year,month,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,median_for_calendar_month,ratio_to_median"
+    const st = S.st, s = D.states[st], R = analyseFor(st, S.sel), mt = modisThrough(), whole = S.sel.type === "state", m26 = new Map((s.y2026?.months ?? []).map((m) => [m.i, m])), gaps = new Map((s.hist_gaps ?? []).map((g) => [g.i, g])), rows = [
+      "year,month,month_status,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_on_filled_days,noaa20_converted_snpp_terms,days_from_noaa20_converted,days_estimated_from_neighbours,median_for_calendar_month,ratio_to_median"
     ];
-    R.ser.forEach(
-      (r) => rows.push(
+    R.ser.forEach((r) => {
+      const f = fillDates(r.i, st), m = m26.get(r.i), g = gaps.get(r.i);
+      let snpp = r.V, n20raw = "", n20conv = "";
+      if (f.any && m) {
+        snpp = whole ? m.snpp : "";
+        n20raw = whole ? m.n20_raw : "";
+        n20conv = whole ? m.n20_converted : "";
+      } else if (f.any && g) {
+        n20raw = whole ? g.n20_gap : "";
+        n20conv = (r.h - (r.V - (whole ? g.snpp_gap : 0))).toFixed(2);
+        if (!whole) n20conv = "";
+      }
+      rows.push(
         [
           r.y,
           r.m + 1,
+          monthStatus(r.i),
           r.h.toFixed(2),
           r.lo.toFixed(2),
           r.hi.toFixed(2),
-          `"${r.src}"`,
-          r.T,
-          r.A,
-          r.V,
-          r.med.toFixed(2),
+          `"${f.any ? FILL_SRC : r.src}"`,
+          r.i > mt ? "" : r.T,
+          r.i > mt ? "" : r.A,
+          snpp,
+          n20raw,
+          n20conv,
+          f.n20,
+          f.interp,
+          Number.isFinite(r.med) ? r.med.toFixed(2) : "",
           r.med > 0 ? (r.h / r.med).toFixed(3) : ""
         ].join(",")
-      )
-    );
+      );
+    });
     save(`burn-calendar_${selSlug()}_${S.yFrom}-${S.yTo}.csv`, rows.join("\n"));
   }
   function csvHot() {
-    const s = D.states[S.st], hx = hexState(S.st), mask = selMask(), cr = s.hex_rows, rows = [
-      "hex_center_lat,hex_center_lon,county,year,month,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,harmonized_viirs_equivalent,source"
+    const s = D.states[S.st], hx = hexState(S.st), mask = selMask(), cr = s.hex_rows, mt = modisThrough(), gapHex = /* @__PURE__ */ new Map(), rows = [
+      "hex_center_lat,hex_center_lon,county,year,month,month_status,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,harmonized_viirs_equivalent,source,days_from_noaa20_converted,days_estimated_from_neighbours"
     ];
-    for (let p = 0; p < cr.length; p += 5) {
-      const k = cr[p], i = cr[p + 1], y = Y0 + Math.floor(i / 12);
-      if (!mask[k] || y < S.yFrom || y > S.yTo) continue;
-      const h = harm(S.st, i, cr[p + 2], cr[p + 3], cr[p + 4]);
+    const gh = s.gap_hex_rows ?? [];
+    for (let p = 0; p < gh.length; p += 3) gapHex.set(gh[p] * NM + gh[p + 1], gh[p + 2]);
+    const push = (k, i, T, A, V4) => {
+      const y = Y0 + Math.floor(i / 12);
+      if (!mask[k] || y < S.yFrom || y > S.yTo) return;
+      const h = harm(S.st, i, T, A, V4), f = fillDates(i, S.st), dh = gapHex.get(k * NM + i) ?? 0;
+      gapHex.delete(k * NM + i);
       rows.push(
         [
           hx.Y[k].toFixed(3),
@@ -1492,14 +1694,20 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
           `"${s.counties[hx.c[k]].name}"`,
           y,
           i % 12 + 1,
-          cr[p + 2],
-          cr[p + 3],
-          cr[p + 4],
-          h.h.toFixed(2),
-          `"${h.src}"`
+          monthStatus(i),
+          i > mt ? "" : T,
+          i > mt ? "" : A,
+          /* Suomi NPP as observed; blank on 2026 months with days from NOAA-20, whose per-hexagon split is not kept */
+          f.any && y >= 2026 ? "" : V4,
+          Math.max(0, h.h + dh).toFixed(2),
+          `"${f.any ? FILL_SRC : h.src}"`,
+          f.n20,
+          f.interp
         ].join(",")
       );
-    }
+    };
+    for (let p = 0; p < cr.length; p += 5) push(cr[p], cr[p + 1], cr[p + 2], cr[p + 3], cr[p + 4]);
+    [...gapHex.keys()].forEach((key) => push(Math.floor(key / NM), key % NM, 0, 0, 0));
     save(`hotspots-hex_${selSlug()}_${S.yFrom}-${S.yTo}.csv`, rows.join("\n"));
   }
   var pm = (v) => (v / 1e3).toFixed(3);
@@ -1922,7 +2130,7 @@ Usual for these dates: ${pct2(o.base)}
         setCounty(+b.dataset.ci);
       }
     );
-    $("olHow").innerHTML = `Each county's <b>usual chance</b> is how often VIIRS saw a hotspot there in the same 14-day window of the year, ${so.climatology.years[0]}\u2013${so.climatology.years[1]}. A small model (a logistic regression, fitted on ${so.metrics.years[0]}\u2013${so.metrics.years[so.metrics.years.length - 1]}) nudges it with ${OM}'s ECMWF weather: rain and drying over the past 30 days and the next 14, above all the number of dry days ahead. <b>The test is generous:</b> it gave the model the weather that actually happened, and even then it beat the usual odds by only ${(sk.bss * 100).toFixed(1)}%. A real forecast goes wrong, more so in the second week, so expect less; real forecasts were not tested, because Open-Meteo's archive of past forecasts was beyond its free daily limit.`;
+    $("olHow").innerHTML = `Each county's <b>usual chance</b> is how often VIIRS saw a hotspot there in the same 14-day window of the year, ${so.climatology.years[0]}\u2013${so.climatology.years[1]}. A small model (a logistic regression, fitted on ${so.metrics.years[0]}\u2013${so.metrics.years[so.metrics.years.length - 1]}) nudges it with ${OM}'s ECMWF weather: rain and drying over the past 30 days and the next 14, above all the number of dry days ahead. <b>The test is generous:</b> it gave the model the weather that actually happened, and even then it beat the usual odds by only ${(sk.bss * 100).toFixed(1)}%. A real forecast goes wrong, more so in the second week, so expect less; real forecasts were not tested, because Open-Meteo's archive of past forecasts was beyond its free daily limit. The usual odds and the model were built from data to ${so.climatology.years[1]} and are left as they were: the 2026 hotspots now on the calendar are not in them.`;
     const recal = bt["recalibrated climatology"], beyond = (s) => recal ? 1 - (1 - s.bss) / (1 - recal.bss) : null, sp = (x) => x == null ? "\u2013" : (x >= 0 ? "+" : "\u2212") + Math.abs(x * 100).toFixed(2) + "%";
     $("olTable").innerHTML = `<tr><th>Tested on ${so.metrics.years[0]}\u2013${so.metrics.years[so.metrics.years.length - 1]}, one year left out at a time</th><th>Brier</th><th>Against the usual odds</th><th>Against the recalibrated odds</th><th>AUC</th><th>Years better than usual</th></tr>` + ROWS.filter(([k]) => bt[k]).map(([k, lab]) => {
       const s = bt[k], base2 = k === "climatology", wx = !base2 && k !== "recalibrated climatology", last = k === ROWS[ROWS.length - 1][0];
@@ -1978,8 +2186,9 @@ Usual for these dates: ${pct2(o.base)}
   // src/sheet.ts
   function renderArea(R) {
     $("shTitle").textContent = placeName();
-    $("shCrumb").textContent = (S.sel.type === "state" ? "State" : NAME[S.st]) + ` \xB7 ${S.yFrom}\u2013${S.yTo}`;
-    $("shLead").textContent = leadText(R);
+    $("shCrumb").textContent = (S.sel.type === "state" ? "State" : NAME[S.st]) + ` \xB7 ${span(S.yFrom, S.yTo)}`;
+    const ytd = ytdFor(R, S.st, S.sel);
+    $("shLead").textContent = leadText(R, ytd);
     if (R.total === 0) {
       $("a1").textContent = $("a2").textContent = "None";
       $("a1n").textContent = $("a2n").textContent = "";
@@ -1988,17 +2197,27 @@ Usual for these dates: ${pct2(o.base)}
       $("a1").textContent = top2.map((o) => MON[o.m]).join(", ");
       $("a1n").textContent = `These three months hold ${Math.round(top2.reduce((a, o) => a + o.sum, 0) / R.total * 100)}% of all hotspots. ${MONL[R.order[11].m]} is the quietest.`;
       $("a2").textContent = R.ranked.slice(0, 3).map((y) => y.y).join(", ");
-      $("a2n").textContent = R.ranked.slice(0, 3).map((y) => `${y.y}: ${fmt(y.h)}${y.y < 2012 ? " (converted)" : ""}`).join(" \xB7 ") + `. An average year has ${fmt(R.mean)}.`;
+      $("a2n").textContent = R.ranked.slice(0, 3).map((y) => `${y.y}: ${fmt(y.h)}${y.y < 2012 ? " (converted)" : ""}`).join(" \xB7 ") + `. An average year has ${fmt(R.mean)}.` + (R.partYear ? ` ${R.partYear.y} is left out until it is over.` : "") + (ytd ? ` ${ytd.y} so far: ${fmt(ytd.cur)} for ${ytd.span}, ${rankWords(ytd.rank, ytd.n)} for the same dates.` : "");
     }
-    const v = verdict(R);
+    const v = verdict(R, S.focus, sameDaysFor(S.st, S.sel)), fi = (S.focus[0] - Y0) * 12 + S.focus[1];
     $("fM").value = String(S.focus[1]);
     $("fY").value = String(S.focus[0]);
     if (!v) {
-      $("a3").textContent = "Outside the chosen years";
-      $("a3n").textContent = "";
+      $("a3").textContent = fi > LAST_I ? "No data yet" : "Outside the chosen years";
+      $("a3n").textContent = fi > LAST_I ? `The record runs to ${LAST_WORDS}.` : "";
+    } else if (v.noSame) {
+      $("a3").innerHTML = `<span class="pill">${v.label}</span>`;
+      $("a3n").textContent = `${fmt(v.f.h)} hotspots in ${MONL[v.fm]} ${v.fy} so far, to ${LAST_WORDS}. A part month cannot be set against whole months. The same days of past years are kept for the whole state and each county: choose one of them to test it.`;
+    } else if (v.same && v.same.cur === 0 && v.same.past.every((x) => x === 0)) {
+      $("a3").textContent = "No hotspots";
+      $("a3n").textContent = `No hotspots in ${v.same.span} in any year from ${v.same.years[0]}, so there is nothing to compare.`;
+    } else if (v.same) {
+      const sd = v.same;
+      $("a3").innerHTML = `<span class="pill ${v.cls}">${v.label}</span>${v.mult}`;
+      $("a3n").textContent = `${MONL[v.fm]} ${v.fy} is not over: ${fmt(sd.cur)} hotspots in ${sd.span}` + (sd.hi - sd.lo >= 1 ? ` (likely ${fmt(sd.lo)} to ${fmt(sd.hi)})` : "") + `, against a normal ${fmt(sd.med)} for the same days of ${sd.years[0]}\u2013${sd.years[sd.years.length - 1]}. Rank ${v.rank} of ${v.n} years. Most of these days are from NOAA-20, converted to Suomi NPP terms` + (D.states[S.st].partial?.filled_years?.length ? `; the days Suomi NPP missed in ${D.states[S.st].partial.filled_years.join(", ")} are filled the same way.` : ".");
     } else {
       $("a3").innerHTML = `<span class="pill ${v.cls}">${v.label}</span>${v.mult}`;
-      $("a3n").textContent = `${fmt(v.f.h)} hotspots against a normal ${fmt(v.med)}. Rank ${v.rank} of ${v.n} years.` + (v.f.i < VI0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
+      $("a3n").textContent = `${fmt(v.f.h)} hotspots against a normal ${fmt(v.med)}. Rank ${v.rank} of ${v.n} years.` + (v.f.i < VI0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : fillNote(v.f.i, S.st) ? ` Seen by VIIRS: Suomi NPP, with ${fillNote(v.f.i, S.st)}.` : " Seen directly by VIIRS.");
     }
     const rk = riskFor(R, S.rm), mo = MONL[S.rm];
     $("rmSheet").value = String(S.rm);
@@ -2053,7 +2272,7 @@ Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
       }
     );
     const top = [];
-    ys.map((y, i) => [y.h, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).forEach((a) => {
+    ys.map((y, i) => [y.part ? 0 : y.h, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).forEach((a) => {
       if (a[0] > 0 && !top.some((i) => Math.abs(i - a[1]) < 2)) top.push(a[1]);
     });
     bars(
@@ -2067,10 +2286,13 @@ Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
         avg: R.mean,
         top,
         hatch: (i) => xs[i] < 2012,
+        part: (i) => !!ys[i].part,
         lo: ys.map((y) => y.lo),
         hi: ys.map((y) => y.hi),
         whisk: (i) => xs[i] < 2012,
-        tip: (i) => `${xs[i]}: ${fmt(ys[i].h)} hotspots
+        tip: (i) => ys[i].part ? `${xs[i]} so far, to ${LAST_WORDS}: ${fmt(ys[i].h)} hotspots
+The year is not over, so it is not set against whole years` + (ytd ? `
+${ytd.span}: ${rankWords(ytd.rank, ytd.n)} for the same dates` : "") : `${xs[i]}: ${fmt(ys[i].h)} hotspots
 ${R.mean > 0 ? (ys[i].h >= R.mean ? "+" : "") + Math.round((ys[i].h / R.mean - 1) * 100) + "% against the average year" : ""}` + (xs[i] < 2012 ? `
 Converted from MODIS, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "\nSeen by VIIRS"),
         click: (i) => pick(sh.t === "year" && sh.y === xs[i] ? { t: "all" } : { t: "year", y: xs[i] })
@@ -2087,24 +2309,25 @@ Converted from MODIS, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "\nSeen by 
         render();
       }
     });
-    $("calNote").textContent = S.mode === "count" ? "Every month of every year, newest at the top. Brighter means more hotspots. Tap a month to test whether it was unusual and to put it on the map." : "Red months ran above what is normal for that month, blue months below. Tap a month to test it.";
+    $("calNote").textContent = (S.mode === "count" ? "Every month of every year, newest at the top. Brighter means more hotspots. Tap a month to test whether it was unusual and to put it on the map." : "Red months ran above what is normal for that month, blue months below. Tap a month to test it.") + (R.partYear ? ` The record runs to ${LAST_WORDS}: the dashed month is not over and is compared with the same days of past years, and later months are blank, not zero. Months marked \xB7 have days filled from NOAA-20.` : "");
     paintRamp("calRamp", S.mode === "count" ? seq : (t) => div(t * 2 - 1));
     $("calLo").textContent = S.mode === "count" ? "fewer" : "\u215B\xD7 normal";
     $("calHi").textContent = S.mode === "count" ? "more (log scale)" : "8\xD7 normal";
+    const fy = ys.filter((y) => !y.part), fx = fy.map((y) => y.y);
     lines(
       $("chSeam"),
-      xs,
+      fx,
       [
-        { v: ys.map((y) => y.naive), c: "#6fa8ff" },
-        { v: ys.map((y) => y.h), c: "#ff8a3d" }
+        { v: fy.map((y) => y.naive), c: "#6fa8ff" },
+        { v: fy.map((y) => y.h), c: "#ff8a3d" }
       ],
       {
         W: 660,
-        vline: xs.indexOf(2012),
+        vline: fx.indexOf(2012),
         aria: "Raw joined counts against the harmonized record",
-        tip: (i) => `${xs[i]}
-Harmonized: ${fmt(ys[i].h)}
-Raw counts: ${fmt(ys[i].naive)}`
+        tip: (i) => `${fx[i]}
+Harmonized: ${fmt(fy[i].h)}
+Raw counts: ${fmt(fy[i].naive)}`
       }
     );
     const avg = (a, b, k) => {
@@ -2116,12 +2339,13 @@ Raw counts: ${fmt(ys[i].naive)}`
     const s = D.states[S.st], val = s.val, pc4 = (x) => Math.round(x * 100) + "%";
     $("tiles").innerHTML = `<div class="tile"><b>${val.raw_factor.toFixed(1)}\xD7</b><span>more hotspots from VIIRS than MODIS for the same fires in ${NAME[S.st]}</span></div><div class="tile"><b>${pc4(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc4(val.annual_max_err)}</b><span>error in the worst tested year</span></div>`;
     $("maskTxt").textContent = `${s.mask.static_sites} sites removed in ${NAME[S.st]}.`;
+    $("satRule").textContent = SAT_RULE;
     $("rates").innerHTML = `<tr><th>Rate</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr><tr><td>Terra+Aqua</td>${s.r_ta.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr><tr><td>Terra only</td>${s.r_t.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
     $("mapNote").hidden = sh.t === "all" || S.layer === "chance";
     $("mapNoteTxt").textContent = "The map behind now shows: " + showLabel().toLowerCase() + ".";
   }
   function cmpStats(st) {
-    const R = analyseFor(st, { type: "state" }), s = D.states[st], tot = new Float64Array(s.counties.length), i0 = (S.yFrom - Y0) * 12, i1 = (S.yTo - Y0 + 1) * 12, rows = s.county_rows;
+    const R = analyseFor(st, { type: "state" }), s = D.states[st], tot = new Float64Array(s.counties.length), i0 = (S.yFrom - Y0) * 12, i1 = R.partYear && R.ranked.length && !R.ranked[0].part ? Math.min((S.yTo - Y0 + 1) * 12, (R.partYear.y - Y0) * 12) : (S.yTo - Y0 + 1) * 12, rows = s.county_rows;
     for (let p = 0; p < rows.length; p += 5) {
       const i = rows[p + 1];
       if (i >= i0 && i < i1) tot[rows[p]] += harm(st, i, rows[p + 2], rows[p + 3], rows[p + 4]).h;
@@ -2144,13 +2368,14 @@ Raw counts: ${fmt(ys[i].naive)}`
       worst: R.ranked[0],
       worstX: R.mean ? R.ranked[0].h / R.mean : 0,
       county: s.counties[k].name,
-      countyShare: R.total ? tot[k] / R.total : 0
+      countyShare: R.total ? tot[k] / R.total : 0,
+      ytd: ytdFor(R, st, { type: "state" })
     };
   }
   function renderCompare() {
     const C = STS.map(cmpStats), big = C.slice().sort((a, b) => b.mean - a.mean)[0], small = C.find((c) => c !== big);
     $("shTitle").textContent = STS.map((k) => NAME[k]).join(" and ");
-    $("shCrumb").textContent = `Compare states \xB7 ${S.yFrom}\u2013${S.yTo}`;
+    $("shCrumb").textContent = `Compare states \xB7 ${span(S.yFrom, S.yTo)}`;
     $("cmpLead").textContent = small.mean > 0 ? `${NAME[big.st]} records about ${Math.round(big.mean / small.mean)} times as many fire hotspots as ${NAME[small.st]} in an average year, and ${Math.round(big.dens / small.dens)} times as many for its size. ${NAME[small.st]} burns mostly in ${MONL[small.peak]}; ${NAME[big.st]} in ${MONL[big.peak]}.` : "";
     const rowsDef = [
       ["Hotspots in an average year", (c) => fmt(c.mean), (c) => c.mean, ""],
@@ -2165,6 +2390,13 @@ Raw counts: ${fmt(ys[i].naive)}`
       ],
       ["Most active county", (c) => c.county, null, (c) => `${Math.round(c.countyShare * 100)}% of the state's hotspots`]
     ];
+    if (C.every((c) => c.ytd))
+      rowsDef.push([
+        `${C[0].ytd.y} so far (${C[0].ytd.span})`,
+        (c) => fmt(c.ytd.cur),
+        (c) => c.ytd.med > 0 ? c.ytd.cur / c.ytd.med : 0,
+        (c) => `${c.ytd.med > 0 ? times(c.ytd.cur / c.ytd.med) + " the typical " + c.ytd.span + ", " : ""}${rankWords(c.ytd.rank, c.ytd.n)} for the same dates`
+      ]);
     let h = `<div class="sh"></div>` + C.map((c) => `<div class="sh"><i style="background:${STC[c.st]}"></i>${NAME[c.st]}</div>`).join("");
     for (const [label, val, num2, sub] of rowsDef) {
       const mx = num2 ? Math.max(...C.map(num2)) : 0;
@@ -2175,7 +2407,7 @@ Raw counts: ${fmt(ys[i].naive)}`
     $("score").innerHTML = h;
     const key = C.map((c) => `<span><i style="background:${STC[c.st]};height:3px"></i>${NAME[c.st]}</span>`).join("");
     $("cmpKey1").innerHTML = $("cmpKey2").innerHTML = key;
-    const share = (c) => c.R.stats.map((z) => c.R.total ? z.sum / c.R.total * 100 : 0), idx = (c) => c.R.years.map((y) => c.mean ? y.h / c.mean : 0), xs = C[0].R.years.map((y) => y.y);
+    const share = (c) => c.R.stats.map((z) => c.R.total ? z.sum / c.R.total * 100 : 0), idx = (c) => c.R.years.filter((y) => !y.part).map((y) => c.mean ? y.h / c.mean : 0), xs = C[0].R.years.filter((y) => !y.part).map((y) => y.y);
     lines(
       $("chCmpMonths"),
       MON,
@@ -2301,8 +2533,8 @@ Raw counts: ${fmt(ys[i].naive)}`
       const [a, b] = largeYears();
       h = `<b>Past odds of a large fire</b> (1,000+ acres)<span class="more"> on CAL FIRE's fire perimeter maps</span> in ${mo}, ${a}\u2013${b}. History, not a forecast.`;
     } else {
-      const [a, b] = [Math.max(S.yFrom, 2012), S.yTo];
-      h = `<b>Past odds</b>: share of ${mo}s ${a <= b ? `${a}\u2013${b}` : `${S.yFrom}\u2013${S.yTo}`} with a hotspot. History, not a forecast.`;
+      const [a, b] = riskYears();
+      h = `<b>Past odds</b>: share of ${mo}s ${a < b ? `${a}\u2013${b}` : a} with a hotspot<span class="more">, complete years only</span>. History, not a forecast.`;
     }
     if (!L2) h += ` <span title="${esc3(NY_WHY)}">Large fires: California only.</span>`;
     $("oddsNote").innerHTML = h;
@@ -2383,7 +2615,7 @@ Raw counts: ${fmt(ys[i].naive)}`
       v += ` Large fires: <b>${verdictWord(lh.brier_skill_vs_history_alone)} past odds</b> for hexagons (${pctGain(lh.brier_skill_vs_history_alone)} lower), only ${pctGain(lh.brier_skill_vs_state_seasonal_average)} better than the state's plain seasonal average, and ${verdictWord(lc.brier_skill_vs_history_alone)} past odds for counties.`;
     $("fcVerdict").innerHTML = v;
     const same = [fcSame(st, "any") && "hexagons", fcSame(st, "any", true) && "counties"].filter(Boolean);
-    $("fcNote").textContent = `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L2 ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone: no weather, fuel or ignitions. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.` : "");
+    $("fcNote").textContent = `It gives the chance of at least one hotspot in each hexagon and county, in each month of 2026 and 2027${L2 ? ", and in California the chance that a large fire (1,000+ acres) starts and reaches it" : ""}. It is built from fire history alone, to December 2025: no weather, fuel or ignitions, and none of the 2026 data now on the calendar. So it is the long-run chance for the month, not a warning that a given month will be unusual. Pick Forecast 2026 or 2027 on the map's Chance of fire layer, or above, to use it.` + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, any fire, 2027's chances are the same as 2026's: the backtest chose no trend term there, so the two years differ only in how far ahead they were tested.` : "");
     $("dlFcNote").textContent = "The forecast for every month of 2026 and 2027, for the area chosen above, with past odds alongside. Chances run from 0 to 1; 0 means under 0.0005." + (same.length ? ` For ${NAME[st]} ${same.join(" and ")}, the 2027 rows repeat 2026's any-fire chances.` : "") + " The county file gives a county at least its likeliest hexagon's chance, as the page does.";
     const row = (u, m) => `<tr><td class="u">${u}</td><td>${br(m.model.brier)}</td><td>${br(m.history_alone.brier)}</td><td class="em">${pctGain(m.brier_skill_vs_history)}</td><td>${auc(m.model.auc)}</td><td>${auc(m.history_alone.auc)}</td><td>${m.years_model_better_brier}</td><td>${pctGain(m.horizon2.brier_skill_vs_history)}</td></tr>`;
     const lrow = (u, b) => `<tr><td class="u">${u}</td><td>${br(b.horizon_1y.model.brier)}</td><td>${br(b.horizon_1y.history_alone.brier)}</td><td class="em">${pctGain(b.horizon_1y.brier_skill_vs_history_alone)}</td><td>${auc(b.horizon_1y.model.auc)}</td><td>${auc(b.horizon_1y.history_alone.auc)}</td><td>\u2013</td><td>${pctGain(largeSkill2(b.horizon_2y))}</td></tr>`;
@@ -2490,8 +2722,8 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
   function renderCard(R) {
     const hx = hexState(S.st), sl = S.sel, cty = (ci) => D.states[S.st].counties[ci].name + " County";
     $("place").textContent = placeName();
-    $("lead").textContent = leadText(R);
-    $("crumb").innerHTML = (sl.type === "state" ? "State" : `<button type="button" data-go="state">${NAME[S.st]}</button>` + (sl.type === "hex" ? ` \u203A <button type="button" data-ci="${hx.c[sl.k]}">${cty(hx.c[sl.k])}</button>` : "")) + ` \xB7 ${S.yFrom}\u2013${S.yTo}`;
+    $("lead").textContent = leadText(R, ytdFor(R, S.st, sl));
+    $("crumb").innerHTML = (sl.type === "state" ? "State" : `<button type="button" data-go="state">${NAME[S.st]}</button>` + (sl.type === "hex" ? ` \u203A <button type="button" data-ci="${hx.c[sl.k]}">${cty(hx.c[sl.k])}</button>` : "")) + ` \xB7 ${span(S.yFrom, S.yTo)}`;
     $("crumb").querySelectorAll("button").forEach((b) => b.onclick = () => setCounty(b.dataset.go ? null : +b.dataset.ci));
     const sf = stationsFor(S.st, sl);
     $("c5q").textContent = sf.rad ? `Fire stations within ${sf.rad} km` : "Fire and EMS stations";
@@ -2499,9 +2731,10 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     $("hint").textContent = sl.type === "state" ? "Click a county, then a hexagon, to zoom in. Scroll to zoom, drag to move." : sl.type === "county" ? "Click a hexagon in this county to zoom into it." : "Click a small hexagon to go closer. Blue squares are fire and EMS stations.";
     $("c1").textContent = R.total ? R.order.slice(0, 3).map((o) => MON[o.m]).join(", ") : "None";
     $("c2").textContent = R.total ? R.ranked.slice(0, 3).map((y) => y.y).join(", ") : "None";
-    const v = verdict(R);
-    $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}`;
-    $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : "Outside these years";
+    const v = verdict(R, S.focus, sameDaysFor(S.st, sl)), future = (S.focus[0] - Y0) * 12 + S.focus[1] > LAST_I;
+    $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}` + (v?.same ? ` (${v.same.span})` : "");
+    $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : future ? `No data yet` : "Outside these years";
+    $("c3").parentElement.title = v?.same ? `${v.same.span} ${S.focus[0]} so far, against the same days of ${v.same.years[0]}\u2013${v.same.years[v.same.years.length - 1]}` : v?.noSame ? `The month is not over: the record runs to ${LAST_WORDS}. Choose the state or a county to compare its first days with the same days of past years.` : "";
     const cc = olCard() || chanceCard(R);
     $("c4q").textContent = cc.q;
     $("c4").textContent = cc.v;
@@ -2512,8 +2745,8 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     const ys = R.years, n = ys.length, W = 600, bw = W / n, mx = Math.max(1, ...ys.map((y) => y.h)), cur2 = S.show.t === "year" && S.layer === "count" ? S.show.y : null;
     let g = "";
     ys.forEach((y, i) => {
-      const h = Math.max(2, 32 * Math.sqrt(y.h / mx)), on = y.y === cur2;
-      g += `<rect x="${i * bw + 1.5}" y="${38 - h}" width="${bw - 3}" height="${h}" rx="2" fill="${on ? "#ff8a3d" : cur2 == null ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.28)"}"/>`;
+      const h = Math.max(2, 32 * Math.sqrt(y.h / mx)), on = y.y === cur2, fill = on ? "#ff8a3d" : cur2 == null ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.28)";
+      g += y.part ? `<rect x="${i * bw + 2}" y="${38.5 - h}" width="${bw - 4}" height="${h - 1}" rx="2" fill="${on ? fill : "none"}" stroke="${on ? "#ff8a3d" : fill}" stroke-width="1" stroke-dasharray="2 1.5"/>` : `<rect x="${i * bw + 1.5}" y="${38 - h}" width="${bw - 3}" height="${h}" rx="2" fill="${fill}"/>`;
       if (on || i % 4 === 0 && (cur2 == null || Math.abs(y.y - cur2) > 2))
         g += `<text x="${(i + 0.5) * bw}" y="51" text-anchor="middle" ${on ? 'class="hl"' : ""}>${y.y}</text>`;
     });
@@ -2527,8 +2760,8 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     tr.setAttribute("aria-valuemax", String(S.yTo));
     tr.setAttribute("aria-valuenow", String(cur2 == null ? S.yTo : cur2));
     tr.setAttribute("aria-valuetext", cur2 == null ? "All years" : String(cur2));
-    const yr = cur2 != null ? ys[cur2 - S.yFrom] : null;
-    $("tlLabel").innerHTML = yr ? `<b>${cur2}</b>${fmt(yr.h)} hotspots${cur2 < 2012 ? " (converted from MODIS)" : ""}` : S.layer === "chance" ? "Drag along the years to see where each one burned" : S.show.t === "all" ? "Drag along the years to see where each one burned" : "Map shows: " + showLabel();
+    const yr = cur2 != null ? ys.find((y) => y.y === cur2) ?? null : null;
+    $("tlLabel").innerHTML = yr ? `<b>${cur2}</b>${fmt(yr.h)} hotspots${cur2 < 2012 ? " (converted from MODIS)" : yr.part ? ` so far, to ${LAST_WORDS}` : ""}` : S.layer === "chance" ? "Drag along the years to see where each one burned" : S.show.t === "all" ? "Drag along the years to see where each one burned" : "Map shows: " + showLabel();
     $("showReset").hidden = S.layer === "chance" || S.show.t === "all";
   }
 
@@ -2578,6 +2811,10 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     dpr: 1
   };
   var CH = null;
+  var FINE_YEARS = Y1 - 2012 + 1;
+  var FINE_SPAN = isPartYear(Y1) ? `2012 to ${LAST_WORDS}` : `2012\u2013${Y1}`;
+  var FINE_FULL = FULL_Y1 - 2012 + 1;
+  var FINE_FULL_BITS = (1 << FINE_FULL) - 1;
   var chT = (v) => CH ? Math.min(1, Math.pow(v / CH.max, CH.pow)) : v;
   var fineFits = () => S.layer === "count" || S.layer === "chance" && S.odds === "past" && S.fire === "any";
   var sx = (X) => V.W / 2 + (X - V.cx) * V.s;
@@ -2657,7 +2894,7 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
   }
   var showLabel = () => {
     const sh = S.show;
-    return sh.t === "all" ? `All hotspots, ${S.yFrom} to ${S.yTo}` : sh.t === "year" ? `Hotspots in ${sh.y}` : sh.t === "cmonth" ? `A typical ${MONL[sh.m]}` : `${MONL[sh.m]} ${sh.y}`;
+    return sh.t === "all" ? `All hotspots, ${span(S.yFrom, S.yTo)}` : sh.t === "year" ? `Hotspots in ${sh.y}${isPartYear(sh.y) ? ` so far, to ${LAST_WORDS}` : ""}` : sh.t === "cmonth" ? `A typical ${MONL[sh.m]}` : `${MONL[sh.m]} ${sh.y}`;
   };
   function mapValues() {
     const hx = hexState(S.st), v = new Float32Array(hx.n), sh = S.show, i0 = (S.yFrom - Y0) * 12, i1 = (S.yTo - Y0 + 1) * 12;
@@ -2676,8 +2913,9 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
         if (sh.t === "all") for (let i = i0; i < i1; i++) a += hx.H[b + i];
         else if (sh.t === "year") for (let i = (sh.y - Y0) * 12, e = i + 12; i < e; i++) a += hx.H[b + i];
         else if (sh.t === "cmonth") {
-          for (let i = i0 + sh.m; i < i1; i += 12) a += hx.H[b + i];
-          a /= S.yTo - S.yFrom + 1;
+          let n = 0;
+          for (let i = i0 + sh.m; i < i1 && i <= FULL_I; i += 12, n++) a += hx.H[b + i];
+          a /= Math.max(1, n);
         } else a = hx.H[b + (sh.y - Y0) * 12 + sh.m];
         v[k] = a;
         if (a > max) max = a;
@@ -2708,7 +2946,7 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
       return;
     }
     const ch = S.layer === "chance", f = V.fineOn, sh = S.show, [a, b] = CH && CH.years ? CH.years : riskYears(), big = S.fire === "large", lut2 = LUT(), mx = f ? hexState(S.st).f.max : V.max;
-    $("legTitle").textContent = f ? ch ? "How often each 2 km hexagon has burned since 2012" : "Hotspots per 2 km hexagon since 2012" : ch ? isFc() ? `Forecast for ${monthWhen()}: chance of ${big ? "a large fire (1,000+ acres) starting and reaching the hexagon" : "at least one hotspot"}` : big ? `Large fires in ${MONL[S.rm]}: share of years ${a} to ${b} when one (1,000+ acres) started and reached the hexagon` : `Chance of fire in ${MONL[S.rm]}: share of years ${a} to ${b} with a hotspot` : sh.t === "cmonth" ? `Average hotspots per hexagon in ${MONL[sh.m]}` : `Hotspots per hexagon, ${sh.t === "year" ? sh.y : sh.t === "ym" ? MON[sh.m] + " " + sh.y : S.yFrom + " to " + S.yTo}`;
+    $("legTitle").textContent = f ? ch ? "How often each 2 km hexagon has burned since 2012" : "Hotspots per 2 km hexagon since 2012" : ch ? isFc() ? `Forecast for ${monthWhen()}: chance of ${big ? "a large fire (1,000+ acres) starting and reaching the hexagon" : "at least one hotspot"}` : big ? `Large fires in ${MONL[S.rm]}: share of years ${a} to ${b} when one (1,000+ acres) started and reached the hexagon` : `Chance of fire in ${MONL[S.rm]}: share of years ${a} to ${b} with a hotspot` : sh.t === "cmonth" ? `Average hotspots per hexagon in ${MONL[sh.m]}` : `Hotspots per hexagon, ${sh.t === "year" ? sh.y + (isPartYear(sh.y) ? " so far" : "") : sh.t === "ym" ? MON[sh.m] + " " + sh.y + ((sh.y - Y0) * 12 + sh.m > FULL_I ? " so far" : "") : span(S.yFrom, S.yTo)}`;
     let g = "";
     [0, 0.25, 0.5, 0.75, 1].forEach((t, i) => {
       const r = 5.5 + 7.5 * t, x = 24 + i * 49, pts2 = [];
@@ -2906,7 +3144,7 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
         if (yb && !(f.ym[j] & yb) || mb && !(f.mm[j] & mb)) continue;
         const x = sx(f.X[j]), y = sy(f.Y[j]);
         if (x < -fr || y < -fr || x > V.W + fr || y > V.H + fr) continue;
-        const t = ch ? pop(f.ym[j]) / 14 : Math.log1p(f.c[j]) / lm;
+        const t = ch ? pop(f.ym[j] & FINE_FULL_BITS) / FINE_FULL : Math.log1p(f.c[j]) / lm;
         c.fillStyle = colT(lut2, t);
         hexPath(x, y, fx, fy, 0.5 + 0.5 * t);
         c.fill();
@@ -3097,7 +3335,7 @@ Fire or EMS station${st.names[b][1] ? " \xB7 " + st.names[b][1] : ""}`);
           showTip(
             e,
             `${county2 ? county2 + "\n" : ""}${fmt(f.c[j])} hotspots in this 2 km hexagon since 2012
-Burned in ${pop(f.ym[j])} of 14 years, last in ${2012 + 31 - Math.clz32(f.ym[j])}
+Burned in ${pop(f.ym[j])} of ${FINE_YEARS} years (${FINE_SPAN}), last in ${2012 + 31 - Math.clz32(f.ym[j])}
 Months with fire: ${MON.filter((_, m) => f.mm[j] >> m & 1).join(", ")}${notFireTip(k)}${respTip(k) || "\nClick to zoom in"}`
           );
         else if (k >= 0) showTip(e, `${county2}
@@ -3186,8 +3424,10 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   // src/hf.ts
   var HF_DATASET = "rogeryzd/firms-active-fire-by-country";
   var HF_PAGE = `https://huggingface.co/datasets/${HF_DATASET}`;
-  var SUMMARY_DIR = "summary/v2";
-  var summaryPath = (k) => `${SUMMARY_DIR}/${encodeURIComponent(k)}.json`;
+  var SUMMARY_DIR = "summary/v3";
+  var FALLBACK_DIR = "summary/v2";
+  var summaryPath = (k, dir = SUMMARY_DIR) => `${dir}/${encodeURIComponent(k)}.json`;
+  var pathOf = (d) => summaryPath(d.country, `summary/v${d.v}`);
   var fileUrl = (path) => `${HF_PAGE}/resolve/main/${path}`;
   var wait = (ms) => new Promise((res) => setTimeout(res, ms));
   async function fetchOnce(url) {
@@ -3223,10 +3463,19 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   var isNums = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every((v) => typeof v === "number");
   var isNumOrNull = (x) => x === null || typeof x === "number";
   function isSummary(x, k) {
-    if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
+    if (!isObj(x) || x.v !== 2 && x.v !== 3 || x.country !== k || typeof x.name !== "string") return false;
     if (typeof x.y0 !== "number" || typeof x.y1 !== "number" || x.y1 < x.y0) return false;
-    const nm = (x.y1 - x.y0 + 1) * 12, mo = x.monthly, val = x.val, src = x.source, tot = x.totals;
+    if (x.v === 3 && !isV3(x)) return false;
+    const nm = x.v === 3 ? x.n_months : (x.y1 - x.y0 + 1) * 12, mo = x.monthly, val = x.val, src = x.source, tot = x.totals;
     return isNums(x.viirs_from, 2) && isNums(x.aqua_from, 2) && isNums(x.bins) && typeof x.filter === "string" && isObj(mo) && ["T", "A", "V", "N20"].every((s) => isNums(mo[s], nm)) && ["r_ta", "r_t", "r_ta_lo", "r_ta_hi"].every((s) => isNums(x[s], 12)) && typeof x.r_all === "number" && Array.isArray(x.pi) && x.pi.length === x.bins.length + 1 && x.pi.every((p) => isNums(p, 2)) && typeof x.zero_hi === "number" && typeof x.rate_note === "string" && isObj(val) && ["raw_factor", "annual_med_err", "annual_max_err", "monthly_wape"].every((s) => isNumOrNull(val[s])) && Array.isArray(val.loyo) && val.loyo.every((r) => isObj(r) && ["y", "obs", "pred", "modis"].every((s) => typeof r[s] === "number")) && isNums(x.bbox, 4) && typeof x.cell === "number" && x.cell > 0 && isNums(x.cells) && isNums(x.cell_rows) && x.cell_rows.length % 5 === 0 && isObj(tot) && isObj(src) && typeof src.firms_updated === "string" && typeof src.files === "number";
+  }
+  function isV3(x) {
+    const p = x.partial, y = x.y2026, nm = x.n_months;
+    if (typeof nm !== "number" || typeof x.last_date !== "string" || !isObj(p) || !isObj(y)) return false;
+    if (typeof x.y0 !== "number" || nm > (x.y1 - x.y0 + 1) * 12 || p.i !== nm - 1) return false;
+    const sd = y.same_days, ytd = y.ytd, jc = y.join_check_2025;
+    const cmp = (c) => isObj(c) && isNums(c.V) && isObj(c.V_stats) && ["cur", "cur_lo", "cur_hi", "rank"].every((s) => typeof c[s] === "number") && isNums(c.years, 2);
+    return ["v_obs", "v_conv", "v_lo", "v_hi"].every((s) => isNums(y[s])) && Array.isArray(y.conv_months) && y.conv_months.every((c) => isObj(c) && typeof c.i === "number" && isNums(c.days)) && cmp(sd) && cmp(ytd) && isObj(jc) && typeof jc.warn === "boolean" && (y.hist_gaps === void 0 || Array.isArray(y.hist_gaps) && y.hist_gaps.every((g) => isObj(g) && ["i", "filled", "lo", "hi"].every((k) => typeof g[k] === "number") && isNums(g.days)));
   }
   var isIndexEntry = (x) => isObj(x) && typeof x.country === "string" && typeof x.name === "string" && typeof x.file === "string";
   var SUMMARIES = /* @__PURE__ */ new Map();
@@ -3236,11 +3485,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       had.tell.listen = onProgress;
       return had.p;
     }
-    const tell = { listen: onProgress }, p = fetchText(fileUrl(summaryPath(k)), () => tell.listen).then((text) => {
+    const tell = { listen: onProgress }, get = (dir) => fetchText(fileUrl(summaryPath(k, dir)), () => tell.listen).then((text) => {
       const data = JSON.parse(text);
       if (!isSummary(data, k)) throw new Error("The file from Hugging Face is not in the expected format");
       return data;
-    });
+    }), p = get(SUMMARY_DIR).catch(() => get(FALLBACK_DIR));
     p.catch(() => SUMMARIES.delete(k));
     SUMMARIES.set(k, { p, tell });
     return p;
@@ -3248,11 +3497,12 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   var index = null;
   function loadIndex() {
     if (!index) {
-      index = fetchText(fileUrl(`${SUMMARY_DIR}/index.json`), () => null).then((text) => {
+      const get = (dir) => fetchText(fileUrl(`${dir}/index.json`), () => null).then((text) => {
         const data = JSON.parse(text);
         if (!isObj(data) || !Array.isArray(data.countries)) throw new Error("The country index is not in the expected format");
         return data.countries.filter(isIndexEntry);
       });
+      index = get(SUMMARY_DIR).catch(() => get(FALLBACK_DIR));
       index.catch(() => index = null);
     }
     return index;
@@ -3262,7 +3512,8 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   var forecastPath = (k) => `${FORECAST_DIR}/${encodeURIComponent(k)}.json`;
   var stationsPath = (k) => `${STATIONS_DIR}/${encodeURIComponent(k)}.json`;
   async function jsonWithin(url, ms) {
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
+    const ctl = new AbortController();
+    let phase = "answer", timer = setTimeout(() => ctl.abort(), ms);
     try {
       let res = await fetch(url, { signal: ctl.signal });
       if (res.status === 429) {
@@ -3270,24 +3521,38 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         res = await fetch(url, { signal: ctl.signal });
       }
       if (!res.ok) throw new Error(res.status === 429 ? "Hugging Face is busy (too many requests)" : `Hugging Face answered ${res.status}`);
+      clearTimeout(timer);
+      phase = "download";
+      timer = setTimeout(() => ctl.abort(), 3 * ms);
       return await res.json();
     } catch (e) {
-      if (ctl.signal.aborted) throw new Error(`Hugging Face did not answer within ${Math.round(ms / 1e3)} seconds`);
+      if (ctl.signal.aborted)
+        throw new Error(
+          phase === "answer" ? `Hugging Face did not answer within ${Math.round(ms / 1e3)} seconds` : `the file did not finish downloading within ${Math.round(3 * ms / 1e3)} seconds`
+        );
       throw e;
     } finally {
       clearTimeout(timer);
     }
   }
   var EXTRAS = /* @__PURE__ */ new Map();
+  var KEEP = 8;
   function loadChecked(path, ok, ms = 2e4) {
     const had = EXTRAS.get(path);
-    if (had) return had;
+    if (had) {
+      EXTRAS.delete(path);
+      EXTRAS.set(path, had);
+      return had;
+    }
     const p = jsonWithin(fileUrl(path), ms).then((data) => {
       if (!ok(data)) throw new Error("The file from Hugging Face is not in the expected format");
       return data;
     });
-    p.catch(() => EXTRAS.delete(path));
+    p.catch(() => {
+      if (EXTRAS.get(path) === p) EXTRAS.delete(path);
+    });
     EXTRAS.set(path, p);
+    while (EXTRAS.size > KEEP) EXTRAS.delete(EXTRAS.keys().next().value);
     return p;
   }
 
@@ -3374,7 +3639,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   var quantile = (s, q) => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
   function buildFireLayer(index2, width = 2048) {
-    const total2 = new Map(index2.map((e) => [e.country, e.total])), raw = [];
+    const total2 = new Map(index2.map((e) => [e.country, e.total_2001_2025 ?? e.total])), raw = [];
     for (const c of WORLD) {
       const tot = total2.get(c.k), area = areaKm2(c);
       if (!tot || !(tot > 0) || !(area > 0)) continue;
@@ -3722,7 +3987,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   };
   var signed = (x, dp = 1) => `${x > 0 ? "+" : x < 0 ? "\u2212" : ""}${Math.abs(x * 100).toFixed(dp)}%`;
   var deg = (v, p, n) => `${Math.abs(v).toFixed(1)}\xB0${v < 0 ? n : p}`;
-  function span(a, b) {
+  function span2(a, b) {
     const [y0, m0, d0] = a.split("-").map(Number), [y1, m1, d1] = b.split("-").map(Number);
     if (y0 !== y1) return `${d0} ${MONL[m0 - 1]} ${y0} \u2013 ${d1} ${MONL[m1 - 1]} ${y1}`;
     if (m0 !== m1) return `${d0} ${MONL[m0 - 1]} \u2013 ${d1} ${MONL[m1 - 1]} ${y1}`;
@@ -3867,9 +4132,9 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     else if (downShare >= 0.1 && many) head = `${lead2} about usual overall, but quieter${where(down, downShare)}`;
     else head = `${lead2} about usual`;
     const hm = halfMonth(run.today), oddShare = 1 - S3.liveShare - used.filter((c) => !c.r).reduce((a, c) => a + c.share, 0) / (used.reduce((a, c) => a + c.share, 0) || 1);
-    $("cOlKick").textContent = `Next 14 days \xB7 ${span(run.today, run.end)}`;
+    $("cOlKick").textContent = `Next 14 days \xB7 ${span2(run.today, run.end)}`;
     $("cOlTitle").textContent = head;
-    $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.1 ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012\u20132025 record for the date, so the model would be extrapolating. That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.` : "");
+    $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span2(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.1 ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012\u20132025 record for the date, so the model would be extrapolating. That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.` : "");
     const m = O2.metrics.by_country[k], verdict2 = D2 >= COUNTRY_STEP ? ["hi", "Busier than usual"] : D2 <= -COUNTRY_STEP ? ["lo", "Quieter than usual"] : ["", "About usual"], regionsWord = live.length === 1 ? "its one forecast region" : live.length === 2 ? "its two forecast regions" : `its ${live.length} forecast regions`;
     $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
     legend2(L2);
@@ -4432,6 +4697,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     const px = (v) => mT + (1 - v / ymax) * (H - mT - mB), out = items.map((it) => ({ ...it, py: px(it.v), dy: 0 })).sort((a, b) => a.py - b.py);
     for (let i = 1; i < out.length; i++)
       if (out[i].py + out[i].dy - (out[i - 1].py + out[i - 1].dy) < 15) out[i].dy = out[i - 1].py + out[i - 1].dy + 15 - out[i].py;
+    const floor = H - mB - 6;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const lim = i === out.length - 1 ? floor : out[i + 1].py + out[i + 1].dy - 15;
+      if (out[i].py + out[i].dy > lim) out[i].dy = lim - out[i].py;
+    }
     return out;
   }
   function endLabels(Plot, items, x) {
@@ -4461,7 +4731,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   var total = (v) => v === 0 ? "0" : v < 1 ? "<1" : short(Math.round(v));
   function calendar(top, bottom, R, o) {
-    const Plot = Pl(), W = top.clientWidth || 640, ph = phone(W), rowH = ph ? 17 : 20, mL = ph ? 38 : 44, mR = ph ? 44 : 64, color = calendarScale(R, o.mode), totals = new Map(R.years.map((y) => [y.y, y.h]));
+    const Plot = Pl(), W = top.clientWidth || 640, ph = phone(W), rowH = ph ? 17 : 20, mL = ph ? 38 : 44, mR = ph ? 44 : 64, color = calendarScale(R, o.mode), totals = new Map(R.years.map((y) => [y.y, y.h])), partYears = new Set(R.years.filter((y) => y.part).map((y) => y.y));
     const part = (el, rows, head) => {
       if (!rows.length) {
         el.replaceChildren();
@@ -4476,10 +4746,15 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
           rows.filter((r) => r.h > 0),
           { x: "m", y: "y", fill: "h", inset: 1 }
         ) : null,
+        /* the month still under way: hatched over its colour, with a dashed edge */
+        Plot.cell(
+          rows.filter((r) => r.part),
+          { x: "m", y: "y", fill: "url(#cpPartHatch)", stroke: INK22, strokeWidth: 1, strokeDasharray: "2,2", inset: 1.5 }
+        ),
         f ? Plot.cell([f], { x: "m", y: "y", fill: "none", stroke: INK2, strokeWidth: 2, inset: 0 }) : null,
         Plot.text(years, {
           y: (d) => d,
-          text: (d) => total(totals.get(d) ?? 0),
+          text: (d) => total(totals.get(d) ?? 0) + (partYears.has(d) ? "*" : ""),
           frameAnchor: "right",
           dx: 10,
           textAnchor: "start",
@@ -4516,6 +4791,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         })
       );
       fig.setAttribute("aria-label", `Hotspots per month, ${years[years.length - 1]} to ${years[0]}`);
+      if (rows.some((r) => r.part))
+        fig.insertAdjacentHTML(
+          "afterbegin",
+          `<defs><pattern id="cpPartHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="5" fill="${INK2}" fill-opacity=".28"/></pattern></defs>`
+        );
       mount(el, fig, o.click);
     };
     part(
@@ -4531,10 +4811,10 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   function seasonal(el, R, year, click) {
     const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, st = R.stats.map((s, m) => {
-      const v = R.ser.filter((r) => r.m === m).map((r) => r.h);
-      return { m, ...s, min: Math.min(...v), max: Math.max(...v) };
-    }), yr = R.ser.filter((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...st.map((s) => s.max))), labs = spread(
-      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...yr.length ? [{ v: yr[11].h, text: String(year), fill: RED }] : []],
+      const v = R.ser.filter((r) => r.m === m && !r.part).map((r) => r.h);
+      return { m, ...s, min: v.length ? Math.min(...v) : 0, max: v.length ? Math.max(...v) : 0 };
+    }), yr = R.ser.filter((r) => r.y === year && !r.part), yEnd = yr.length ? yr[yr.length - 1] : null, ymax = yTop(Math.max(1e-9, ...st.map((s) => s.max))), labs = spread(
+      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...yEnd && yEnd.m === 11 ? [{ v: yEnd.h, text: String(year), fill: RED }] : []],
       ymax,
       H,
       mT,
@@ -4542,7 +4822,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     ), px = (v) => v / ymax * (H - mT - mB), at = (f, k) => {
       const a = Math.floor(k), b = Math.min(11, a + 1);
       return f(a) + (f(b) - f(a)) * (k - a);
-    }, lines2 = (k) => [at((m) => st[m].med, k), ...yr.length ? [at((m) => yr[m].h, k)] : []], monthPx = (W - 44 - 64) / 11, place2 = (lo, hi, t) => {
+    }, lines2 = (k) => [at((m) => st[m].med, k), ...yr.length ? [at((m) => yr[Math.min(m, yr.length - 1)].h, k)] : []], monthPx = (W - 44 - 64) / 11, place2 = (lo, hi, t) => {
       const half = t.length * 3.3 / monthPx;
       let best = null, score = 0;
       for (let m = 0; m <= 11; m += 0.25) {
@@ -4600,6 +4880,18 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
           yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: RED, strokeWidth: 2.5 }) : null,
           yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: RED, r: 2.6 }) : null,
           ...endLabels(Plot, labs, 11),
+          /* a year that stops early is named at its last month, above the line */
+          yEnd && yEnd.m < 11 ? Plot.text([yEnd], {
+            x: "m",
+            y: "h",
+            text: () => `${year} to ${MON[yEnd.m]}`,
+            dy: -11,
+            fill: RED,
+            fontWeight: 600,
+            stroke: PAPER2,
+            strokeWidth: 3,
+            paintOrder: "stroke"
+          }) : null,
           Plot.ruleX(st, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
           Plot.tip(
             st,
@@ -4610,8 +4902,9 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
               title: (s) => `${MONL[s.m]}
 Typical (median): ${fmt(s.med)} hotspots
 Middle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}
-Range: ${fmt(s.min)} to ${fmt(s.max)}` + (yr.length ? `
-${year}: ${fmt(yr[s.m].h)}` : "") + `
+Range: ${fmt(s.min)} to ${fmt(s.max)}` + (yr[s.m] ? `
+${year}: ${fmt(yr[s.m].h)}` : yr.length ? `
+${year}: not over yet` : "") + `
 Click to test ${MONL[s.m]} ${year} at the top`
             })
           )
@@ -4651,7 +4944,26 @@ Click to test ${MONL[s.m]} ${year} at the top`
         },
         y: yAxis(ymax),
         marks: [
-          Plot.barY(ys, { x: "y", y: "h", fill }),
+          Plot.barY(
+            ys.filter((y) => !y.part),
+            { x: "y", y: "h", fill }
+          ),
+          /* the year under way: its total so far, as a dashed outline */
+          Plot.barY(
+            ys.filter((y) => y.part),
+            {
+              x: "y",
+              y: "h",
+              fill: (y) => y.y === o.focusYear ? "#f2c9cf" : "#efebe3",
+              stroke: (y) => y.y === o.focusYear ? RED : INK22,
+              strokeWidth: 1.2,
+              strokeDasharray: "3,2"
+            }
+          ),
+          Plot.text(
+            ys.filter((y) => y.part),
+            { x: "y", y: "h", text: () => "so far", dy: -8, fill: INK22, fontSize: 11, stroke: PAPER2, strokeWidth: 3, paintOrder: "stroke" }
+          ),
           Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK2, strokeOpacity: 0.45 }),
           R.mean > 0 ? Plot.ruleY([R.mean], { stroke: INK2, strokeDasharray: "3,3", strokeOpacity: 0.8 }) : null,
           R.mean > 0 ? Plot.text([R.mean], {
@@ -4682,13 +4994,17 @@ ${short(R.mean)}`,
     fig.setAttribute("aria-label", "Hotspots per year");
     mount(el, fig, (v) => o.click(v.y));
   }
-  function cumulative(el, R, year) {
+  function cumulative(el, R, year, part = null) {
     const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, rows = [];
+    const partRows = /* @__PURE__ */ new Set();
     for (const yr of R.years) {
       let c = 0;
-      for (const r of R.ser.filter((r2) => r2.y === yr.y)) rows.push({ y: yr.y, m: r.m, c: c += r.h });
+      for (const r of R.ser.filter((r2) => r2.y === yr.y)) {
+        rows.push({ y: yr.y, m: r.m, x: r.part && part ? r.m - 1 + part.frac : r.m, c: c += r.h });
+        if (r.part) partRows.add(yr.y + "|" + r.m);
+      }
     }
-    const worst = R.ranked[0]?.y, has = rows.some((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.c))), endOf = (y) => rows.find((r) => r.y === y && r.m === 11)?.c ?? 0, labs = spread(
+    const worst = R.ranked[0]?.y, has = rows.some((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.c))), endOf = (y) => rows.filter((r) => r.y === y).pop()?.c ?? 0, yearEnd = (y) => rows.filter((r) => r.y === y).pop()?.x ?? 11, labs = spread(
       [
         ...has ? [{ v: endOf(year), text: String(year), fill: RED }] : [],
         ...worst !== void 0 && worst !== year ? [{ v: endOf(worst), text: String(worst), fill: INK2 }] : []
@@ -4715,24 +5031,43 @@ ${short(R.mean)}`,
         marks: [
           Plot.lineY(
             rows.filter((r) => r.y !== year && r.y !== worst),
-            { x: "m", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 }
+            { x: "x", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 }
           ),
           worst !== void 0 && worst !== year ? Plot.lineY(
             rows.filter((r) => r.y === worst),
-            { x: "m", y: "c", stroke: INK2, strokeWidth: 1.5 }
+            { x: "x", y: "c", stroke: INK2, strokeWidth: 1.5 }
           ) : null,
           Plot.lineY(
             rows.filter((r) => r.y === year),
-            { x: "m", y: "c", stroke: RED, strokeWidth: 2.5 }
+            { x: "x", y: "c", stroke: RED, strokeWidth: 2.5 }
           ),
-          ...endLabels(Plot, labs, 11),
+          ...endLabels(
+            Plot,
+            labs.filter((l) => yearEnd(+l.text) === 11),
+            11
+          ),
+          /* a year under way is named where its line stops */
+          ...labs.filter((l) => yearEnd(+l.text) < 11).map(
+            (l) => Plot.text([l], {
+              x: () => yearEnd(+l.text),
+              y: () => l.v,
+              text: () => l.text + " so far",
+              dx: 6,
+              textAnchor: "start",
+              fill: l.fill,
+              fontWeight: 600,
+              stroke: PAPER2,
+              strokeWidth: 3,
+              paintOrder: "stroke"
+            })
+          ),
           Plot.tip(
             rows,
             Plot.pointer({
-              x: "m",
+              x: "x",
               y: "c",
               ...TIP,
-              title: (r) => `${r.y}, January to ${MONL[r.m]}
+              title: (r) => `${r.y}, ${partRows.has(r.y + "|" + r.m) ? `1 January to ${part ? part.label : MONL[r.m] + " (month not over)"}` : `January to ${MONL[r.m]}`}
 ${fmt(r.c)} hotspots so far`
             })
           )
@@ -4743,7 +5078,7 @@ ${fmt(r.c)} hotspots so far`
     mount(el, fig);
   }
   function seam(el, R, viirsYear2) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 22, mB = 30, ys = R.years, last = ys[ys.length - 1], band = ys.filter((y) => y.y <= viirsYear2), ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.naive)), ...band.map((y) => y.hi))), labs = spread(
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 22, mB = 30, ys = R.years.filter((y) => !y.part).length ? R.years.filter((y) => !y.part) : R.years, last = ys[ys.length - 1], band = ys.filter((y) => y.y <= viirsYear2), ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.naive)), ...band.map((y) => y.hi))), labs = spread(
       [
         { v: last.h, text: "Harmonized", fill: INK2 },
         { v: last.naive, text: "Raw", fill: TYPICAL }
@@ -4868,7 +5203,7 @@ Raw counts: ${fmt(y.naive)}`
     mount(el, fig);
   }
   function forecastMonths(el, rows, year) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, ymax = yTop(Math.max(1e-9, ...rows.flatMap((r) => [r.hi, r.med, r.typ]))), pc4 = (p) => p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%", labs = spread(
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, seen = rows.filter((r) => r.obs != null), ymax = yTop(Math.max(1e-9, ...rows.flatMap((r) => [r.hi, r.med, r.typ, r.obs ?? 0]))), pc4 = (p) => p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%", labs = spread(
       [
         { v: rows[11].typ, text: "Typical", fill: TYPICAL },
         { v: rows[11].med, text: String(year), fill: INK2 }
@@ -4897,6 +5232,7 @@ Raw counts: ${fmt(y.naive)}`
           Plot.lineY(rows, { x: "m", y: "typ", stroke: TYPICAL, strokeWidth: 2, strokeDasharray: "4,3" }),
           Plot.lineY(rows, { x: "m", y: "med", stroke: INK2, strokeWidth: 2.2 }),
           Plot.dot(rows, { x: "m", y: "med", fill: INK2, r: 2.4 }),
+          Plot.dot(seen, { x: "m", y: "obs", fill: RED, r: 3.6, stroke: PAPER2, strokeWidth: 1 }),
           ...endLabels(Plot, labs, 11),
           Plot.ruleX(rows, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
           Plot.tip(
@@ -4911,7 +5247,8 @@ Middle outcome: ${fmt(r.med)} hotspots
 Expected (mean): ${fmt(r.mean)}
 Typical ${MONL[r.m]}, 2001\u20132025: ${fmt(r.typ)}
 Chance of more than typical: ${pc4(r.pAbove)}` + (r.pAny < 0.995 ? `
-Chance of any hotspot: ${pc4(r.pAny)}` : "")
+Chance of any hotspot: ${pc4(r.pAny)}` : "") + (r.obs != null ? `
+Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
             })
           )
         ]
@@ -5565,7 +5902,56 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
   var ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
   var the = theName;
   var cap2 = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-  var yrs = () => CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}\u2013${CV.yTo}`;
+  var nMonths = (d) => d.n_months ?? (d.y1 - d.y0 + 1) * 12;
+  var partOf = (d) => d.partial ? { i: d.partial.i, y: d.partial.y, m: d.partial.m - 1, day: d.partial.day1 } : null;
+  var lastWords = (d) => {
+    const p = partOf(d);
+    return p ? `${p.day} ${MON[p.m]} ${p.y}` : `31 Dec ${d.y1}`;
+  };
+  var yrs = () => {
+    const p = CV.d ? partOf(CV.d) : null;
+    if (p && CV.yTo >= p.y) return CV.yFrom === CV.yTo ? `${CV.yTo} to ${p.day} ${MON[p.m]}` : `${CV.yFrom}\u2013${lastWords(CV.d)}`;
+    return CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}\u2013${CV.yTo}`;
+  };
+  function sameDays(d) {
+    const y = d.y2026, p = partOf(d);
+    if (!y || !p) return null;
+    const sd = y.same_days, years = [];
+    for (let k = sd.years[0]; k <= sd.years[1]; k++) years.push(k);
+    return { span: partSpan(p.m, p.day), cur: sd.cur, lo: sd.cur_lo, hi: sd.cur_hi, years, past: sd.V, med: sd.V_stats.median };
+  }
+  function ytdOf(d) {
+    const y = d.y2026, p = partOf(d);
+    if (!y || !p) return null;
+    const t = y.ytd, years = [];
+    for (let k = t.years[0]; k <= t.years[1]; k++) years.push(k);
+    return {
+      span: `1 Jan\u2013${p.day} ${MON[p.m]}`,
+      withPart: true,
+      y: p.y,
+      cur: t.cur,
+      lo: t.cur_lo,
+      hi: t.cur_hi,
+      years,
+      past: t.V,
+      med: t.V_stats.median,
+      rank: t.rank,
+      n: t.V.length + 1
+    };
+  }
+  function convNote(d, i) {
+    const g = d.y2026?.hist_gaps?.find((x) => x.i === i);
+    if (g)
+      return `${g.days.length} ${g.days.length === 1 ? "day" : "days"} (${g.days.join(", ")} ${MON[i % 12]}) of Suomi NPP outage, filled from NOAA-20 converted to Suomi NPP terms: ${fmt(g.filled)}, likely ${fmt(g.lo)} to ${fmt(g.hi)} (the archive's Suomi NPP count alone is ${fmt(g.v2)})`;
+    const c = d.y2026?.conv_months.find((x) => x.i === i);
+    if (!c) return "";
+    const days = c.days, run = days.length > 1 && days[days.length - 1] - days[0] === days.length - 1 ? `${days[0]}\u2013${days[days.length - 1]}` : days.join(", ");
+    const it = c.interp_days ?? [], parts = [
+      days.length ? `${days.length} ${days.length === 1 ? "day" : "days"} (${run} ${MON[c.m - 1]}) from NOAA-20, converted to Suomi NPP terms: ${nHot2(c.v_conv)}` : "",
+      it.length ? `${it.join(", ")} ${MON[c.m - 1]} estimated from the days either side, because both satellites missed ${the(d.name)}'s overpasses: ${nHot2(c.v_interp ?? 0)}` : ""
+    ].filter(Boolean);
+    return `${parts.join("; ")}; ${fmt(c.v)} in all, likely ${fmt(c.v_lo)} to ${fmt(c.v_hi)} for the month`;
+  }
   var longDate = (iso) => {
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
     return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
@@ -5661,26 +6047,31 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
   function start3(d) {
     const yo = [];
     for (let y = d.y0; y <= d.y1; y++) yo.push(`<option>${y}</option>`);
-    $("cFrom").innerHTML = $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
+    $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
+    $("cFrom").innerHTML = yo.slice(0, (partOf(d) ? partOf(d).y - 1 : d.y1) - d.y0 + 1).join("");
     CV.yFrom = d.y0;
     CV.yTo = d.y1;
     $("cFrom").value = String(d.y0);
     $("cTo").value = String(d.y1);
-    const last = (d.y1 - d.y0) * 12, ep = epochs(d), hs = MON.map((_, m) => harmWith(d, ep, last + m, d.monthly.T[last + m], d.monthly.A[last + m], d.monthly.V[last + m]).h);
-    CV.focus = [d.y1, hs.indexOf(Math.max(...hs))];
-    if (Math.max(...hs) === 0) {
-      for (let i = last + 11; i >= 0; i--)
-        if (harmWith(d, ep, i, d.monthly.T[i], d.monthly.A[i], d.monthly.V[i]).h > 0) {
-          CV.focus = [d.y0 + Math.floor(i / 12), i % 12];
-          break;
-        }
-    }
+    const p = partOf(d), last = p ? p.i - 1 : nMonths(d) - 1;
+    CV.focus = [d.y0 + Math.floor(last / 12), last % 12];
     $("cStatus").hidden = true;
     $("cBody").hidden = $("cCtl").hidden = false;
     $("cName").textContent = d.name;
     renderCountry();
     fcStart(d);
     stStart(d);
+  }
+  var FILL_SRC2 = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
+  function harmFilled(d, ep) {
+    const y26 = d.y2026, p = partOf(d), gaps = new Map((y26?.hist_gaps ?? []).map((g) => [g.i, g])), conv = new Map((y26?.conv_months ?? []).map((c) => [c.i, c])), i26 = p && y26 ? p.i - (y26.v_obs.length - 1) : Infinity;
+    return (i, t, a, v) => {
+      const g = gaps.get(i);
+      if (g) return { h: g.filled, lo: g.lo, hi: g.hi, src: FILL_SRC2 };
+      const x = harmWith(d, ep, i, t, a, v);
+      if (i >= i26 && y26 && conv.has(i)) return { h: v, lo: y26.v_lo[i - i26], hi: y26.v_hi[i - i26], src: FILL_SRC2 };
+      return x;
+    };
   }
   function renderCountry() {
     const d = CV.d;
@@ -5693,12 +6084,15 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
       yFrom: CV.yFrom,
       yTo: CV.yTo,
       vi0: ep.vi0,
-      harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v)
+      nm: nMonths(d),
+      partI: partOf(d)?.i ?? -1,
+      partMed: sameDays(d)?.med ?? null,
+      harm: harmFilled(d, ep)
     });
     CV.R = R;
     $("cCrumb").textContent = `Fire, month by month \xB7 ${yrs()}`;
     $("cLead").textContent = lead(d, R);
-    $("cDate").textContent = `Fire detections from NASA satellites, ${d.y0}\u2013${d.y1}. Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. Data as of ${longDate(d.source.firms_updated)}.`;
+    $("cDate").textContent = (d.partial ? `Fire detections from NASA satellites, ${d.y0} to ${longDate(d.last_date)}; ${d.partial.y} is not over, so it is counted \u201Cso far\u201D and compared only with the same dates of past years. ` : `Fire detections from NASA satellites, ${d.y0}\u2013${d.y1}. `) + `Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. ` + (d.partial ? `Archive as of ${longDate(d.source.firms_updated)}; ${d.partial.y} from the FIRMS API.` : `Data as of ${longDate(d.source.firms_updated)}.`) + (d.v === 2 ? ` 2026 so far could not be loaded from Hugging Face, so this shows ${d.y0}\u2013${d.y1} only. Reload the page to try again.` : "");
     answers(R);
     const key = `${d.country}|${CV.yFrom}|${CV.yTo}`;
     if (key !== CV.mapKey) {
@@ -5712,17 +6106,25 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
   }
   function lead(d, R) {
     const name = the(d.name);
-    if (R.total === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
-    const peak = R.order[0].m, w = R.ranked[0], span2 = CV.yTo - CV.yFrom + 1;
+    if (R.any === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
+    const t2 = R.partYear ? ytdOf(d) : null;
+    if (R.total === 0)
+      return `No vegetation fire hotspots were counted in ${name} in the complete years chosen.` + (t2 ? " " + ytdSentence(t2) : "");
+    const peak = R.order[0].m, w = R.ranked[0], full = R.years.filter((y) => !y.part), a = full[0]?.y ?? CV.yFrom, b = full[full.length - 1]?.y ?? CV.yTo;
     let t = `${cap2(name)} burns most in ${MONL[peak]}.`;
-    if (span2 > 2 && R.mean > 0)
-      t += ` ${w.y} was its worst year ${span2 === d.y1 - d.y0 + 1 ? "on record" : `between ${CV.yFrom} and ${CV.yTo}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+    if (full.length > 2 && R.mean > 0)
+      t += ` ${w.y} was its worst ${a === d.y0 && b === (partOf(d) ? partOf(d).y - 1 : d.y1) ? "complete year on record" : `year between ${a} and ${b}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+    if (t2) t += " " + ytdSentence(t2);
+    const jc = d.y2026?.join_check_2025;
+    if (t2 && jc?.warn)
+      t += ` Read ${t2.y} here with care: run on 2025, the method used for ${t2.y} came out ${Math.abs(jc.V_pct).toFixed(0)}% ${jc.V_pct > 0 ? "higher" : "lower"} than the archive.`;
     if (VOLCANIC2.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
     if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
       t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc3(d.val.monthly_wape)} on average.`;
     return t;
   }
   function answers(R) {
+    const d = CV.d, t2 = R.partYear ? ytdOf(d) : null;
     if (R.total === 0) {
       $("ca1").textContent = $("ca2").textContent = "None";
       $("ca1n").textContent = $("ca2n").textContent = "No hotspots in these years.";
@@ -5732,26 +6134,40 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
       $("ca1n").textContent = (top.length === 1 ? `Every hotspot fell in ${MONL[top[0].m]}.` : `${top.length === 2 ? "These two months" : "These three months"} hold ${share}% of all hotspots.`) + (quiet.length > 1 ? ` ${quiet.length} months had none in these years.` : ` ${MONL[R.order[11].m]} is the quietest${quiet.length ? ", with none" : ""}.`);
       const vy = viirsYear(CV.d), est = worst.some((y) => y.y < vy);
       $("ca2").textContent = worst.map((y) => y.y).join(", ");
-      $("ca2n").innerHTML = worst.map((y) => `<span class="cpRow">${y.y} \xB7 ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") + `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` + (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
+      $("ca2n").innerHTML = worst.map((y) => `<span class="cpRow">${y.y} \xB7 ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") + `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` + (t2 ? `<span class="cpRow">${t2.y} so far (${t2.span}): ${fmt(t2.cur)}, ${rankWords(t2.rank, t2.n)} for the same dates</span>` : "") + (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
     }
-    const v = verdict(R, CV.focus), vi0 = epochs(CV.d).vi0;
+    const v = verdict(R, CV.focus, sameDays(d)), vi0 = epochs(d).vi0, fi = (CV.focus[0] - d.y0) * 12 + CV.focus[1];
     $("cfM").value = String(CV.focus[1]);
     $("cfY").value = String(CV.focus[0]);
-    if (!v) {
+    if (!v && fi >= nMonths(d)) {
+      $("ca3").textContent = "No data yet";
+      $("ca3n").textContent = `The record runs to ${longDate(d.last_date ?? `${d.y1}-12-31`)}. Pick an earlier month.`;
+    } else if (!v) {
       $("ca3").textContent = "Outside the chosen years";
       $("ca3n").textContent = "Pick a month inside the years chosen at the top.";
+    } else if (v.noSame) {
+      $("ca3").textContent = "Not over yet";
+      $("ca3n").textContent = `${cap2(nHot2(v.f.h))} so far. A month that is not over cannot be set against whole months.`;
+    } else if (v.same && v.same.cur === 0 && v.same.past.every((x) => x === 0)) {
+      $("ca3").textContent = "No hotspots";
+      $("ca3n").textContent = `No hotspots in ${v.same.span} in any year, so there is nothing to compare.`;
+    } else if (v.same) {
+      const sd = v.same;
+      $("ca3").innerHTML = `<span class="${v.cls}">${esc8(v.label)}</span><small>${esc8(v.mult)}</small>`;
+      $("ca3n").textContent = `${MONL[v.fm]} ${v.fy} is not over. ${cap2(nHot2(sd.cur))} in ${sd.span}` + (sd.hi - sd.lo >= 1 ? ` (likely ${fmt(sd.lo)} to ${fmt(sd.hi)})` : "") + ` against a normal ${fmt(sd.med)} for the same days of ${sd.years[0]}\u2013${sd.years[sd.years.length - 1]}; ${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n}. Suomi NPP stopped on 2 November, so most of these days are NOAA-20 converted to Suomi NPP terms; past days Suomi NPP missed are filled the same way.`;
     } else if (R.ser.every((r) => r.m !== v.fm || r.h === 0)) {
       $("ca3").textContent = "No hotspots";
       $("ca3n").textContent = `No hotspots in ${MONL[v.fm]} in any of these years, so there is nothing to compare.`;
     } else {
       $("ca3").innerHTML = `<span class="${v.cls}">${esc8(v.label)}</span><small>${esc8(v.mult)}</small>`;
-      $("ca3n").textContent = `${cap2(nHot2(v.f.h))} against a normal ${fmt(v.med)}; ${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n} ${MONL[v.fm]}s.` + (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
+      $("ca3n").textContent = `${cap2(nHot2(v.f.h))} against a normal ${fmt(v.med)}; ${v.rank === 1 ? "the busiest" : v.rank === v.n ? "the quietest" : `the ${ordinal(v.rank)} busiest`} of ${v.n} ${MONL[v.fm]}s.` + (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : convNote(d, v.f.i) ? ` Seen by VIIRS (Suomi NPP), with ${convNote(d, v.f.i)}.` : " Seen directly by VIIRS.");
     }
   }
   function calendarText(d, R) {
     const peaks = new Array(12).fill(0);
     let n = 0;
     for (const y of R.years) {
+      if (y.part) continue;
       const rows = R.ser.filter((r) => r.y === y.y);
       const top = rows.reduce((a, r) => r.h > a.h ? r : a, rows[0]);
       if (top.h > 0) {
@@ -5764,23 +6180,24 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
     $("cCalSub").textContent = CV.yFrom === CV.yTo ? `${CV.yFrom}, by month.` : `${CV.yFrom} to ${CV.yTo}, newest at the top.`;
     document.querySelectorAll("#cModeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
     const vy = viirsYear(d);
-    $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}\u2013${CV.yTo}` : "";
+    const pt = partOf(d), toWords = pt && CV.yTo >= pt.y ? lastWords(d) : String(CV.yTo);
+    $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}\u2013${toWords}` : "";
     $("cCalBotH").textContent = CV.yFrom < vy ? `Converted from MODIS, ${CV.yFrom}\u2013${Math.min(vy - 1, CV.yTo)}` : "";
-    $("cCalNote").textContent = CV.mode === "count" ? `The outlined month is the one tested at the top; click any month to test it instead.` : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`;
+    $("cCalNote").textContent = (CV.mode === "count" ? `The outlined month is the one tested at the top; click any month to test it instead.` : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`) + (R.partYear && pt ? ` ${pt.y} runs to ${pt.day} ${MONL[pt.m]}: the dashed ${MONL[pt.m]} is not over and is compared with the same days of past years, December is blank because it has not happened, and the starred total is so far. Months with days Suomi NPP missed use NOAA-20 for those days, converted; hover for which.` : "");
     const cc = calendarClasses(R);
     $("cCalLegend").innerHTML = CV.mode === "count" ? cc.max > 0 ? `<div>${stepped("Hotspots in a month", cc.colours, cc.breaks, cc.max)}</div><span class="cpNone"><i></i>none</span>` : "" : `<div class="cpRamp"><span>\xBC of normal</span><i style="background:linear-gradient(90deg,#2166ac,#67a9cf,#d1e5f0,#f7f7f7,#fddbc7,#ef8a62,#b2182b)"></i><span>4\xD7 normal</span></div><span>white: a normal month</span>`;
   }
   function chartText(d, R) {
-    const st = R.stats, meds = st.map((s) => s.med), pk = meds.indexOf(Math.max(...meds)), lo = meds.indexOf(Math.min(...meds)), fy = CV.focus[0], span2 = yrs(), top = R.order.slice(0, 3).filter((o) => o.sum > 0), topShare = R.total > 0 ? top.reduce((a, o) => a + o.sum, 0) / R.total : 0;
+    const st = R.stats, meds = st.map((s) => s.med), pk = meds.indexOf(Math.max(...meds)), lo = meds.indexOf(Math.min(...meds)), fy = CV.focus[0], span3 = yrs(), top = R.order.slice(0, 3).filter((o) => o.sum > 0), topShare = R.total > 0 ? top.reduce((a, o) => a + o.sum, 0) / R.total : 0;
     $("cMonthsT").textContent = R.total === 0 ? "No month stands out" : meds[lo] >= 10 && meds[pk] / meds[lo] >= 1.5 ? `A typical ${MONL[pk]} has ${times(meds[pk] / meds[lo])} the hotspots of a typical ${MONL[lo]}` : topShare >= 0.5 && top.length > 1 ? `${topShare >= 0.8 ? "Almost all" : "Most"} of the fire in ${the(d.name)} comes in ${monthRun(top.map((o) => o.m))}; a typical ${MONL[lo]} has ${meds[lo] === 0 ? "none" : nHot2(meds[lo])}` : meds[pk] > 0 ? `A typical ${MONL[pk]} brings ${nHot2(meds[pk])}; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}` : `Most months pass with no hotspots at all`;
-    $("cMonthsS").textContent = `Hotspots per month, ${span2}, with ${fy} in red. Click a month to test it.`;
+    $("cMonthsS").textContent = `Hotspots per month, ${span3}, with ${fy} in red. ` + (R.partYear && fy === R.partYear.y ? `Complete months only: ${MONL[partOf(d).m]} is not over. ` : "") + `Click a month to test it.`;
     const w = R.ranked[0];
     $("cYearsT").textContent = R.total === 0 ? "No year stands out" : R.years.length > 1 && R.mean > 0 ? `${w.y} was the worst year, at ${times(w.h / R.mean)} the average` : `${fmt(w.h)} hotspots in ${w.y}`;
-    $("cYearsS").textContent = `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.`;
-    const fyRow = R.years.find((y) => y.y === fy), rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0;
-    $("cCumT").textContent = !fyRow || R.total === 0 ? "How each year adds up" : rank === 1 ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year` : rank === R.years.length ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years` : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
-    $("cCumS").textContent = `Running total of hotspots from January, one line per year.`;
-    const ys = R.years, avg = (a, b, k) => {
+    $("cYearsS").textContent = `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.` + (R.partYear ? ` The dashed bar is ${R.partYear.y} so far, to ${lastWords(d)}; it is not ranked against whole years.` : "");
+    const fyRow = R.years.find((y) => y.y === fy), rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0, t2 = fyRow?.part ? ytdOf(d) : null;
+    $("cCumT").textContent = !fyRow || R.any === 0 ? "How each year adds up" : fyRow.part ? t2 ? `${fy} so far: ${fmt(t2.cur)} hotspots by ${t2.span.replace("1 Jan\u2013", "")}, ${rankWords(t2.rank, t2.n)} for the same dates` : `${fy} so far: ${fmt(fyRow.h)} hotspots to ${lastWords(d)}` : rank === 1 ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year` : rank === R.years.length ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years` : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
+    $("cCumS").textContent = `Running total of hotspots from January, one line per year.` + (R.partYear ? ` ${R.partYear.y}'s line stops at ${lastWords(d).replace(/ \d+$/, "")}; compare it with the other lines at the same point.` : "");
+    const ys = R.years.filter((y) => !y.part), avg = (a, b, k) => {
       const r = ys.filter((y) => y.y >= a && y.y <= b);
       return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
     };
@@ -5788,10 +6205,10 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
     const can = n0 != null && h0 != null && n1 != null && h1 != null && n0 > 0 && h0 > 0;
     $("cSeamT").textContent = can ? `Joined raw, 2012 looks like a ${(n1 / n0).toFixed(1)}\xD7 jump. Harmonized, it is ${(h1 / h0).toFixed(1)}\xD7` : "Raw counts against the harmonized record";
     $("cSeamNote").textContent = can ? `Average hotspots a year, 2012\u20132016 against 2007\u20132011. The jump in the raw line is the change of satellite, not more fire.` : n0 === 0 || h0 === 0 ? "MODIS counted no hotspots here in 2007\u20132011, so the step at 2012 cannot be measured." : "The dashed line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step.";
-    const none = R.total === 0;
+    const none = R.any === 0;
     $("cCharts").hidden = $("cRawFig").hidden = none;
     $("cNoFire").hidden = !none;
-    $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span2}, so there is nothing to chart.` : "";
+    $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span3}, so there is nothing to chart.` : "";
   }
   function chartsFailed() {
     const msg = `<p class="cpMapMsg" style="position:static">The charts did not load (cdnjs or jsdelivr did not answer). The numbers above are unaffected; reload to try again.</p>`;
@@ -5812,7 +6229,7 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
       );
       return;
     }
-    const N20 = d.monthly.N20, vy = viirsYear(d), pick = (y, m) => {
+    const N20 = d.monthly.N20, y26 = d.y2026 && d.partial ? d.y2026 : null, vy = viirsYear(d), pick = (y, m) => {
       CV.focus = [y, m];
       renderCountry();
     };
@@ -5820,26 +6237,42 @@ Chance of any hotspot: ${pc4(r.pAny)}` : "")
       mode: CV.mode,
       focus: CV.focus,
       viirsYear: vy,
-      tip: (r) => `${MONL[r.m]} ${r.y}: ${nHot2(r.h)}
-Normal for ${MONL[r.m]}: ${fmt(r.med)}` + (r.med > 0 || r.h > 0 ? ` (${times(r.ratio)} normal)` : "") + `
-${r.src}` + (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + `
-Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)
-Click to test this month`,
+      tip: (r) => {
+        const cn = convNote(d, r.i), k = r.i - (y26 ? partOf(d).i - (y26.v_obs.length - 1) : 0), obs = y26 && k >= 0 && k < y26.v_obs.length ? y26.v_obs[k] : null;
+        return (r.part ? `${MONL[r.m]} ${r.y}, ${partSpan(r.m, partOf(d).day)} so far: ${nHot2(r.h)}
+Normal for the same days: ${fmt(r.med)}` : `${MONL[r.m]} ${r.y}: ${nHot2(r.h)}
+Normal for ${MONL[r.m]}: ${fmt(r.med)}`) + (Number.isFinite(r.ratio) && (r.med > 0 || r.h > 0) ? ` (${times(r.ratio)} normal)` : "") + `
+${r.src}` + (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (cn ? `
+Includes ${cn}` : "") + (obs != null ? `
+Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(obs)} (its complete days), NOAA-20 ${fmt(N20[r.i])}${cn ? " (used only for the days Suomi NPP missed)" : " (not used)"}` : `
+Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])}${cn ? " (used only for the days Suomi NPP missed)" : " (not used)"}`) + `
+Click to test this month`;
+      },
       click: (r) => pick(r.y, r.m)
     });
     seasonal($("cMonths"), R, CV.focus[0], (m) => pick(CV.focus[0], m));
     annual($("cYears"), R, {
       viirsYear: vy,
       focusYear: CV.focus[0],
-      tip: (y) => `${y.y}: ${nHot2(y.h)}` + (R.mean > 0 ? `
+      tip: (y) => {
+        if (y.part) {
+          const t2 = ytdOf(d);
+          return `${y.y} so far, to ${lastWords(d)}: ${nHot2(y.h)}` + (t2 ? `
+${rankWords(t2.rank, t2.n)} for ${t2.span} (typical ${fmt(t2.med)})` : "") + `
+Not ranked against whole years
+Click to test ${MONL[CV.focus[1]]} ${y.y}`;
+        }
+        return `${y.y}: ${nHot2(y.h)}` + (R.mean > 0 ? `
 ${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") + (y.y < vy ? `
 Estimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") + `
-Click to test ${MONL[CV.focus[1]]} ${y.y}`,
+Click to test ${MONL[CV.focus[1]]} ${y.y}`;
+      },
       click: (y) => pick(y, CV.focus[1])
     });
-    cumulative($("cCum"), R, CV.focus[0]);
+    const pp = partOf(d);
+    cumulative($("cCum"), R, CV.focus[0], pp && d.partial ? { frac: pp.day / d.partial.days_in_month, label: `${pp.day} ${MON[pp.m]}` } : null);
     seam($("cSeam"), R, vy);
-    const from = { ...SENSOR_FROM, A: d.aqua_from[0] }, xs = R.years.map((y) => y.y);
+    const from = { ...SENSOR_FROM, A: d.aqua_from[0] }, xs = R.years.filter((y) => !y.part).map((y) => y.y);
     sensorLines(
       $("cRaw"),
       xs,
@@ -5898,6 +6331,11 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
       `more hotspots from VIIRS than MODIS for the same fires in ${esc8(the(d.name))}, 2012\u20132025`
     ) + item(pc3(val.annual_med_err), "typical error of a converted year, tested on years we could check") + item(pc3(val.annual_max_err), "error in the worst tested year") + item(pc3(val.monthly_wape), "typical error of a converted month, weighted by size");
     $("cRateNote").textContent = d.rate_note;
+    const y26 = d.y2026, p = partOf(d), jc = y26?.join_check_2025;
+    $("cSatRule").textContent = p ? SAT_RULE : "Suomi NPP only from 2012; NOAA-20 is not added, which would count the same fires twice.";
+    $("c2026").hidden = !y26;
+    $("c2026").textContent = y26 ? `2026, to ${longDate(d.last_date)}: from the FIRMS API (standard processing to July, near real time after), counted with the same filter. ${y26.mask_note.split(" The task first asked")[0]} ` + (jc ? `Rerun on 2025, this 2026 method differed from the published 2025 count for ${the(d.name)} by ${jc.V_pct >= 0 ? "+" : "\u2212"}${Math.abs(jc.V_pct).toFixed(1)}%` + (jc.warn ? `, more than the 5% most countries stay within, so read ${p.y} against past years with that in mind.` : ".") : "") : "";
+    $("cLimits").textContent = p ? `Limits. The record runs to ${longDate(d.last_date)}, the last complete day; ${p.y} is a partial year, counted \u201Cso far\u201D and compared only with the same dates in past years, and ${MONL[p.m]} ${p.y} covers days 1\u2013${p.day}. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Suomi NPP outages from 2018 on are filled from NOAA-20 the same way as in ${p.y} (the published file keeps the archive's Suomi NPP count and gives the filled one alongside); earlier gaps and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.` : `Limits. The record ends in December ${d.y1}. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.`;
     $("cFilter").textContent = d.filter;
     $("cCell").textContent = `${d.cell}\xB0`;
     const row = (label, a) => `<tr><td>${label}</td>${a.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
@@ -5905,18 +6343,39 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
     $("cLoyo").innerHTML = `<tr><th>Held-out year</th><th>Seen by VIIRS</th><th>Predicted from MODIS</th><th>Raw MODIS</th><th>Error</th></tr>` + val.loyo.map(
       (r) => `<tr><td>${Number(r.y)}</td><td>${fmt(r.obs)}</td><td>${fmt(r.pred)}</td><td>${fmt(r.modis)}</td><td>${r.obs > 0 ? (r.pred >= r.obs ? "+" : "") + Math.round((r.pred / r.obs - 1) * 100) + "%" : "n/a"}</td></tr>`
     ).join("");
-    const path = summaryPath(d.country), url = fileUrl(path);
+    const path = pathOf(d), url = fileUrl(path);
     $("cSrc").innerHTML = `Data: <a href="${esc8(url)}" target="_blank" rel="noopener">${esc8(path)}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built from ${d.source.files} FIRMS files (latest FIRMS update ${esc8(d.source.firms_updated.slice(0, 10))}). We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS) (<a href="https://earthdata.nasa.gov/firms" target="_blank" rel="noopener">https://earthdata.nasa.gov/firms</a>), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) (<a href="https://earthdata.nasa.gov/lance" target="_blank" rel="noopener">https://earthdata.nasa.gov/lance</a>) and NASA's Earth Science Data and Information System (ESDIS). Outlines: Natural Earth.`;
   }
   function csv2() {
     const d = CV.d, R = CV.R;
     if (!d || !R) return;
-    const N20 = d.monthly.N20, rows = [
-      "year,month,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_not_used"
+    const N20 = d.monthly.N20, p = partOf(d), conv = new Map((d.y2026?.conv_months ?? []).map((c) => [c.i, c])), rows = [
+      "year,month,month_status,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs,noaa20_days_used_converted,noaa20_converted_snpp_terms,days_estimated_from_neighbours,estimated_snpp_terms"
     ];
-    R.ser.forEach(
-      (r) => rows.push([r.y, r.m + 1, r.h.toFixed(2), r.lo.toFixed(2), r.hi.toFixed(2), `"${r.src}"`, r.T, r.A, r.V, N20[r.i]].join(","))
-    );
+    const gaps = new Map((d.y2026?.hist_gaps ?? []).map((g) => [g.i, g]));
+    R.ser.forEach((r) => {
+      const c = conv.get(r.i), g = gaps.get(r.i), k = p && d.y2026 ? r.i - (p.i - (d.y2026.v_obs.length - 1)) : -1, in26 = k >= 0 && !!d.y2026 && k < d.y2026.v_obs.length;
+      rows.push(
+        [
+          r.y,
+          r.m + 1,
+          r.part ? `partial_to_${d.last_date}` : "complete",
+          r.h.toFixed(2),
+          (in26 ? d.y2026.v_lo[k] : r.lo).toFixed(2),
+          (in26 ? d.y2026.v_hi[k] : r.hi).toFixed(2),
+          `"${c || g ? FILL_SRC2 : r.src}"`,
+          r.T,
+          r.A,
+          /* Suomi NPP as observed: in 2026 on the days it is used; for a past outage month, the whole month as archived */
+          in26 ? d.y2026.v_obs[k] : r.V,
+          N20[r.i],
+          c ? `"${c.days.join(" ")}"` : g ? `"${g.days.join(" ")}"` : "",
+          c ? c.v_conv : g ? g.n20_conv : "",
+          c?.interp_days ? `"${c.interp_days.join(" ")}"` : "",
+          c?.interp_days ? c.v_interp ?? "" : ""
+        ].join(",")
+      );
+    });
     save(`burn-calendar_${d.country}_${CV.yFrom}-${CV.yTo}.csv`, rows.join("\n"), $("cDlMsg"));
   }
   function countryEvents() {
@@ -6005,7 +6464,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
     respReset();
     V.mask = null;
     V.fineOn = false;
-    S.focus = PRESET[st].focus.slice();
+    S.focus = FOCUS0.slice();
     setDraw(false);
     $("hero").hidden = true;
     G.stop && G.stop();
@@ -6117,10 +6576,10 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
   }
 
   // src/globe.ts
-  var aimAt = (lon, lat, span2 = 0) => ({
+  var aimAt = (lon, lat, span3 = 0) => ({
     ry: -((lon + 360) % 360 - 360 + 90) * Math.PI / 180,
     rx: lat * Math.PI / 180,
-    z: 1.62 + Math.min(0.9, span2 / 90)
+    z: 1.62 + Math.min(0.9, span3 / 90)
   });
   var G = { ok: false, run: false };
   var loadImg = (src) => new Promise((res, rej) => {
@@ -6664,7 +7123,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
   function init() {
     const yo = [];
     for (let y = Y0; y <= Y1; y++) yo.push(`<option>${y}</option>`);
-    $("yFrom").innerHTML = $("yTo").innerHTML = $("fY").innerHTML = yo.join("");
+    $("yTo").innerHTML = $("fY").innerHTML = yo.join("");
+    $("yFrom").innerHTML = yo.slice(0, FULL_Y1 - Y0 + 1).join("");
     $("yFrom").value = String(Y0);
     $("yTo").value = String(Y1);
     $("fM").innerHTML = MON.map((m, i) => `<option value="${i}">${m}</option>`).join("");

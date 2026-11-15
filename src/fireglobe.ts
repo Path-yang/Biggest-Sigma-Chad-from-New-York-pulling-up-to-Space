@@ -74,7 +74,8 @@ const quantile = (s: number[], q: number) => s[Math.min(s.length - 1, Math.max(0
 
 /** the per-country numbers and the painted canvas; countries missing from the index, or with no fires, stay clear */
 export function buildFireLayer(index: CountryIndexEntry[], width = 2048): FireLayer {
-  const total = new Map(index.map(e => [e.country, e.total])),
+  /* whole years only: v3's total runs into 2026, so it uses its 2001-2025 part */
+  const total = new Map(index.map(e => [e.country, e.total_2001_2025 ?? e.total])),
     raw: { c: WorldCountry; area: number; perYear: number; density: number }[] = [];
   for (const c of WORLD) {
     const tot = total.get(c.k),
