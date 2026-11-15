@@ -56,6 +56,20 @@ export interface FireLayer {
   hi: number;
 }
 
+/** a ring's west, south, east and north edges */
+function ringBox(r: number[]): [number, number, number, number] {
+  let w = Infinity,
+    s = Infinity,
+    e = -Infinity,
+    n = -Infinity;
+  for (let i = 0; i < r.length; i += 2) {
+    w = Math.min(w, r[i]);
+    e = Math.max(e, r[i]);
+    s = Math.min(s, r[i + 1]);
+    n = Math.max(n, r[i + 1]);
+  }
+  return [w, s, e, n];
+}
 const quantile = (s: number[], q: number) => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
 
 /** the per-country numbers and the painted canvas; countries missing from the index, or with no fires, stay clear */
@@ -94,11 +108,17 @@ export function buildFireLayer(index: CountryIndexEntry[], width = 2048): FireLa
       g.closePath();
     }
     g.fill();
-    /* places smaller than a couple of texels still get a visible dot at their label point */
-    const b = x.c.b;
-    if (X(b[2]) - X(b[0]) < 3 && Y(b[1]) - Y(b[3]) < 3) {
+    /* places made only of islands smaller than a couple of texels still show: a dot on each island, so a group
+       spread over the ocean (Kiribati, the Maldives) is visible too, not just a single small country */
+    const boxes = x.c.r.map(ringBox);
+    if (boxes.every(([w, s, e, n]) => X(e) - X(w) < 3 && Y(s) - Y(n) < 3)) {
       g.beginPath();
-      g.arc(X(x.c.c[0]), Y(x.c.c[1]), 2, 0, 2 * Math.PI);
+      for (const [w, s, e, n] of boxes) {
+        const cx = X((w + e) / 2),
+          cy = Y((s + n) / 2);
+        g.moveTo(cx + 2, cy);
+        g.arc(cx, cy, 2, 0, 2 * Math.PI);
+      }
       g.fill();
     }
   }

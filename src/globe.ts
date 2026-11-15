@@ -153,31 +153,49 @@ export async function globeInit() {
   fireMesh.visible = false;
   grp.add(fireMesh);
   let fireStats = new Map<string, FireStat>(),
-    fireT0 = 0;
-  loadIndex()
-    .then(idx => {
-      const L = buildFireLayer(idx);
-      if (!L.stats.size) return;
-      const ft = new T.CanvasTexture(L.canvas);
-      ft.minFilter = T.LinearFilter;
-      fireM.map = ft;
-      fireM.needsUpdate = true;
-      fireMesh.visible = true;
-      fireStats = L.stats;
-      fireT0 = performance.now();
-      showKey(L.lo, L.hi);
-      if (hov) tagC.textContent = tagText(hov);
-    })
-    .catch(() => {
-      $("heroKey").hidden = true;
-    });
-  /* raised, glowing states */
+    fireT0 = 0,
+    fireLoading = false;
+  /** a stalled request must not leave the key on "Loading" for ever; the fetch itself carries on and a retry reuses it */
+  const giveUp = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Hugging Face took too long")), ms));
+  /** paints the tint once; after a failure the key offers Retry, and coming back to the globe tries again */
+  function loadFire() {
+    if (fireStats.size || fireLoading) return;
+    fireLoading = true;
+    $("heroWait").textContent = "Loading every country from Hugging Face…";
+    $("heroRetry").hidden = true;
+    $("heroKey").hidden = false;
+    Promise.race([loadIndex(), giveUp(15000)])
+      .then(idx => {
+        const L = buildFireLayer(idx);
+        if (!L.stats.size) throw new Error("The country index has no fire totals");
+        const ft = new T.CanvasTexture(L.canvas);
+        ft.minFilter = T.LinearFilter;
+        fireM.map = ft;
+        fireM.needsUpdate = true;
+        fireMesh.visible = true;
+        fireStats = L.stats;
+        fireT0 = performance.now();
+        showKey(L.lo, L.hi);
+        if (hov) tagC.textContent = tagText(hov);
+      })
+      .catch(() => {
+        $("heroWait").textContent = "Could not load the fire map from Hugging Face.";
+        $("heroRetry").hidden = false;
+      })
+      .finally(() => (fireLoading = false));
+  }
+  $("heroRetry").onclick = loadFire;
+  loadFire();
+  /* the two states with their own pages: raised plates in slate, kept off the fire colours so they read as places
+     to click rather than as the hottest spots on the map; they brighten on hover */
   const tops: Three.Mesh[] = [],
-    RT = 1.05;
+    RT = 1.05,
+    PLATE = 0x7d8cab,
+    PLATE_HOVER = 0xe8eef8;
   G.st = {};
   for (const st of STS) {
-    const topM = new T.MeshBasicMaterial({ color: 0xff8a3d, side: T.DoubleSide }),
-      wallM = new T.MeshBasicMaterial({ color: 0x8f3d12, side: T.DoubleSide });
+    const topM = new T.MeshBasicMaterial({ color: PLATE, side: T.DoubleSide }),
+      wallM = new T.MeshBasicMaterial({ color: 0x34405a, side: T.DoubleSide });
     let sum = new T.Vector3(),
       cnt = 0;
     for (const r of D.globe.plate[st]) {
@@ -267,7 +285,7 @@ export async function globeInit() {
   };
   function tagText(c: WorldCountry) {
     const f = fireStats.get(c.k);
-    return f ? `${c.n} · ${short(f.perYear)} fires a year` : c.n;
+    return f ? `${c.n}\n${short(f.perYear)} hotspots a year` : c.n;
   }
   tagC.onclick = () => {
     if (hov) goCountry(hov.k);
@@ -419,6 +437,7 @@ export async function globeInit() {
     setHov(null);
     user.ry = user.rx = 0;
     size();
+    loadFire();
     if (!G.run) {
       G.run = true;
       last = 0;
@@ -428,8 +447,7 @@ export async function globeInit() {
   G.stop = () => {
     G.run = false;
   };
-  const tmp = new T.Vector3(),
-    col = new T.Color();
+  const tmp = new T.Vector3();
   function frame(now: number) {
     if (!G.run) return;
     const t = now / 1000,
@@ -466,10 +484,8 @@ export async function globeInit() {
       starMat.uniforms.t.value = t;
     }
     for (const k in G.st!) {
-      const s = G.st![k],
-        p = 0.5 + 0.5 * Math.sin(t * 2.2 + (k === "CA" ? 1.5 : 0));
-      col.setRGB(1, 0.45 + 0.2 * p + (s.hover ? 0.3 : 0), 0.15 + 0.1 * p + (s.hover ? 0.35 : 0));
-      s.topM.color.copy(col);
+      const s = G.st![k];
+      s.topM.color.setHex(s.hover ? PLATE_HOVER : PLATE);
       const tag = $("tag" + k);
       tmp.copy(s.cen);
       grp.localToWorld(tmp);
@@ -485,7 +501,9 @@ export async function globeInit() {
       const facing = tmp.clone().sub(grp.position).normalize().dot(cam.position.clone().sub(tmp).normalize()) > 0.15;
       tmp.project(cam);
       tagC.hidden = !facing || !!fly;
-      tagC.style.left = (tmp.x * 0.5 + 0.5) * cv.clientWidth + "px";
+      /* kept inside the screen, so a long name near the globe's edge is not cut off on a phone */
+      const half = tagC.offsetWidth / 2 + 8;
+      tagC.style.left = Math.max(half, Math.min(cv.clientWidth - half, (tmp.x * 0.5 + 0.5) * cv.clientWidth)) + "px";
       tagC.style.top = (-tmp.y * 0.5 + 0.5) * cv.clientHeight + "px";
     }
     ren.setRenderTarget(rt);
@@ -495,7 +513,6 @@ export async function globeInit() {
     requestAnimationFrame(frame);
   }
   addEventListener("resize", size);
-  $("heroKey").hidden = false;
   cam.position.set(0, 0, camZ);
   G.ok = true;
   if (!$("hero").hidden) G.reset();
@@ -509,7 +526,7 @@ function showKey(lo: number, hi: number) {
     g.fillStyle = `rgb(${f.c[0]},${f.c[1]},${f.c[2]})`;
     g.fillRect(x, 0, 1, cv.height);
   }
-  $("heroLo").textContent = fmt(lo);
+  $("heroLo").textContent = "≤" + fmt(lo);
   $("heroHi").textContent = fmt(hi) + "+";
   $("heroKey").classList.add("ready");
 }
