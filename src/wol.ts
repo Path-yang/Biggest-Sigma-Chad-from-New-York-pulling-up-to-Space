@@ -6,8 +6,10 @@
    its reference (regionOutlook) exactly.
    ===================================================================== */
 export type FeatureId = "tmax14" | "rhmin14" | "prec14" | "prec30";
-/** Brier skill, AUC with weather, AUC of the usual odds, rows, events */
-export type CountryMetric = [bss: number, aucModel: number, aucUsual: number, rows: number, events: number];
+/** for the regions a country page forecasts, each weighted by its share of the country's fire: Brier skill with the
+    weather that happened, AUC with weather, AUC of the usual odds, rows, events, and Brier skill with the inputs
+    blurred by the full gap between the two weather sources (the closer guide to a live forecast) */
+export type CountryMetric = [bss: number, aucModel: number, aucUsual: number, rows: number, events: number, bssLive: number];
 interface Scores {
   brier: number;
   bss: number;
@@ -22,7 +24,16 @@ export interface WorldOutlook {
   prior: number;
   nharm: number;
   z_clip: number;
-  regions: { band: number[]; col: number[]; lat: number[]; lon: number[]; zone: number[]; cont: number[]; bss: (number | null)[] };
+  regions: {
+    band: number[];
+    col: number[];
+    lat: number[];
+    lon: number[];
+    zone: number[];
+    cont: number[];
+    bss: (number | null)[];
+    bss_live: (number | null)[];
+  };
   zones: string[];
   continents: string[];
   /** the regions where a FIRMS country has hotspots, with its share (‰) of the country's 2012-2025 hotspots */
@@ -38,9 +49,9 @@ export interface WorldOutlook {
   api: { url: string; params: Record<string, string | number>; max_points_per_get: number };
   metrics: {
     variants: Record<string, Scores>;
-    by_zone: Record<string, { model: Scores; climatology_auc: number }>;
-    by_continent: Record<string, { model: Scores; climatology_auc: number }>;
-    by_country: Record<string, CountryMetric>;
+    by_zone: Record<string, { model: Scores; climatology_auc: number; live_bss: number }>;
+    by_continent: Record<string, { model: Scores; climatology_auc: number; live_bss: number }>;
+    by_country: Record<string, CountryMetric | null>;
     regions_beating_climatology: number;
   };
   examples: {
@@ -54,7 +65,7 @@ export interface WorldOutlook {
 }
 
 /* ---------- loading the data file, only when a country opens ---------- */
-const SRC = "world_outlook.js?v=1";
+const SRC = "world_outlook.js?v=2";
 let fileP: Promise<WorldOutlook> | null = null;
 /** world_outlook.js (0.34 MB compressed); a failed load is forgotten so the next country tries again */
 export function loadWorldOutlook(): Promise<WorldOutlook> {
@@ -201,6 +212,116 @@ export function countryRegions(O: WorldOutlook, k: string): { used: CountryRegio
   return used.length ? { used, minor: all.filter(r => r.share < 0.001) } : { used: all, minor: [] };
 }
 
+/* ---------- the rules the country page, the globe and the daily snapshot share ---------- */
+/** a forecast this many standard deviations from a region's usual weather for the date happened in about 1 in 100
+    fortnights of the 2012-2025 record: the model would be extrapolating, so such a region is shown but not summed up */
+export const ODD_Z = 3.5;
+/** below this share of the country's fire with a usable outlook, the country is not summed up at all */
+export const MIN_SHARE = 0.75;
+/** with inputs blurred by the full gap between the weather sources, the backtest must beat the usual odds by at
+    least this Brier skill, a margin for the forecast's own errors, which were never tested */
+export const LIVE_GATE = 0.01;
+export const countryPasses = (O: WorldOutlook, k: string) => {
+  const m = O.metrics.by_country[k];
+  return !!m && m[5] >= LIVE_GATE;
+};
+export interface Weighed {
+  share: number;
+  r: RegionOutlook | null;
+}
+export interface CountrySum {
+  /** fire-weighted chance, and the same with average weather, over the regions that are summed up */
+  P: number;
+  N: number;
+  D: number;
+  /** the share of the country's (forecast) fire in regions summed up */
+  liveShare: number;
+  nLive: number;
+  nOdd: number;
+  nMissing: number;
+}
+export const isOdd = (r: RegionOutlook) => r.zMax > ODD_Z;
+export function sumUp(cells: Weighed[]): CountrySum {
+  const total = cells.reduce((a, c) => a + c.share, 0) || 1,
+    live = cells.filter(c => c.r && !isOdd(c.r)),
+    sw = live.reduce((a, c) => a + c.share, 0),
+    w = sw || 1,
+    P = live.reduce((a, c) => a + c.share * c.r!.p, 0) / w,
+    N = live.reduce((a, c) => a + c.share * c.r!.norm, 0) / w;
+  return {
+    P,
+    N,
+    D: P - N,
+    liveShare: sw / total,
+    nLive: live.length,
+    nOdd: cells.filter(c => c.r && isOdd(c.r)).length,
+    nMissing: cells.filter(c => !c.r).length,
+  };
+}
+
+/** a change of at least this much (in chance), weighted over a country, marks it above or below normal */
+export const COUNTRY_STEP = 0.03;
+/** class edges of the change, in chance, and the colours between them (the calendar's "versus normal" ramp) */
+export const EDGES = [-0.15, -0.08, -0.03, 0.03, 0.08, 0.15];
+export const RAMP = ["#2166ac", "#67a9cf", "#d1e5f0", "#f4f2ec", "#fddbc7", "#ef8a62", "#b2182b"];
+export const changeColour = (d: number) => RAMP[EDGES.filter(e => d >= e).length];
+
+/* ---------- the daily snapshot: world_outlook_today.json, written by scripts/world_outlook_today.ts ---------- */
+/** what the globe needs per country: 0 an outlook (with D, P, N), 1 no skill in tests, 2 too little fire history,
+    3 most of its fire has no usable forecast today (liveShare) */
+export type SnapCountry = [0, number, number, number] | [1] | [2] | [3, number];
+export interface Snapshot {
+  v: 1;
+  /** which world_outlook.js it was worked out with (modelId) */
+  model: string;
+  /** when the forecast was fetched, ISO time */
+  at: string;
+  /** the most common first and last day of the 14 */
+  today: string;
+  end: string;
+  /** per region index: [p, zMax, first day as days after `today`], or null where the forecast had gaps */
+  r: ([number, number, number] | null)[];
+  c: Record<string, SnapCountry>;
+  /** the worldwide backtest scores to quote next to it: with the weather that happened, and with source-sized error */
+  skill: { observed: number; live: number };
+}
+export const modelId = (O: WorldOutlook) => `${O.built}/${O.coef.join(",")}`;
+/** older than this, the snapshot is not used (it is refreshed twice a day) */
+const SNAP_MAX_MS = 36 * 3600 * 1000;
+export const snapFresh = (s: Snapshot) => Date.now() - Date.parse(s.at) < SNAP_MAX_MS;
+let snapP: Promise<Snapshot | null> | null = null;
+/** world_outlook_today.json, or null if it is missing, broken or stale; asked once per page view */
+export function loadSnapshot(): Promise<Snapshot | null> {
+  if (!snapP)
+    snapP = fetch("world_outlook_today.json", { cache: "no-cache" })
+      .then(r => (r.ok ? r.json() : null))
+      .then((s: Snapshot | null) =>
+        s && s.v === 1 && Array.isArray(s.r) && s.c && typeof s.at === "string" && snapFresh(s) ? s : null,
+      )
+      .catch(() => null);
+  return snapP;
+}
+/** a region's outlook rebuilt from the snapshot: base, normal and threshold come from world_outlook.js */
+export function fromSnap(O: WorldOutlook, s: Snapshot, ri: number): RegionOutlook | null {
+  const row = s.r[ri];
+  if (!row) return null;
+  const [p, zMax, off] = row,
+    today = addDays(s.today, off),
+    hm = halfMonth(today),
+    base = O.base[ri * 24 + hm] / 1000;
+  if (!(base > 0 && base < 1)) return null;
+  const norm = 1 / (1 + Math.exp(-(O.norm_coef[0] + O.norm_coef[1] * Math.log(base / (1 - base)))));
+  return { p, base, ratio: p / base, norm, wxRatio: p / norm, thr: O.thr[ri * 24 + hm], hm, today, zMax };
+}
+/** the globe's entry for a country, from a full set of region outlooks */
+export function snapCountry(O: WorldOutlook, k: string, rows: (ri: number) => RegionOutlook | null): SnapCountry {
+  if (!O.countries[k] || !O.metrics.by_country[k]) return [2];
+  if (!countryPasses(O, k)) return [1];
+  const S = sumUp(countryRegions(O, k).used.map(({ ri, share }) => ({ share, r: rows(ri) })));
+  const q = (x: number) => Math.round(x * 1e4) / 1e4;
+  return S.liveShare < MIN_SHARE ? [3, q(S.liveShare)] : [0, q(S.D), q(S.P), q(S.N)];
+}
+
 /* ---------- fetching, with a timeout and a short-lived cache ---------- */
 const TIMEOUT_MS = 45000;
 /** points per request: a few requests in parallel come back sooner than one long one, at the same quota cost */
@@ -218,6 +339,8 @@ export interface WolRun {
   missing: number;
   at: number;
   err: string;
+  /** where the weather came from: the daily snapshot, or a fetch from this browser */
+  from?: "snapshot" | "live";
 }
 class WeatherError extends Error {}
 interface Daily {
@@ -348,8 +471,6 @@ async function getDailyTwice(O: WorldOutlook, ris: number[]): Promise<Daily[]> {
     return getDaily(O, ris);
   }
 }
-/** below this share of the country's fire answered, the outlook is not shown: a headline from a few regions would mislead */
-const MIN_SHARE = 0.75;
 /** get the outlook for a country's regions, unless it is here and fresh or already on its way; done() runs on each change.
     A fresh outlook with gaps asks again only for the regions it is missing, and keeps the rest. */
 export function wolLoad(O: WorldOutlook, k: string, done: () => void) {
@@ -377,6 +498,23 @@ export function wolLoad(O: WorldOutlook, k: string, done: () => void) {
   const want = regs.map(r => r.ri).filter(ri => !keep || !keep.rows.get(ri));
   busy.add(k);
   (async () => {
+    /* the daily snapshot first: it costs this visitor no weather calls */
+    if (!keep) {
+      const s = await loadSnapshot();
+      if (s && s.model === modelId(O)) {
+        const rows = new Map(regs.map(r => [r.ri, fromSnap(O, s, r.ri)]));
+        let answered = 0;
+        rows.forEach((r, ri) => (answered += r ? shareOf.get(ri) || 0 : 0));
+        if (answered / total >= MIN_SHARE) {
+          const run = finish(O, rows, Date.parse(s.at));
+          if (run.status === "ok") {
+            runs.set(k, { ...run, from: "snapshot" });
+            busy.delete(k);
+            return done();
+          }
+        }
+      }
+    }
     try {
       const chunks: number[][] = [];
       const size = Math.min(CHUNK, O.api.max_points_per_get);
@@ -390,7 +528,7 @@ export function wolLoad(O: WorldOutlook, k: string, done: () => void) {
       let answered = 0;
       rows.forEach((r, ri) => (answered += r ? shareOf.get(ri) || 0 : 0));
       if (answered / total < MIN_SHARE) throw failed ? failed.reason : new WeatherError("The weather service sent no usable forecast.");
-      const run = finish(O, rows, keep ? keep.at : Date.now());
+      const run: WolRun = { ...finish(O, rows, keep ? keep.at : Date.now()), from: "live" };
       if (failed) run.err = failed.reason instanceof WeatherError ? failed.reason.message : "Part of the forecast did not arrive.";
       runs.set(k, run);
       if (run.status === "ok" && !failed) toStore(O, k, run);

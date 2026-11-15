@@ -89,6 +89,15 @@ export function buildFireLayer(index: CountryIndexEntry[], width = 2048): FireLa
     stats = new Map<string, FireStat>();
   for (const x of raw) stats.set(x.c.k, { perYear: x.perYear, density: x.density, t: (Math.log10(x.density) - l0) / (l1 - l0) });
 
+  const cv = paintCountries(
+    raw.map(x => ({ c: x.c, area: x.area, fill: css(fireColour(stats.get(x.c.k)!.t)) })),
+    width,
+  );
+  return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
+}
+
+/** countries painted into an equirectangular canvas (width × width/2) that wraps a sphere */
+export function paintCountries(items: { c: WorldCountry; area: number; fill: string }[], width = 2048): HTMLCanvasElement {
   const h = width / 2,
     cv = document.createElement("canvas");
   cv.width = width;
@@ -97,10 +106,8 @@ export function buildFireLayer(index: CountryIndexEntry[], width = 2048): FireLa
     X = (lon: number) => ((lon + 180) / 360) * width,
     Y = (lat: number) => ((90 - lat) / 180) * h;
   /* largest first, so a country inside another's outer ring (Lesotho in South Africa) is painted on top */
-  raw.sort((a, b) => b.area - a.area);
-  for (const x of raw) {
-    const col = css(fireColour(stats.get(x.c.k)!.t));
-    g.fillStyle = col;
+  for (const x of items.slice().sort((a, b) => b.area - a.area)) {
+    g.fillStyle = x.fill;
     g.beginPath();
     for (const r of x.c.r) {
       g.moveTo(X(r[0]), Y(r[1]));
@@ -122,5 +129,5 @@ export function buildFireLayer(index: CountryIndexEntry[], width = 2048): FireLa
       g.fill();
     }
   }
-  return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
+  return cv;
 }

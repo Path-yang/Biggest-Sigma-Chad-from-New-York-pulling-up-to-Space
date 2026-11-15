@@ -3350,14 +3350,19 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     }
     const logs = raw.map((x) => Math.log10(x.density)).sort((a, b) => a - b), l0 = logs.length ? quantile(logs, 0.05) : 0, l1 = logs.length ? Math.max(l0 + 0.5, quantile(logs, 0.97)) : 1, stats = /* @__PURE__ */ new Map();
     for (const x of raw) stats.set(x.c.k, { perYear: x.perYear, density: x.density, t: (Math.log10(x.density) - l0) / (l1 - l0) });
+    const cv = paintCountries(
+      raw.map((x) => ({ c: x.c, area: x.area, fill: css2(fireColour(stats.get(x.c.k).t)) })),
+      width
+    );
+    return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
+  }
+  function paintCountries(items, width = 2048) {
     const h = width / 2, cv = document.createElement("canvas");
     cv.width = width;
     cv.height = h;
     const g = cv.getContext("2d"), X = (lon) => (lon + 180) / 360 * width, Y = (lat) => (90 - lat) / 180 * h;
-    raw.sort((a, b) => b.area - a.area);
-    for (const x of raw) {
-      const col = css2(fireColour(stats.get(x.c.k).t));
-      g.fillStyle = col;
+    for (const x of items.slice().sort((a, b) => b.area - a.area)) {
+      g.fillStyle = x.fill;
       g.beginPath();
       for (const r of x.c.r) {
         g.moveTo(X(r[0]), Y(r[1]));
@@ -3376,11 +3381,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         g.fill();
       }
     }
-    return { canvas: cv, stats, lo: Math.pow(10, l0), hi: Math.pow(10, l1) };
+    return cv;
   }
 
   // src/wol.ts
-  var SRC = "world_outlook.js?v=1";
+  var SRC = "world_outlook.js?v=2";
   var fileP = null;
   function loadWorldOutlook() {
     if (window.WORLD_OUTLOOK) return Promise.resolve(window.WORLD_OUTLOOK);
@@ -3460,6 +3465,49 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     const all = (O2.countries[k] || []).map(([ri, m]) => ({ ri, share: m / 1e3 }));
     const used = all.filter((r) => r.share >= 1e-3);
     return used.length ? { used, minor: all.filter((r) => r.share < 1e-3) } : { used: all, minor: [] };
+  }
+  var ODD_Z = 3.5;
+  var MIN_SHARE = 0.75;
+  var LIVE_GATE = 0.01;
+  var countryPasses = (O2, k) => {
+    const m = O2.metrics.by_country[k];
+    return !!m && m[5] >= LIVE_GATE;
+  };
+  var isOdd = (r) => r.zMax > ODD_Z;
+  function sumUp(cells) {
+    const total2 = cells.reduce((a, c) => a + c.share, 0) || 1, live = cells.filter((c) => c.r && !isOdd(c.r)), sw = live.reduce((a, c) => a + c.share, 0), w = sw || 1, P = live.reduce((a, c) => a + c.share * c.r.p, 0) / w, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / w;
+    return {
+      P,
+      N,
+      D: P - N,
+      liveShare: sw / total2,
+      nLive: live.length,
+      nOdd: cells.filter((c) => c.r && isOdd(c.r)).length,
+      nMissing: cells.filter((c) => !c.r).length
+    };
+  }
+  var COUNTRY_STEP = 0.03;
+  var EDGES = [-0.15, -0.08, -0.03, 0.03, 0.08, 0.15];
+  var RAMP = ["#2166ac", "#67a9cf", "#d1e5f0", "#f4f2ec", "#fddbc7", "#ef8a62", "#b2182b"];
+  var changeColour = (d) => RAMP[EDGES.filter((e) => d >= e).length];
+  var modelId = (O2) => `${O2.built}/${O2.coef.join(",")}`;
+  var SNAP_MAX_MS = 36 * 3600 * 1e3;
+  var snapFresh = (s) => Date.now() - Date.parse(s.at) < SNAP_MAX_MS;
+  var snapP = null;
+  function loadSnapshot() {
+    if (!snapP)
+      snapP = fetch("world_outlook_today.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then(
+        (s) => s && s.v === 1 && Array.isArray(s.r) && s.c && typeof s.at === "string" && snapFresh(s) ? s : null
+      ).catch(() => null);
+    return snapP;
+  }
+  function fromSnap(O2, s, ri) {
+    const row = s.r[ri];
+    if (!row) return null;
+    const [p, zMax, off] = row, today = addDays2(s.today, off), hm = halfMonth(today), base2 = O2.base[ri * 24 + hm] / 1e3;
+    if (!(base2 > 0 && base2 < 1)) return null;
+    const norm2 = 1 / (1 + Math.exp(-(O2.norm_coef[0] + O2.norm_coef[1] * Math.log(base2 / (1 - base2)))));
+    return { p, base: base2, ratio: p / base2, norm: norm2, wxRatio: p / norm2, thr: O2.thr[ri * 24 + hm], hm, today, zMax };
   }
   var TIMEOUT_MS2 = 45e3;
   var CHUNK2 = 50;
@@ -3563,7 +3611,6 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       return getDaily2(O2, ris);
     }
   }
-  var MIN_SHARE = 0.75;
   function wolLoad(O2, k, done) {
     if (busy2.has(k)) return;
     const regs = countryRegions(O2, k).used, shareOf = new Map(regs.map((r) => [r.ri, r.share])), total2 = regs.reduce((a, r) => a + r.share, 0) || 1, have = runs2.get(k), keep = have && have.status === "ok" && Date.now() - have.at < KEEP_MS2 ? have : null;
@@ -3584,6 +3631,22 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     const want = regs.map((r) => r.ri).filter((ri) => !keep || !keep.rows.get(ri));
     busy2.add(k);
     (async () => {
+      if (!keep) {
+        const s = await loadSnapshot();
+        if (s && s.model === modelId(O2)) {
+          const rows = new Map(regs.map((r) => [r.ri, fromSnap(O2, s, r.ri)]));
+          let answered = 0;
+          rows.forEach((r, ri) => answered += r ? shareOf.get(ri) || 0 : 0);
+          if (answered / total2 >= MIN_SHARE) {
+            const run = finish2(O2, rows, Date.parse(s.at));
+            if (run.status === "ok") {
+              runs2.set(k, { ...run, from: "snapshot" });
+              busy2.delete(k);
+              return done();
+            }
+          }
+        }
+      }
       try {
         const chunks = [];
         const size = Math.min(CHUNK2, O2.api.max_points_per_get);
@@ -3597,7 +3660,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         let answered = 0;
         rows.forEach((r, ri) => answered += r ? shareOf.get(ri) || 0 : 0);
         if (answered / total2 < MIN_SHARE) throw failed ? failed.reason : new WeatherError2("The weather service sent no usable forecast.");
-        const run = finish2(O2, rows, keep ? keep.at : Date.now());
+        const run = { ...finish2(O2, rows, keep ? keep.at : Date.now()), from: "live" };
         if (failed) run.err = failed.reason instanceof WeatherError2 ? failed.reason.message : "Part of the forecast did not arrive.";
         runs2.set(k, run);
         if (run.status === "ok" && !failed) toStore2(O2, k, run);
@@ -3613,17 +3676,13 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
 
   // src/wolui.ts
   var REGION_STEP = 0.05;
-  var COUNTRY_STEP = 0.03;
-  var EDGES = [-0.15, -0.08, -0.03, 0.03, 0.08, 0.15];
-  var RAMP = ["#2166ac", "#67a9cf", "#d1e5f0", "#f4f2ec", "#fddbc7", "#ef8a62", "#b2182b"];
   var MINOR = "#e4e0d7";
-  var ODD_Z = 3.5;
   var ODD = "#c9c2b4";
   var P_CAP = 0.85;
   var esc4 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
-  var colour = (d) => RAMP[EDGES.filter((e) => d >= e).length];
   var pct3 = (p) => p > P_CAP ? "over 85%" : p < 0.02 ? "under 2%" : Math.round(p * 100) + "%";
+  var change = (r) => Math.min(r.p, P_CAP) - Math.min(r.norm, P_CAP);
   var pts = (d) => {
     const r = Math.round(d * 100);
     return r === 0 ? "no change" : `${r > 0 ? "+" : "\u2212"}${Math.abs(r)} point${Math.abs(r) === 1 ? "" : "s"}`;
@@ -3657,8 +3716,8 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         x: (boxes[i][0] + boxes[i][2]) / 2 * kx,
         y: (boxes[i][1] + boxes[i][3]) / 2,
         r: !r.minor && run?.rows.get(r.ri) || null,
-        noSkill: (O2.regions.bss[r.ri] ?? 1) <= 0,
-        odd: !r.minor && (run?.rows.get(r.ri)?.zMax ?? 0) > ODD_Z
+        noSkill: (O2.regions.bss_live[r.ri] ?? 1) <= 0,
+        odd: !r.minor && !!run?.rows.get(r.ri) && isOdd(run.rows.get(r.ri))
       }))
     };
   }
@@ -3703,7 +3762,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         if (openK !== k) return;
         const name = nameOf(k), m = O2.metrics.by_country[k];
         if (!O2.countries[k] || !m) return noRegions(O2, k, name);
-        if (m[0] <= 0) return noSkill(O2, k, name);
+        if (!countryPasses(O2, k)) return noSkill(O2, k, name);
         wolLoad(O2, k, () => openK === k && draw(O2, k));
       },
       () => {
@@ -3727,15 +3786,16 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   function noRegions(O2, k, name) {
     const n = O2.no_region[k];
     $("cOlTitle").textContent = "Too little fire history for an outlook";
-    $("cOlSub").textContent = n ? `NASA's VIIRS satellite counted only ${n.toLocaleString("en-US")} fire hotspot${n === 1 ? "" : "s"} in ${theName(name)} from 2012 to 2025. That is too few to say what a usual fortnight looks like, so there is no 14-day outlook here.` : `NASA's VIIRS satellite counted no fire hotspots in ${theName(name)} from 2012 to 2025, so there is nothing to forecast here.`;
+    $("cOlSub").textContent = n ? `NASA's VIIRS satellite counted only ${n.toLocaleString("en-US")} fire hotspot${n === 1 ? "" : "s"} in ${theName(name)} from 2012 to 2025. That is too few to say what a usual fortnight looks like, so there is no 14-day outlook here.` : `Once offshore and industrial detections are removed, NASA's VIIRS satellite counted no vegetation-fire hotspots in ${theName(name)} from 2012 to 2025, so there is nothing to forecast here.`;
     state("");
     $("cOlHow").innerHTML = "";
-    $("cOlSrc").textContent = `The 14-day outlook covers the ${Object.keys(O2.countries).length} countries and territories with enough fire history.`;
+    $("cOlSrc").textContent = `The 14-day outlook covers the ${Object.keys(O2.countries).length} countries and territories with enough fire history. Fire history: NASA FIRMS, VIIRS on Suomi NPP.`;
   }
   function noSkill(O2, k, name) {
-    const m = O2.metrics.by_country[k];
-    $("cOlTitle").textContent = `No 14-day outlook we can stand behind for ${theName(name)}`;
-    $("cOlSub").textContent = `In past years this outlook did not beat the usual odds in ${theName(name)} (Brier skill ${signed(m[0])}), even when it was given the weather that actually happened. Treat the next two weeks as usual for the time of year. We do not fetch a forecast for it.`;
+    const m = O2.metrics.by_country[k], tn = theName(name);
+    $("cOlTitle").textContent = `No 14-day outlook we can stand behind for ${tn}`;
+    $("cOlSub").textContent = m[0] <= 0 ? `In past years this outlook did not beat the usual odds in ${tn} (Brier skill ${signed(m[0])}), even when it was given the weather that actually happened. ` : `In past years this outlook beat the usual odds in ${tn} only when it was given the weather that actually happened (Brier skill ${signed(m[0])}). ` + (m[5] <= 0 ? `With weather as far off as the forecast source it did not (${signed(m[5])}). ` : `With weather as far off as the forecast source it beat them by only ${signed(m[5])}, less than the ${signed(LIVE_GATE, 0)} margin we ask for to cover the forecast's own errors. `);
+    $("cOlSub").textContent += `Treat the next two weeks as usual for the time of year. We do not fetch a forecast for it.`;
     state("");
     how(O2, k, name);
   }
@@ -3744,7 +3804,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     if (!run) return;
     if (run.status === "loading") {
       $("cOlMain").hidden = true;
-      state(`Fetching the weather forecast for ${poss(tn)} ${n} region${n === 1 ? "" : "s"} from Open-Meteo\u2026`);
+      state(`Getting the weather forecast for ${poss(tn)} ${n} region${n === 1 ? "" : "s"}\u2026`);
       return;
     }
     if (run.status === "error") {
@@ -3756,41 +3816,42 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       return;
     }
     state(run.err ? `${run.err} ${run.missing} region${run.missing === 1 ? " has" : "s have"} no outlook and show white.` : "", !!run.err);
-    const L2 = place(O2, k), live = L2.cells.filter((c) => c.r && !c.odd), odd = L2.cells.filter((c) => c.r && c.odd), allShare = L2.cells.filter((c) => c.r).reduce((a, c) => a + c.share, 0) || 1, oddShare = odd.reduce((a, c) => a + c.share, 0) / allShare, sw = live.reduce((a, c) => a + c.share, 0) || 1, P = live.reduce((a, c) => a + c.share * c.r.p, 0) / sw, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / sw, D2 = P - N, up = live.filter((c) => c.r.p - c.r.norm >= REGION_STEP), down = live.filter((c) => c.r.p - c.r.norm <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share) => {
+    const L2 = place(O2, k), used = L2.cells.filter((c) => !c.minor), S2 = sumUp(used), live = used.filter((c) => c.r && !c.odd), odd = used.filter((c) => c.r && c.odd), thin = S2.liveShare < MIN_SHARE, { P, N, D: D2 } = S2, sw = live.reduce((a, c) => a + c.share, 0) || 1, up = live.filter((c) => change(c.r) >= REGION_STEP), down = live.filter((c) => change(c.r) <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share) => {
       if (!many) return "";
-      if (share >= 0.6) return " across most of the country";
+      if (share >= 0.6) return S2.liveShare >= 0.95 ? " across most of the country" : " across most of the regions forecast";
       const w = compass(live, sub);
       return w === "scattered" ? " in scattered regions" : w === "centre" ? " in the centre of the country" : ` in the ${w}`;
     };
-    const lead2 = "Fire risk over the next two weeks is";
+    const lead2 = "Satellite fire detections over the next two weeks look";
     let head;
-    if (!live.length) head = `No reliable outlook for ${tn} today: the forecast weather is far outside the usual range for the date`;
-    else if (D2 >= COUNTRY_STEP) head = `${lead2} above normal${where(up.length ? up : live, up.length ? upShare : 1)}`;
-    else if (D2 <= -COUNTRY_STEP) head = `${lead2} below normal${where(down.length ? down : live, down.length ? downShare : 1)}`;
+    if (thin)
+      head = `No reliable outlook for ${tn} today: for ${Math.round((1 - S2.liveShare) * 100)}% of its fire the forecast is missing or the weather is outside anything in the 2012\u20132025 record`;
+    else if (D2 >= COUNTRY_STEP) head = `${lead2} busier than usual${where(up.length ? up : live, up.length ? upShare : 1)}`;
+    else if (D2 <= -COUNTRY_STEP) head = `${lead2} quieter than usual${where(down.length ? down : live, down.length ? downShare : 1)}`;
     else if (upShare >= 0.1 && downShare >= 0.1 && many)
-      head = `${lead2} close to normal overall: above normal${where(up, upShare)}, below${where(down, downShare)}`;
-    else if (upShare >= 0.1 && many) head = `${lead2} close to normal overall, but above normal${where(up, upShare)}`;
-    else if (downShare >= 0.1 && many) head = `${lead2} close to normal overall, but below normal${where(down, downShare)}`;
-    else head = `${lead2} close to normal`;
-    const hm = halfMonth(run.today);
+      head = `${lead2} about usual overall: busier${where(up, upShare)}, quieter${where(down, downShare)}`;
+    else if (upShare >= 0.1 && many) head = `${lead2} about usual overall, but busier${where(up, upShare)}`;
+    else if (downShare >= 0.1 && many) head = `${lead2} about usual overall, but quieter${where(down, downShare)}`;
+    else head = `${lead2} about usual`;
+    const hm = halfMonth(run.today), oddShare = 1 - S2.liveShare - used.filter((c) => !c.r).reduce((a, c) => a + c.share, 0) / (used.reduce((a, c) => a + c.share, 0) || 1);
     $("cOlKick").textContent = `Next 14 days \xB7 ${span(run.today, run.end)}`;
     $("cOlTitle").textContent = head;
-    $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.25 ? ` Read with care: in ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is far outside anything seen at this time of year, more likely a disagreement between the two weather sources than real weather. They are shown in grey and left out of the summaries.` : "");
-    const m = O2.metrics.by_country[k], verdict2 = D2 >= COUNTRY_STEP ? ["hi", "Above normal"] : D2 <= -COUNTRY_STEP ? ["lo", "Below normal"] : ["", "Near normal"];
-    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${many ? `its ${live.length} regions` : live.length === 2 ? "its two regions" : "its one region"}, each weighted by its share of ${esc4(poss(tn))} fire.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is far outside the usual range.` : "") + `</p></div><div class="cpAns"><h2>Regions above normal</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[0])}<small>against the usual odds</small></p><p>Brier skill in ${esc4(tn)}, tested on 2012\u20132025 with the weather that actually happened. With a real forecast, expect less.</p></div>`;
+    $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.1 ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012\u20132025 record for the date, so the model would be extrapolating. That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.` : "");
+    const m = O2.metrics.by_country[k], verdict2 = D2 >= COUNTRY_STEP ? ["hi", "Busier than usual"] : D2 <= -COUNTRY_STEP ? ["lo", "Quieter than usual"] : ["", "About usual"], regionsWord = live.length === 1 ? "its one forecast region" : live.length === 2 ? "its two forecast regions" : `its ${live.length} forecast regions`;
+    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
     legend2(L2);
     drawMap(L2, k, run.missing);
-    list(O2, L2, tn);
-    $("cOlFigs").hidden = $("cOlList").parentElement.hidden = !live.length;
+    list(O2, L2, tn, D2);
+    $("cOlFigs").hidden = $("cOlList").parentElement.hidden = thin || !live.length;
     $("cOlMain").hidden = false;
-    how(O2, k, name, run.at);
+    how(O2, k, name, run.at, run.from);
   }
   function legend2(L2) {
     const steps = RAMP.map(
       (c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? "" : (EDGES[i - 1] > 0 ? "+" : "") + Math.round(EDGES[i - 1] * 100)}</span></div>`
     ).join("") + `<div class="cpStep" style="flex:0 0 1px"><i style="background:none"></i><span></span></div>`;
     const hatch = L2.cells.some((c) => c.noSkill), minor = L2.cells.some((c) => c.minor), odd = L2.cells.some((c) => c.odd);
-    $("cOlLegend").innerHTML = `<div><b>Change from the weather, percentage points</b><div class="cpKey">${steps}</div></div>` + (hatch ? `<span class="cpNone"><i class="cpHatch"></i>no skill here in past tests</span>` : "") + (odd ? `<span class="cpNone"><i style="background:${ODD}"></i>weather far outside its usual range, left out</span>` : "") + (minor ? `<span class="cpNone"><i style="background:${MINOR}"></i>little fire, not forecast</span>` : "");
+    $("cOlLegend").innerHTML = `<div><b>Change from the weather, percentage points</b><div class="cpKey">${steps}</div></div>` + (hatch ? `<span class="cpNone"><i class="cpHatch"></i>no skill here in past tests</span>` : "") + (odd ? `<span class="cpNone"><i style="background:${ODD}"></i>weather outside its 2012\u20132025 record, left out</span>` : "") + (minor ? `<span class="cpNone"><i style="background:${MINOR}"></i>little fire, not forecast</span>` : "");
   }
   function drawMap(L2, k, missing) {
     const S2 = 10, X = (lon) => (lon - L2.lon0) * L2.kx * S2, Y = (lat) => -lat * S2;
@@ -3821,7 +3882,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
         }
       }
     const cells = L2.cells.map((c, i) => {
-      const fill = c.minor ? MINOR : c.odd ? ODD : c.r ? colour(c.r.p - c.r.norm) : "#fff";
+      const fill = c.minor ? MINOR : c.odd ? ODD : c.r ? changeColour(change(c.r)) : "#fff";
       const rect = `x="${X(c.box[0]).toFixed(1)}" y="${Y(c.box[3]).toFixed(1)}" width="${(X(c.box[2]) - X(c.box[0])).toFixed(1)}" height="${(Y(c.box[1]) - Y(c.box[3])).toFixed(1)}"`;
       return `<rect ${rect} fill="${fill}" class="olCell" data-i="${i}"/>` + (c.noSkill && c.r ? `<rect ${rect} fill="url(#olHatch)" pointer-events="none"/>` : "");
     }).join("");
@@ -3853,24 +3914,24 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     if (c.minor) return `<b>${cap(whereIn(L2.cells, c))}, ${pos}</b>: ${sh} of the country's fire, too little to forecast here.`;
     if (!c.r) return `<b>${cap(whereIn(L2.cells, c))}, ${pos}</b>: no outlook, the forecast had gaps.`;
     const r = c.r;
-    return `<b>${cap(whereIn(L2.cells, c))}, ${pos}</b>: ${pct3(r.p)} chance of ${busier(r.thr)} in 14 days, against ${pct3(r.norm)} with average weather (${pts(r.p - r.norm)}). ${sh} of the country's fire.` + (c.noSkill ? " In past tests the outlook did not beat the usual odds in this region." : "") + (c.odd ? ` Left out: the forecast weather here is ${c.r.zMax.toFixed(1)} standard deviations from the usual for the date, which happened in about 1 in 100 past fortnights; more likely the two weather sources disagree.` : "");
+    return `<b>${cap(whereIn(L2.cells, c))}, ${pos}</b>: ${pct3(r.p)} chance of ${busier(r.thr)} in 14 days, against ${pct3(r.norm)} with average weather (${pts(change(r))}). ${sh} of the country's fire.` + (c.noSkill ? " In past tests allowing for the weather source's errors, the outlook did not beat the usual odds in this region." : "") + (c.odd ? ` Left out: the forecast weather here is ${c.r.zMax.toFixed(1)} standard deviations from the usual for the date, outside anything in the 2012\u20132025 record (that far out in about 1 in 100 past fortnights), so the model would be extrapolating. It may be unusual weather or a gap between the two weather sources; we cannot tell which.` : "");
   }
-  function list(O2, L2, tn) {
-    const live = L2.cells.filter((c) => c.r && !c.odd), big = live.filter((c) => c.share >= 0.01), pool = big.length >= 3 ? big : live, by = (c) => c.r.p - c.r.norm, rising = pool.some((c) => by(c) >= 0.03) || !pool.some((c) => by(c) <= -0.03), rows = pool.slice().sort((a, b) => rising ? by(b) - by(a) : by(a) - by(b)).slice(0, 5);
+  function list(O2, L2, tn, D2) {
+    const live = L2.cells.filter((c) => c.r && !c.odd), big = live.filter((c) => c.share >= 0.01), pool = big.length >= 3 ? big : live, by = (c) => change(c.r), rising = Math.abs(D2) >= COUNTRY_STEP ? D2 > 0 : pool.some((c) => by(c) >= 0.03) || !pool.some((c) => by(c) <= -0.03), rows = pool.slice().sort((a, b) => rising ? by(b) - by(a) : by(a) - by(b)).slice(0, 5);
     $("cOlListT").textContent = rising ? "Where the weather raises the odds most" : "Where the weather lowers the odds most";
     $("cOlList").innerHTML = rows.map((c) => {
       const r = c.r, d = by(c);
-      return `<li><span class="olW"><b>${cap(whereIn(L2.cells, c))}${c.noSkill ? " \u2020" : ""}</b><small>near ${deg(O2.regions.lat[c.ri], "N", "S")}, ${deg(O2.regions.lon[c.ri], "E", "W")} \xB7 ${Math.round(c.share * 100) || "<1"}% of ${esc4(poss(tn))} fire</small><small>busier than usual: ${busier(r.thr)} in 14 days</small></span><span class="olN">${pct3(r.p)}<small>vs ${pct3(r.norm)}</small></span><span class="olD" style="--c:${colour(d)}">${pts(d)}</span></li>`;
+      return `<li><span class="olW"><b>${cap(whereIn(L2.cells, c))}${c.noSkill ? " \u2020" : ""}</b><small>near ${deg(O2.regions.lat[c.ri], "N", "S")}, ${deg(O2.regions.lon[c.ri], "E", "W")} \xB7 ${Math.round(c.share * 100) || "<1"}% of ${esc4(poss(tn))} fire</small><small>busier than usual: ${busier(r.thr)} in 14 days</small></span><span class="olN">${pct3(r.p)}<small>vs ${pct3(r.norm)}</small></span><span class="olD" style="--c:${changeColour(d)}">${pts(d)}</span></li>`;
     }).join("");
-    $("cOlListNote").textContent = (big.length >= 3 ? "Regions holding at least 1% of the country's fire. " : "") + (rows.some((c) => c.noSkill) ? "\u2020 In past tests the outlook did not beat the usual odds in this region." : "");
+    $("cOlListNote").textContent = (big.length >= 3 ? "Regions holding at least 1% of the country's fire. " : "") + (rows.some((c) => c.noSkill) ? "\u2020 In past tests allowing for the weather source's errors, the outlook did not beat the usual odds in this region." : "");
   }
-  function how(O2, k, name, at = 0) {
+  function how(O2, k, name, at = 0, from) {
     const tn = theName(name), m = O2.metrics.by_country[k], regs = O2.countries[k] || [], zw = /* @__PURE__ */ new Map();
     regs.forEach(([ri, s]) => zw.set(O2.regions.zone[ri], (zw.get(O2.regions.zone[ri]) || 0) + s + 1e-3));
-    const zi = [...zw.entries()].sort((a, b) => b[1] - a[1])[0]?.[0], zone = zi == null ? null : O2.zones[zi], zm = zone ? O2.metrics.by_zone[zone] : null, all = O2.metrics.variants, shipped = Object.entries(all).find(([key]) => /^shipped: observed next 14/.test(key))?.[1], blurred = Object.entries(all).find(([key]) => /blurred/.test(key))?.[1];
-    const skill2 = !!m && m[0] > 0, test = m && zm && zone ? !skill2 ? `Tested year by year on 2012\u20132025, each year predicted by a model fitted on the others, it did not beat the usual odds in ${esc4(tn)} (Brier skill ${signed(m[0])}; AUC ${m[2].toFixed(2)} \u2192 ${m[1].toFixed(2)}), though it did by ${signed(zm.model.bss)} across ${ZONE_NAME[zone] || zone} as a whole. ` : `Tested year by year on 2012\u20132025, each year predicted by a model fitted on the others, it beat the usual odds by ${signed(m[0])} in ${esc4(tn)} and by ${signed(zm.model.bss)} across ${ZONE_NAME[zone] || zone} (Brier skill; AUC ${m[2].toFixed(2)} \u2192 ${m[1].toFixed(2)} in ${esc4(tn)}). ` : "";
-    $("cOlHow").innerHTML = `<b>How this works.</b> For each region about 280 km across, a statistical model starts from how often this half of the month has been busier than usual (VIIRS hotspots, 2012\u20132025) and moves that chance with the forecast heat, air dryness and rain of the next 14 days and the rain of the past 30. ` + test + (!skill2 ? `<b>Those tests used the weather that actually happened (NASA POWER), not a forecast,</b> so a real forecast would not do better here.` : `<b>Those tests used the weather that actually happened (NASA POWER), not a forecast,</b> so they are a best case: with Open-Meteo's forecast, a different source, expect a few percent better than the usual odds (the gap between the two sources alone cut the worldwide score from ${shipped ? signed(shipped.bss) : "+8.9%"} to ${blurred ? signed(blurred.bss) : "+5.2%"} in a simulation).`);
-    $("cOlSrc").textContent = (at ? `Forecast fetched ${new Date(at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ` : "") + `Weather: Open-Meteo forecast; trained on NASA POWER (MERRA-2). Fire history: NASA FIRMS, VIIRS on Suomi NPP. Each region's weather is read at one point, the centre of its busiest patch, and regions cross borders. Hotspots are detections, not fires, and many are farm or managed burns.`;
+    const zi = [...zw.entries()].sort((a, b) => b[1] - a[1])[0]?.[0], zone = zi == null ? null : O2.zones[zi], zm = zone ? O2.metrics.by_zone[zone] : null, zn = zone ? ZONE_NAME[zone] || zone : "", all = O2.metrics.variants, bss = (re) => Object.entries(all).find(([key]) => re.test(key))?.[1].bss ?? NaN, worldLive = bss(/^trained for the full source gap, tested with it/), pass = countryPasses(O2, k);
+    const test = !m ? "" : `Tested year by year on 2012\u20132025, each year predicted by a model fitted on the others: with the weather that actually happened (NASA POWER) it beat the usual odds by ${signed(m[0])} in the regions covering ${esc4(tn)} (AUC ${m[2].toFixed(2)} \u2192 ${m[1].toFixed(2)})` + (zm ? ` and by ${signed(zm.model.bss)} across ${zn}` : "") + `. With errors the size of the gap between the two weather sources added to that weather, the score is ${signed(m[5])} here` + (zm ? ` and ${signed(zm.live_bss)} across ${zn}` : "") + ` (${signed(worldLive)} worldwide). `;
+    $("cOlHow").innerHTML = `<b>How this works.</b> For each region about 280 km across, a statistical model starts from how often this half of the month has been busier than usual (VIIRS hotspots, 2012\u20132025) and moves that chance with the forecast heat, air dryness and rain of the next 14 days and the rain of the past 30. Clouds and rain also hide fires from the satellite, so part of the rain effect is fewer detections, not fewer fires. The live weather comes from Open-Meteo, not from POWER, the source the model learned on, and outside the weeks the correction between them was learned on (August\u2013September 2026) they differ about as much as with no correction at all. So the model was fitted on weather blurred by that gap, and moves the odds less than it would with perfect weather. ` + test + (pass ? `<b>None of these tests used a real forecast,</b> and forecasts add their own errors, more so in the second week. Treat this outlook as a hint: it may do no better than the usual odds.` : `<b>None of these tests used a real forecast,</b> so a forecast would not do better here.`);
+    $("cOlSrc").textContent = (at ? `Forecast fetched ${new Date(at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}` + (from === "snapshot" ? " for the site's daily snapshot. " : ". ") : "") + (pass ? "Weather: Open-Meteo forecast; trained on NASA POWER (MERRA-2). " : "Training weather: NASA POWER (MERRA-2). ") + `Fire history: NASA FIRMS, VIIRS on Suomi NPP. Each region's weather is read at one point, the centre of its busiest patch, and regions cross borders. Hotspots are detections, not fires, and many are farm or managed burns.`;
   }
 
   // src/libs.ts
@@ -5415,7 +5476,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
     const fireM = new T.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), fireMesh = new T.Mesh(new T.SphereGeometry(1.001, 128, 64), fireM);
     fireMesh.visible = false;
     grp.add(fireMesh);
-    let fireStats = /* @__PURE__ */ new Map(), fireT0 = 0, fireLoading = false;
+    let fireStats = /* @__PURE__ */ new Map(), fireLo = 0, fireHi = 0, fireT0 = 0, fireLoading = false;
     const giveUp = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error("Hugging Face took too long")), ms));
     function loadFire() {
       if (fireStats.size || fireLoading) return;
@@ -5433,7 +5494,10 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
         fireMesh.visible = true;
         fireStats = L2.stats;
         fireT0 = performance.now();
-        showKey(L2.lo, L2.hi);
+        fireLo = L2.lo;
+        fireHi = L2.hi;
+        fireMesh.visible = mode === "fire";
+        if (mode === "fire") showKey(L2.lo, L2.hi);
         if (hov) tagC.textContent = tagText(hov);
       }).catch(() => {
         $("heroWait").textContent = "Could not load the fire map from Hugging Face.";
@@ -5442,6 +5506,40 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
     }
     $("heroRetry").onclick = loadFire;
     loadFire();
+    const olM = new T.MeshBasicMaterial({ transparent: true, opacity: 1, depthWrite: false }), olMesh = new T.Mesh(new T.SphereGeometry(1.001, 128, 64), olM);
+    olMesh.visible = false;
+    grp.add(olMesh);
+    let snap = null, mode = "fire";
+    const setMode = (m) => {
+      if (m === "ol" && !snap) return;
+      mode = m;
+      fireMesh.visible = m === "fire" && fireStats.size > 0;
+      olMesh.visible = m === "ol";
+      document.querySelectorAll("#heroMode button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.m === m);
+        b.setAttribute("aria-pressed", String(b.dataset.m === m));
+      });
+      $("heroKey").classList.toggle("ol", m === "ol");
+      if (m === "ol" && snap) showOlKey(snap);
+      else if (fireStats.size) showKey(fireLo, fireHi);
+      if (hov) tagC.textContent = tagText(hov);
+    };
+    document.querySelectorAll("#heroMode button").forEach((b) => b.onclick = () => setMode(b.dataset.m === "ol" ? "ol" : "fire"));
+    loadSnapshot().then((s) => {
+      if (!s) return;
+      snap = s;
+      const items = [];
+      for (const c of WORLD) {
+        const v = s.c[c.k];
+        if (!v || v[0] === 2) continue;
+        items.push({ c, area: areaKm2(c), fill: olFill2(v) });
+      }
+      const t = new T.CanvasTexture(paintCountries(items));
+      t.minFilter = T.LinearFilter;
+      olM.map = t;
+      olM.needsUpdate = true;
+      $("heroMode").hidden = false;
+    });
     const tops = [], RT2 = 1.003;
     G.st = {};
     for (const st of STS) {
@@ -5511,6 +5609,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`,
       if (!c) tagC.hidden = true;
     };
     function tagText(c) {
+      if (mode === "ol" && snap) return `${c.n}
+${olText(snap.c[c.k])}`;
       const f = fireStats.get(c.k);
       return f ? `${c.n}
 ${short(f.perYear)} hotspots a year` : c.n;
@@ -5709,13 +5809,50 @@ ${short(f.perYear)} hotspots a year` : c.n;
   }
   function showKey(lo, hi) {
     const cv = $("heroRamp"), g = cv.getContext("2d");
+    g.clearRect(0, 0, cv.width, cv.height);
     for (let x = 0; x < cv.width; x++) {
       const f = fireColour(x / (cv.width - 1));
       g.fillStyle = `rgb(${f.c[0]},${f.c[1]},${f.c[2]})`;
       g.fillRect(x, 0, 1, cv.height);
     }
+    $("hkTitle").textContent = "Fire hotspots a year per 1,000 km\xB2";
+    $("hkOl").textContent = "";
+    $("hkNote").textContent = "NASA FIRMS, 2001\u20132025, live from Hugging Face. Click any country for its record and a 14-day outlook.";
     $("heroLo").textContent = "\u2264" + fmt(lo);
     $("heroHi").textContent = fmt(hi) + "+";
+    $("heroKey").classList.add("ready");
+  }
+  var NO_OUTLOOK = "rgba(52,56,66,.82)";
+  function olFill2(v) {
+    if (v[0] !== 0) return NO_OUTLOOK;
+    const hex = changeColour(v[1]), n = parseInt(hex.slice(1), 16), near2 = Math.abs(v[1]) < EDGES[3];
+    return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${near2 ? 0.5 : 0.8})`;
+  }
+  function olText(v) {
+    if (!v) return "No 14-day outlook here";
+    if (v[0] === 2) return "No 14-day outlook: too little fire history";
+    if (v[0] === 1) return "No 14-day outlook: it did not beat the usual odds in past tests";
+    if (v[0] === 3) return "No reliable outlook today: too much of its forecast is far outside the usual range";
+    const d = v[1], r = Math.round(d * 100), pts2 = r === 0 ? "no change" : `${r > 0 ? "+" : "\u2212"}${Math.abs(r)} point${Math.abs(r) === 1 ? "" : "s"}`;
+    return `Next 14 days: ${d >= COUNTRY_STEP ? "busier than usual" : d <= -COUNTRY_STEP ? "quieter than usual" : "about usual"} (${pts2})`;
+  }
+  var sgn = (x) => `${x > 0 ? "+" : x < 0 ? "\u2212" : ""}${Math.abs(x * 100).toFixed(1)}%`;
+  var dayMonth = (iso) => {
+    const [, m, d] = iso.split("-").map(Number);
+    return `${d} ${MONL[m - 1]}`;
+  };
+  function showOlKey(s) {
+    const cv = $("heroRamp"), g = cv.getContext("2d"), w = cv.width / RAMP.length;
+    g.clearRect(0, 0, cv.width, cv.height);
+    RAMP.forEach((c, i) => {
+      g.fillStyle = c;
+      g.fillRect(Math.round(i * w), 0, Math.ceil(w), cv.height);
+    });
+    $("heroLo").textContent = "quieter";
+    $("heroHi").textContent = "busier";
+    $("hkTitle").textContent = `Next 14 days: busier than usual? ${dayMonth(s.today)} \u2013 ${dayMonth(s.end)}`;
+    $("hkOl").innerHTML = `How the forecast weather moves each country's chance of more satellite fire detections than in a usual fortnight. <i class="hkSw" style="background:${NO_OUTLOOK}"></i> No outlook we can stand behind. Tested only on past weather, never on real forecasts: a hint, not a warning.`;
+    $("hkNote").textContent = `Open-Meteo forecast fetched ${new Date(s.at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. Tested on 2012\u20132025: ${sgn(s.skill.observed)} against the usual odds with the weather that actually happened, ${sgn(s.skill.live)} with weather as far off as the forecast source. Click a country for its regions.`;
     $("heroKey").classList.add("ready");
   }
 

@@ -2,13 +2,22 @@ import { MONL } from "./data";
 import { $ } from "./util";
 import { cutEdge, near, nameOf, shapeOf, theName } from "./world";
 import {
+  COUNTRY_STEP,
   type CountryRegion,
+  EDGES,
+  MIN_SHARE,
+  RAMP,
   type RegionOutlook,
   type WorldOutlook,
   cellBounds,
+  changeColour as colour,
+  countryPasses,
   countryRegions,
   halfMonth,
+  isOdd,
+  LIVE_GATE,
   loadWorldOutlook,
+  sumUp,
   wolLoad,
   wolRun,
 } from "./wol";
@@ -18,26 +27,20 @@ import {
    how much the forecast weather moves the chance of a busier fortnight than usual, a ranked list, and how it was
    tested. "Normal" is the model's own chance with average weather, so the colour is the weather's effect alone.
    ===================================================================== */
-/** a change of at least this much (in chance) marks a region as above or below normal */
+/** a change of at least this much (in chance) marks a region as pushed up or down by the weather */
 const REGION_STEP = 0.05;
-/** and this much, weighted over the country, the country as a whole */
-const COUNTRY_STEP = 0.03;
-/** class edges of the change, in chance, and the colours between them (the calendar's "versus normal" ramp) */
-const EDGES = [-0.15, -0.08, -0.03, 0.03, 0.08, 0.15];
-const RAMP = ["#2166ac", "#67a9cf", "#d1e5f0", "#f4f2ec", "#fddbc7", "#ef8a62", "#b2182b"];
 const MINOR = "#e4e0d7";
-/** a forecast this many standard deviations from a region's usual weather happened in about 1% of the training
-    fortnights (NASA POWER, 2012-2025). Live, it more often means Open-Meteo and POWER disagree (their offsets were
-    learned in August and September only), so such regions are shown but left out of the headline and the list. */
-const ODD_Z = 3.5;
+/** a region whose forecast weather is outside anything in its 2012-2025 record for the date (wol.ts ODD_Z): the model
+    would be extrapolating, so it is shown in this grey but left out of the headline and the list */
 const ODD = "#c9c2b4";
 /** the backtest's top bin came true less often than predicted, so the page does not show more than this */
 const P_CAP = 0.85;
 
 const esc = (t: string) => t.replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-const colour = (d: number) => RAMP[EDGES.filter(e => d >= e).length];
 const pct = (p: number) => (p > P_CAP ? "over 85%" : p < 0.02 ? "under 2%" : Math.round(p * 100) + "%");
+/** the change the weather makes, with the chance capped as it is shown (the backtest's top bin was overconfident) */
+const change = (r: RegionOutlook) => Math.min(r.p, P_CAP) - Math.min(r.norm, P_CAP);
 const pts = (d: number) => {
   const r = Math.round(d * 100);
   return r === 0 ? "no change" : `${r > 0 ? "+" : "−"}${Math.abs(r)} point${Math.abs(r) === 1 ? "" : "s"}`;
@@ -69,7 +72,7 @@ interface Placed extends CountryRegion {
   y: number;
   r: RegionOutlook | null;
   minor: boolean;
-  /** the backtest did not beat the usual odds in this region */
+  /** the backtest, with weather as far off as the forecast source, did not beat the usual odds in this region */
   noSkill: boolean;
   /** forecast weather far outside the region's usual range: shown, but left out of the summaries */
   odd: boolean;
@@ -103,8 +106,8 @@ function place(O: WorldOutlook, k: string): Layout {
       x: ((boxes[i][0] + boxes[i][2]) / 2) * kx,
       y: (boxes[i][1] + boxes[i][3]) / 2,
       r: (!r.minor && run?.rows.get(r.ri)) || null,
-      noSkill: (O.regions.bss[r.ri] ?? 1) <= 0,
-      odd: !r.minor && (run?.rows.get(r.ri)?.zMax ?? 0) > ODD_Z,
+      noSkill: (O.regions.bss_live[r.ri] ?? 1) <= 0,
+      odd: !r.minor && !!run?.rows.get(r.ri) && isOdd(run.rows.get(r.ri)!),
     })),
   };
 }
@@ -168,7 +171,7 @@ function start(k: string) {
       const name = nameOf(k),
         m = O.metrics.by_country[k];
       if (!O.countries[k] || !m) return noRegions(O, k, name);
-      if (m[0] <= 0) return noSkill(O, k, name);
+      if (!countryPasses(O, k)) return noSkill(O, k, name);
       wolLoad(O, k, () => openK === k && draw(O, k));
     },
     () => {
@@ -197,18 +200,24 @@ function noRegions(O: WorldOutlook, k: string, name: string) {
   $("cOlSub").textContent = n
     ? `NASA's VIIRS satellite counted only ${n.toLocaleString("en-US")} fire hotspot${n === 1 ? "" : "s"} in ${theName(name)} from 2012 to 2025. ` +
       `That is too few to say what a usual fortnight looks like, so there is no 14-day outlook here.`
-    : `NASA's VIIRS satellite counted no fire hotspots in ${theName(name)} from 2012 to 2025, so there is nothing to forecast here.`;
+    : `Once offshore and industrial detections are removed, NASA's VIIRS satellite counted no vegetation-fire hotspots in ${theName(name)} from 2012 to 2025, so there is nothing to forecast here.`;
   state("");
   $("cOlHow").innerHTML = "";
   $("cOlSrc").textContent =
-    `The 14-day outlook covers the ${Object.keys(O.countries).length} countries and territories with enough fire history.`;
+    `The 14-day outlook covers the ${Object.keys(O.countries).length} countries and territories with enough fire history. Fire history: NASA FIRMS, VIIRS on Suomi NPP.`;
 }
 function noSkill(O: WorldOutlook, k: string, name: string) {
-  const m = O.metrics.by_country[k];
-  $("cOlTitle").textContent = `No 14-day outlook we can stand behind for ${theName(name)}`;
+  const m = O.metrics.by_country[k]!,
+    tn = theName(name);
+  $("cOlTitle").textContent = `No 14-day outlook we can stand behind for ${tn}`;
   $("cOlSub").textContent =
-    `In past years this outlook did not beat the usual odds in ${theName(name)} (Brier skill ${signed(m[0])}), even when it was given the weather that actually happened. ` +
-    `Treat the next two weeks as usual for the time of year. We do not fetch a forecast for it.`;
+    m[0] <= 0
+      ? `In past years this outlook did not beat the usual odds in ${tn} (Brier skill ${signed(m[0])}), even when it was given the weather that actually happened. `
+      : `In past years this outlook beat the usual odds in ${tn} only when it was given the weather that actually happened (Brier skill ${signed(m[0])}). ` +
+        (m[5] <= 0
+          ? `With weather as far off as the forecast source it did not (${signed(m[5])}). `
+          : `With weather as far off as the forecast source it beat them by only ${signed(m[5])}, less than the ${signed(LIVE_GATE, 0)} margin we ask for to cover the forecast's own errors. `);
+  $("cOlSub").textContent += `Treat the next two weeks as usual for the time of year. We do not fetch a forecast for it.`;
   state("");
   how(O, k, name);
 }
@@ -222,7 +231,7 @@ function draw(O: WorldOutlook, k: string) {
   if (!run) return;
   if (run.status === "loading") {
     $("cOlMain").hidden = true;
-    state(`Fetching the weather forecast for ${poss(tn)} ${n} region${n === 1 ? "" : "s"} from Open-Meteo…`);
+    state(`Getting the weather forecast for ${poss(tn)} ${n} region${n === 1 ? "" : "s"}…`);
     return;
   }
   if (run.status === "error") {
@@ -236,68 +245,74 @@ function draw(O: WorldOutlook, k: string) {
   /* part of the forecast missing: the rest is shown, with a note and Retry */
   state(run.err ? `${run.err} ${run.missing} region${run.missing === 1 ? " has" : "s have"} no outlook and show white.` : "", !!run.err);
   const L = place(O, k),
-    live = L.cells.filter(c => c.r && !c.odd),
-    odd = L.cells.filter(c => c.r && c.odd),
-    allShare = L.cells.filter(c => c.r).reduce((a, c) => a + c.share, 0) || 1,
-    oddShare = odd.reduce((a, c) => a + c.share, 0) / allShare,
+    used = L.cells.filter(c => !c.minor),
+    S = sumUp(used),
+    live = used.filter(c => c.r && !c.odd),
+    odd = used.filter(c => c.r && c.odd),
+    /* too little of the country's fire has a usable forecast to speak for the country */
+    thin = S.liveShare < MIN_SHARE,
+    { P, N, D } = S,
     sw = live.reduce((a, c) => a + c.share, 0) || 1,
-    P = live.reduce((a, c) => a + c.share * c.r!.p, 0) / sw,
-    N = live.reduce((a, c) => a + c.share * c.r!.norm, 0) / sw,
-    D = P - N,
-    up = live.filter(c => c.r!.p - c.r!.norm >= REGION_STEP),
-    down = live.filter(c => c.r!.p - c.r!.norm <= -REGION_STEP),
+    up = live.filter(c => change(c.r!) >= REGION_STEP),
+    down = live.filter(c => change(c.r!) <= -REGION_STEP),
     upShare = up.reduce((a, c) => a + c.share, 0) / sw,
     downShare = down.reduce((a, c) => a + c.share, 0) / sw,
     many = live.length > 2,
-    /* " in the north", " in scattered regions", " across most of the country" */
+    /* " in the north", " in scattered regions", " across most of the forecast regions" */
     where = (sub: Placed[], share: number) => {
       if (!many) return "";
-      if (share >= 0.6) return " across most of the country";
+      if (share >= 0.6) return S.liveShare >= 0.95 ? " across most of the country" : " across most of the regions forecast";
       const w = compass(live, sub);
       return w === "scattered" ? " in scattered regions" : w === "centre" ? " in the centre of the country" : ` in the ${w}`;
     };
-  /* the headline */
-  const lead = "Fire risk over the next two weeks is";
+  /* the headline: about satellite detections, not fire danger */
+  const lead = "Satellite fire detections over the next two weeks look";
   let head: string;
-  if (!live.length) head = `No reliable outlook for ${tn} today: the forecast weather is far outside the usual range for the date`;
-  else if (D >= COUNTRY_STEP) head = `${lead} above normal${where(up.length ? up : live, up.length ? upShare : 1)}`;
-  else if (D <= -COUNTRY_STEP) head = `${lead} below normal${where(down.length ? down : live, down.length ? downShare : 1)}`;
+  if (thin)
+    head = `No reliable outlook for ${tn} today: for ${Math.round((1 - S.liveShare) * 100)}% of its fire the forecast is missing or the weather is outside anything in the 2012–2025 record`;
+  else if (D >= COUNTRY_STEP) head = `${lead} busier than usual${where(up.length ? up : live, up.length ? upShare : 1)}`;
+  else if (D <= -COUNTRY_STEP) head = `${lead} quieter than usual${where(down.length ? down : live, down.length ? downShare : 1)}`;
   else if (upShare >= 0.1 && downShare >= 0.1 && many)
-    head = `${lead} close to normal overall: above normal${where(up, upShare)}, below${where(down, downShare)}`;
-  else if (upShare >= 0.1 && many) head = `${lead} close to normal overall, but above normal${where(up, upShare)}`;
-  else if (downShare >= 0.1 && many) head = `${lead} close to normal overall, but below normal${where(down, downShare)}`;
-  else head = `${lead} close to normal`;
-  const hm = halfMonth(run.today);
+    head = `${lead} about usual overall: busier${where(up, upShare)}, quieter${where(down, downShare)}`;
+  else if (upShare >= 0.1 && many) head = `${lead} about usual overall, but busier${where(up, upShare)}`;
+  else if (downShare >= 0.1 && many) head = `${lead} about usual overall, but quieter${where(down, downShare)}`;
+  else head = `${lead} about usual`;
+  const hm = halfMonth(run.today),
+    oddShare = 1 - S.liveShare - used.filter(c => !c.r).reduce((a, c) => a + c.share, 0) / (used.reduce((a, c) => a + c.share, 0) || 1);
   $("cOlKick").textContent = `Next 14 days · ${span(run.today, run.end)}`;
   $("cOlTitle").textContent = head;
   $("cOlSub").textContent =
     `The chance that each region sees more satellite fire detections over ${span(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, ` +
     `against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` +
-    (odd.length && oddShare >= 0.25
-      ? ` Read with care: in ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is far outside anything seen at this time of year, more likely a disagreement between the two weather sources than real weather. They are shown in grey and left out of the summaries.`
+    (odd.length && oddShare >= 0.1
+      ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012–2025 record for the date, so the model would be extrapolating. ` +
+        `That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.`
       : "");
   /* three figures */
-  const m = O.metrics.by_country[k],
-    verdict = D >= COUNTRY_STEP ? ["hi", "Above normal"] : D <= -COUNTRY_STEP ? ["lo", "Below normal"] : ["", "Near normal"];
+  const m = O.metrics.by_country[k]!,
+    verdict = D >= COUNTRY_STEP ? ["hi", "Busier than usual"] : D <= -COUNTRY_STEP ? ["lo", "Quieter than usual"] : ["", "About usual"],
+    regionsWord = live.length === 1 ? "its one forecast region" : live.length === 2 ? "its two forecast regions" : `its ${live.length} forecast regions`;
   $("cOlFigs").innerHTML =
     `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict[0]}">${verdict[1]}</span>` +
     `<small>${pct(P)} chance of a busier fortnight than usual, against ${pct(N)} with average weather</small></p>` +
-    `<p>Averaged over ${many ? `its ${live.length} regions` : live.length === 2 ? "its two regions" : "its one region"}, each weighted by its share of ${esc(poss(tn))} fire.` +
+    `<p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc(poss(tn))} fire` : ""}.` +
     (odd.length
-      ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is far outside the usual range.`
+      ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012–2025 record for the date.`
       : "") +
     `</p></div>` +
-    `<div class="cpAns"><h2>Regions above normal</h2><p class="cpFig">${up.length} of ${live.length}</p>` +
-    `<p>The weather raises the chance by 5 points or more in ${up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div>` +
-    `<div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[0])}<small>against the usual odds</small></p>` +
-    `<p>Brier skill in ${esc(tn)}, tested on 2012–2025 with the weather that actually happened. With a real forecast, expect less.</p></div>`;
+    `<div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p>` +
+    `<p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, ` +
+    `and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div>` +
+    `<div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p>` +
+    `<p>Brier skill in the regions covering ${esc(tn)}, 2012–2025, with errors the size of the gap between the two weather sources added to the weather that happened ` +
+    `(${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
   legend(L);
   drawMap(L, k, run.missing);
-  list(O, L, tn);
-  /* with every region left out there is nothing to sum up or rank, only the map */
-  $("cOlFigs").hidden = $("cOlList").parentElement!.hidden = !live.length;
+  list(O, L, tn, D);
+  /* with too little of the country summed up there is nothing to headline or rank, only the map */
+  $("cOlFigs").hidden = $("cOlList").parentElement!.hidden = thin || !live.length;
   $("cOlMain").hidden = false;
-  how(O, k, name, run.at);
+  how(O, k, name, run.at, run.from);
 }
 
 function legend(L: Layout) {
@@ -312,7 +327,7 @@ function legend(L: Layout) {
   $("cOlLegend").innerHTML =
     `<div><b>Change from the weather, percentage points</b><div class="cpKey">${steps}</div></div>` +
     (hatch ? `<span class="cpNone"><i class="cpHatch"></i>no skill here in past tests</span>` : "") +
-    (odd ? `<span class="cpNone"><i style="background:${ODD}"></i>weather far outside its usual range, left out</span>` : "") +
+    (odd ? `<span class="cpNone"><i style="background:${ODD}"></i>weather outside its 2012–2025 record, left out</span>` : "") +
     (minor ? `<span class="cpNone"><i style="background:${MINOR}"></i>little fire, not forecast</span>` : "");
 }
 
@@ -357,7 +372,7 @@ function drawMap(L: Layout, k: string, missing: number) {
     }
   const cells = L.cells
     .map((c, i) => {
-      const fill = c.minor ? MINOR : c.odd ? ODD : c.r ? colour(c.r.p - c.r.norm) : "#fff";
+      const fill = c.minor ? MINOR : c.odd ? ODD : c.r ? colour(change(c.r)) : "#fff";
       const rect = `x="${X(c.box[0]).toFixed(1)}" y="${Y(c.box[3]).toFixed(1)}" width="${(X(c.box[2]) - X(c.box[0])).toFixed(1)}" height="${(Y(c.box[1]) - Y(c.box[3])).toFixed(1)}"`;
       return (
         `<rect ${rect} fill="${fill}" class="olCell" data-i="${i}"/>` +
@@ -407,21 +422,23 @@ function cellText(L: Layout, c: Placed) {
   const r = c.r;
   return (
     `<b>${cap(whereIn(L.cells, c))}, ${pos}</b>: ${pct(r.p)} chance of ${busier(r.thr)} in 14 days, ` +
-    `against ${pct(r.norm)} with average weather (${pts(r.p - r.norm)}). ${sh} of the country's fire.` +
-    (c.noSkill ? " In past tests the outlook did not beat the usual odds in this region." : "") +
+    `against ${pct(r.norm)} with average weather (${pts(change(r))}). ${sh} of the country's fire.` +
+    (c.noSkill ? " In past tests allowing for the weather source's errors, the outlook did not beat the usual odds in this region." : "") +
     (c.odd
-      ? ` Left out: the forecast weather here is ${c.r.zMax.toFixed(1)} standard deviations from the usual for the date, which happened in about 1 in 100 past fortnights; more likely the two weather sources disagree.`
+      ? ` Left out: the forecast weather here is ${c.r.zMax.toFixed(1)} standard deviations from the usual for the date, outside anything in the 2012–2025 record ` +
+        `(that far out in about 1 in 100 past fortnights), so the model would be extrapolating. It may be unusual weather or a gap between the two weather sources; we cannot tell which.`
       : "")
   );
 }
 
 /* ---------- the ranked list ---------- */
-function list(O: WorldOutlook, L: Layout, tn: string) {
+function list(O: WorldOutlook, L: Layout, tn: string, D: number) {
   const live = L.cells.filter(c => c.r && !c.odd),
     big = live.filter(c => c.share >= 0.01),
     pool = big.length >= 3 ? big : live,
-    by = (c: Placed) => c.r!.p - c.r!.norm,
-    rising = pool.some(c => by(c) >= 0.03) || !pool.some(c => by(c) <= -0.03),
+    by = (c: Placed) => change(c.r!),
+    /* the list goes the way of the headline; for a country about usual overall, the way any region moves */
+    rising = Math.abs(D) >= COUNTRY_STEP ? D > 0 : pool.some(c => by(c) >= 0.03) || !pool.some(c => by(c) <= -0.03),
     rows = pool
       .slice()
       .sort((a, b) => (rising ? by(b) - by(a) : by(a) - by(b)))
@@ -441,11 +458,11 @@ function list(O: WorldOutlook, L: Layout, tn: string) {
     .join("");
   $("cOlListNote").textContent =
     (big.length >= 3 ? "Regions holding at least 1% of the country's fire. " : "") +
-    (rows.some(c => c.noSkill) ? "† In past tests the outlook did not beat the usual odds in this region." : "");
+    (rows.some(c => c.noSkill) ? "† In past tests allowing for the weather source's errors, the outlook did not beat the usual odds in this region." : "");
 }
 
 /* ---------- how it was made, with this country's numbers ---------- */
-function how(O: WorldOutlook, k: string, name: string, at = 0) {
+function how(O: WorldOutlook, k: string, name: string, at = 0, from?: "snapshot" | "live") {
   const tn = theName(name),
     m = O.metrics.by_country[k],
     regs = O.countries[k] || [],
@@ -455,30 +472,35 @@ function how(O: WorldOutlook, k: string, name: string, at = 0) {
   const zi = [...zw.entries()].sort((a, b) => b[1] - a[1])[0]?.[0],
     zone = zi == null ? null : O.zones[zi],
     zm = zone ? O.metrics.by_zone[zone] : null,
+    zn = zone ? ZONE_NAME[zone] || zone : "",
     all = O.metrics.variants,
-    shipped = Object.entries(all).find(([key]) => /^shipped: observed next 14/.test(key))?.[1],
-    blurred = Object.entries(all).find(([key]) => /blurred/.test(key))?.[1];
-  const skill = !!m && m[0] > 0,
-    test =
-      m && zm && zone
-        ? !skill
-          ? `Tested year by year on 2012–2025, each year predicted by a model fitted on the others, it did not beat the usual odds in ${esc(tn)} ` +
-            `(Brier skill ${signed(m[0])}; AUC ${m[2].toFixed(2)} → ${m[1].toFixed(2)}), though it did by ${signed(zm.model.bss)} across ${ZONE_NAME[zone] || zone} as a whole. `
-          : `Tested year by year on 2012–2025, each year predicted by a model fitted on the others, it beat the usual odds by ${signed(m[0])} in ${esc(tn)} ` +
-            `and by ${signed(zm.model.bss)} across ${ZONE_NAME[zone] || zone} (Brier skill; AUC ${m[2].toFixed(2)} → ${m[1].toFixed(2)} in ${esc(tn)}). `
-        : "";
+    bss = (re: RegExp) => Object.entries(all).find(([key]) => re.test(key))?.[1].bss ?? NaN,
+    worldLive = bss(/^trained for the full source gap, tested with it/),
+    pass = countryPasses(O, k);
+  const test = !m
+    ? ""
+    : `Tested year by year on 2012–2025, each year predicted by a model fitted on the others: with the weather that actually happened (NASA POWER) it beat the usual odds by ${signed(m[0])} ` +
+      `in the regions covering ${esc(tn)} (AUC ${m[2].toFixed(2)} → ${m[1].toFixed(2)})` +
+      (zm ? ` and by ${signed(zm.model.bss)} across ${zn}` : "") +
+      `. With errors the size of the gap between the two weather sources added to that weather, the score is ${signed(m[5])} here` +
+      (zm ? ` and ${signed(zm.live_bss)} across ${zn}` : "") +
+      ` (${signed(worldLive)} worldwide). `;
   $("cOlHow").innerHTML =
     `<b>How this works.</b> For each region about 280 km across, a statistical model starts from how often this half of the month has been busier than usual ` +
     `(VIIRS hotspots, 2012–2025) and moves that chance with the forecast heat, air dryness and rain of the next 14 days and the rain of the past 30. ` +
+    `Clouds and rain also hide fires from the satellite, so part of the rain effect is fewer detections, not fewer fires. ` +
+    `The live weather comes from Open-Meteo, not from POWER, the source the model learned on, and outside the weeks the correction between them was learned on (August–September 2026) they differ about as much as with no correction at all. ` +
+    `So the model was fitted on weather blurred by that gap, and moves the odds less than it would with perfect weather. ` +
     test +
-    (!skill
-      ? `<b>Those tests used the weather that actually happened (NASA POWER), not a forecast,</b> so a real forecast would not do better here.`
-      : `<b>Those tests used the weather that actually happened (NASA POWER), not a forecast,</b> so they are a best case: with Open-Meteo's forecast, a different source, ` +
-        `expect a few percent better than the usual odds (the gap between the two sources alone cut the worldwide score from ${shipped ? signed(shipped.bss) : "+8.9%"} to ${blurred ? signed(blurred.bss) : "+5.2%"} in a simulation).`);
+    (pass
+      ? `<b>None of these tests used a real forecast,</b> and forecasts add their own errors, more so in the second week. Treat this outlook as a hint: it may do no better than the usual odds.`
+      : `<b>None of these tests used a real forecast,</b> so a forecast would not do better here.`);
   $("cOlSrc").textContent =
     (at
-      ? `Forecast fetched ${new Date(at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. `
+      ? `Forecast fetched ${new Date(at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}` +
+        (from === "snapshot" ? " for the site's daily snapshot. " : ". ")
       : "") +
-    `Weather: Open-Meteo forecast; trained on NASA POWER (MERRA-2). Fire history: NASA FIRMS, VIIRS on Suomi NPP. ` +
+    (pass ? "Weather: Open-Meteo forecast; trained on NASA POWER (MERRA-2). " : "Training weather: NASA POWER (MERRA-2). ") +
+    `Fire history: NASA FIRMS, VIIRS on Suomi NPP. ` +
     `Each region's weather is read at one point, the centre of its busiest patch, and regions cross borders. Hotspots are detections, not fires, and many are farm or managed burns.`;
 }

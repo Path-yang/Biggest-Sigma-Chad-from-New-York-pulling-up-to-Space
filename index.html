@@ -52,6 +52,14 @@ input[type=number]{width:84px}
 .heroKey canvas{width:120px;height:8px;border-radius:4px;image-rendering:pixelated}
 .heroKey .hkN{display:none;margin-top:6px;font-size:11px}
 .heroKey .link{font-size:inherit}
+.heroKey .hkMode{display:flex;gap:4px;margin:0 0 8px}
+.heroKey .hkMode[hidden]{display:none}
+.heroKey .hkMode button{flex:1;border:1px solid var(--line);background:none;color:var(--ink2);border-radius:999px;padding:4px 10px;font:500 12px var(--font-b);cursor:pointer;min-height:30px}
+.heroKey .hkMode button.on{background:var(--ember);border-color:var(--ember);color:var(--ember-ink);font-weight:600}
+.heroKey .hkO{display:none;margin-top:6px;font-size:11px}
+.heroKey.ol .hkO{display:block}
+.heroKey .hkSw{display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid var(--line);vertical-align:-1px;margin-right:2px}
+.heroKey.ol{max-width:280px}
 .heroKey.ready .hkS{display:flex}.heroKey.ready .hkN{display:block}.heroKey.ready .hkW{display:none}
 #hero.noglobe .heroKey{display:none}
 @media (max-width:760px){.heroKey{left:16px;top:16px;padding:9px 11px;max-width:calc(100% - 32px)}.heroKey .hkN{display:none!important}}
@@ -434,10 +442,12 @@ th{color:var(--muted);font-weight:400}
   <button class="tag" id="tagC" type="button" hidden></button>
   <p class="mark">Burn Calendar</p>
   <div class="heroKey" id="heroKey" hidden>
-    <p class="hkT">Fire hotspots a year per 1,000 km²</p>
+    <div class="hkMode" id="heroMode" role="group" aria-label="What the globe shows" hidden><button type="button" data-m="fire" class="on" aria-pressed="true">Past fire</button><button type="button" data-m="ol" aria-pressed="false">Next 14 days</button></div>
+    <p class="hkT" id="hkTitle">Fire hotspots a year per 1,000 km²</p>
     <p class="hkW"><span id="heroWait">Loading every country from Hugging Face…</span> <button class="link" id="heroRetry" type="button" hidden>Retry</button></p>
     <div class="hkS"><span id="heroLo"></span><canvas id="heroRamp" width="160" height="8" aria-hidden="true"></canvas><span id="heroHi"></span></div>
-    <p class="hkN">NASA FIRMS, 2001–2025, live from Hugging Face. Click any country for its record and a 14-day outlook.</p>
+    <p class="hkO" id="hkOl"></p>
+    <p class="hkN" id="hkNote">NASA FIRMS, 2001–2025, live from Hugging Face. Click any country for its record and a 14-day outlook.</p>
   </div>
   <div class="heroBar">
     <form class="heroFind" id="heroForm" role="search">
@@ -746,6 +756,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

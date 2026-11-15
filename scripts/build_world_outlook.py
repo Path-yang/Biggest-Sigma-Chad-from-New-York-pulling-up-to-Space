@@ -725,12 +725,30 @@ VARIANTS = {
     "shipped + wind": SHIP + ["wind14"],
     "shipped + share of dry days": SHIP + ["dry14"],
     "shipped, weather effects per climate zone": "zone",
-    "shipped, test inputs blurred by source-sized noise (simulation)": "noise",
+    "shipped, test inputs blurred by the Aug-Sep source gap (simulation)": ("noise", "fit", None),
+    "shipped, test inputs blurred by the full source gap (simulation)": ("noise", "full", None),
+    "trained for the full source gap, tested on observed weather": ("noise", None, "full"),
+    "trained for the full source gap, tested with it (simulation)": ("noise", "full", "full"),
 }
-# sd of the Open-Meteo minus POWER gap in the standardised inputs after the per-region adjustment
-# (source check A, about 1.25 x the mean absolute gap); used only for the simulation variant
-SOURCE_NOISE_SD = {"tmax14": 0.75, "rhmin14": 0.9, "prec14": 1.0, "prec30": 1.0}
-SHIPPED = "shipped: observed next 14 days + past 30"
+# sd of the Open-Meteo minus POWER gap in the standardised inputs (Gaussian sd = 1.25 x mean absolute gap).
+# "fit": after the per-region adjustment, on days inside the 14 Aug - 30 Sep window it was learned on
+#        (source check A). "full": the gap with no adjustment, which is what the adjustment is worth outside
+#        that window: re-checked on 13-30 October and 1-12 November, the predicted chances from the two sources
+#        agreed no better than unadjusted, and live mid-November forecasts showed a standardised humidity spread
+#        of about 2 (expected 1). Source check B (no adjustment, full overlap) gives 1.25 x mean |gap| of about
+#        1.57 (tmax14), 1.71 (rhmin14), 0.99 (prec14) and 1.17 (prec30); the values below are rounded up from an
+#        earlier partial check, so they err on the side of more noise.
+NOISE_SD = {
+    "fit": {"tmax14": 0.75, "rhmin14": 0.9, "prec14": 1.0, "prec30": 1.0},
+    "full": {"tmax14": 2.0, "rhmin14": 1.85, "prec14": 1.1, "prec30": 1.35},
+}
+# The shipped model is fitted on inputs blurred by the full source gap, so its weather effects are shrunk to
+# what survives live inputs that are that far off (regression calibration for noisy inputs).
+TRAIN_NOISE = "full"
+TRAIN_SEED = 20261115
+SHIPPED = "trained for the full source gap, tested on observed weather"  # the shipped model, observed weather
+SHIPPED_LIVE = "trained for the full source gap, tested with it (simulation)"  # the same, with live-sized input error
+OBSERVED_ONLY = "shipped: observed next 14 days + past 30"  # trained on clean inputs (the first model)
 
 
 def design(Xz, names, base_logit, zone_rows, ids):
@@ -741,6 +759,14 @@ def design(Xz, names, base_logit, zone_rows, ids):
             cols += [Xz[:, names.index(n)] * m for n in SHIP]
         return np.column_stack(cols)
     return np.column_stack([base_logit] + [Xz[:, names.index(n)] for n in ids])
+
+
+def blur(X, sd, rng):
+    """X with columns [base logit, *SHIP]: the weather columns plus Gaussian error of the given sd, clipped."""
+    X = X.copy()
+    for j, n in enumerate(SHIP):
+        X[:, j + 1] = np.clip(X[:, j + 1] + rng.normal(0, sd[n], len(X)), -Z_CLIP, Z_CLIP)
+    return X
 
 
 def issue_rows(D):
@@ -775,18 +801,19 @@ def backtest(D, event):
             base[m] = fc.rate((yy, Y))[reg[m], hm[m]]
         bl = logit(base)
         y_all[te] = y_all_fold[te]
-        rng = np.random.default_rng(Y)
-        for k, ids in VARIANTS.items():
+        for vi, (k, ids) in enumerate(VARIANTS.items()):
             if ids is None:
                 preds[k][te] = base[te]
                 continue
-            X = design(Xz, names, bl, zone_rows, SHIP if ids == "noise" else ids)
-            beta = fit_logistic(X[tr], y_all_fold[tr])
+            noisy = isinstance(ids, tuple)
+            X = design(Xz, names, bl, zone_rows, SHIP if noisy else ids)
+            Xtr = X[tr]
+            if noisy and ids[2]:
+                Xtr = blur(Xtr, NOISE_SD[ids[2]], np.random.default_rng([Y, vi, 1]))
+            beta = fit_logistic(Xtr, y_all_fold[tr])
             Xt = X[te]
-            if ids == "noise":
-                Xt = Xt.copy()
-                for j, n in enumerate(SHIP):
-                    Xt[:, j + 1] = np.clip(Xt[:, j + 1] + rng.normal(0, SOURCE_NOISE_SD[n], len(Xt)), -Z_CLIP, Z_CLIP)
+            if noisy and ids[1]:
+                Xt = blur(Xt, NOISE_SD[ids[1]], np.random.default_rng([Y, vi, 2]))
             preds[k][te] = sigmoid(beta[0] + Xt @ beta[1:])
         print(f"  [{event}] fold {Y} done ({time.time() - t0:.0f}s): "
               + ", ".join(f"{k[:12]} {scores(preds[k][te], y_all[te], preds['climatology'][te])['bss']:+.4f}"
@@ -794,37 +821,72 @@ def backtest(D, event):
     return {"pred": preds, "y": y_all, "year": yr, "region": reg, "hm": hm}
 
 
+def wauc(p, y, w):
+    """AUC with row weights (ties count half)."""
+    u, inv = np.unique(p, return_inverse=True)
+    wp = np.bincount(inv, weights=w * (y == 1), minlength=len(u))
+    wn = np.bincount(inv, weights=w * (y == 0), minlength=len(u))
+    below = np.cumsum(wn) - wn
+    W1, W0 = wp.sum(), wn.sum()
+    return float((wp * (below + 0.5 * wn)).sum() / (W1 * W0)) if W1 > 0 and W0 > 0 else float("nan")
+
+
+def used_regions(lst):
+    """The regions a country page forecasts, with their shares (as wol.ts countryRegions): those holding at
+    least 0.1% of the country's hotspots (shares as shipped, in thousandths), or all of them if none does."""
+    used = [(i, s) for i, s, _ in lst if round(s * 1000) >= 1]
+    return used or [(i, s) for i, s, _ in lst]
+
+
+def region_bss(D, bt, p, ref, y):
+    out = np.full(D.nr, np.nan)
+    ns = len(y) // D.nr  # rows are region-major: region i is rows [i * ns, (i + 1) * ns)
+    for i in range(D.nr):
+        sl = slice(i * ns, (i + 1) * ns)
+        b0 = np.mean((ref[sl] - y[sl]) ** 2)
+        if b0 > 0:
+            out[i] = 1 - np.mean((p[sl] - y[sl]) ** 2) / b0
+    return out
+
+
 def summarise(D, bt):
     y, P = bt["y"], bt["pred"]
     ref = P["climatology"]
     out = {"variants": {k: rnd(scores(P[k], y, ref)) for k in VARIANTS}}
-    p = P[SHIPPED]
-    sh = lambda m: {"model": rnd(scores(p[m], y[m], ref[m])), "climatology_auc": round(auc(ref[m], y[m]), 4)}
+    p, pl = P[SHIPPED], P[SHIPPED_LIVE]
+    sh = lambda m: {"model": rnd(scores(p[m], y[m], ref[m])), "climatology_auc": round(auc(ref[m], y[m]), 4),
+                    "live_bss": round(scores(pl[m], y[m], ref[m])["bss"], 4)}
     out["by_year"] = {str(Y): rnd(scores(p[bt["year"] == Y], y[bt["year"] == Y], ref[bt["year"] == Y]))
                       for Y in range(Y0, Y1 + 1)}
     zr, cr = D.zone[bt["region"]], D.cont[bt["region"]]
     out["by_zone"] = {ZONES[z]: sh(zr == z) for z in range(len(ZONES)) if (zr == z).any()}
     out["by_continent"] = {CONTINENTS[c]: sh(cr == c) for c in range(len(CONTINENTS)) if (cr == c).any()}
     out["reliability"] = reliability(p, y)
+    out["reliability_live"] = reliability(pl, y)
     out["reliability_climatology"] = reliability(ref, y)
-    # per country: rows of every region the country has hotspots in
+    # per country: the rows of the regions its page forecasts, each region weighted by its share of the
+    # country's hotspots, so a neighbour's fire in a shared cell counts only as much as the country's own.
+    # [bss observed weather, auc, auc of the usual odds, rows, events, bss with live-sized input error]
+    ns = len(y) // D.nr
     byc = {}
     for k, lst in D.R["country_regions"].items():
-        m = np.isin(bt["region"], [i for i, _, _ in lst])
-        if y[m].sum() == 0 or y[m].sum() == m.sum():
+        used = used_regions(lst)
+        idx = np.concatenate([np.arange(i * ns, (i + 1) * ns) for i, _ in used])
+        w = np.repeat([max(s, 1e-6) for _, s in used], ns)
+        yy, rr = y[idx], ref[idx]
+        if yy.sum() == 0 or yy.sum() == len(yy):
             byc[k] = None
             continue
-        s = scores(p[m], y[m], ref[m])
-        byc[k] = [round(s["bss"], 4), round(s["auc"], 3), round(auc(ref[m], y[m]), 3), int(m.sum()), int(y[m].sum())]
+        b0 = np.average((rr - yy) ** 2, weights=w)
+        wb = lambda q: round(float(1 - np.average((q[idx] - yy) ** 2, weights=w) / b0), 4)
+        byc[k] = [wb(p), round(wauc(p[idx], yy, w), 3), round(wauc(rr, yy, w), 3), int(len(idx)), int(yy.sum()), wb(pl)]
     out["by_country"] = byc
     # per region skill, to flag where the model does not beat climatology
-    reg_bss = np.full(D.nr, np.nan)
-    for i in range(D.nr):
-        m = bt["region"] == i
-        b0 = np.mean((ref[m] - y[m]) ** 2)
-        if b0 > 0:
-            reg_bss[i] = 1 - np.mean((p[m] - y[m]) ** 2) / b0
+    reg_bss = region_bss(D, bt, p, ref, y)
+    reg_live = region_bss(D, bt, pl, ref, y)
     out["regions_beating_climatology"] = round(float(np.mean(reg_bss[~np.isnan(reg_bss)] > 0)), 4)
+    out["regions_beating_climatology_live"] = round(float(np.mean(reg_live[~np.isnan(reg_live)] > 0)), 4)
+    out["region_bss_live"] = [None if np.isnan(v) else round(float(v), 3) for v in reg_live]
     return out, reg_bss
 
 
@@ -854,8 +916,13 @@ def final_fit(D, event):
         base[m] = fc.rate((yy,))[reg[m], hm[m]]
     years = list(range(Y0, Y1 + 1))
     Xz, clim = anomalies(D, SHIP, years, sel)
-    beta = fit_logistic(np.column_stack([logit(base), Xz]), y)
-    norm = fit_logistic(logit(base)[:, None], y)
+    X = np.column_stack([logit(base), Xz])
+    if TRAIN_NOISE:
+        X = blur(X, NOISE_SD[TRAIN_NOISE], np.random.default_rng(TRAIN_SEED))
+    beta = fit_logistic(X, y)
+    # "normal" is the same model with every weather anomaly at 0 (average weather), so p - normal is the
+    # weather's effect alone. It is stored as norm_coef = [intercept, clim] of the model.
+    norm = beta[:2]
     return {"beta": beta, "norm": norm, "base": fc.rate(), "thr": thr, "clim": clim}
 
 
@@ -1071,6 +1138,7 @@ def write_output(D, summaries, out_path):
             "lat": [r["lat"] for r in regs], "lon": [r["lon"] for r in regs],
             "zone": D.zone.tolist(), "cont": D.cont.tolist(),
             "bss": [None if v is None else round(v, 3) for v in S["region_bss"]],
+            "bss_live": S["region_bss_live"],
         },
         "zones": list(ZONES), "continents": list(CONTINENTS),
         "countries": {k: [[i, round(s * 1000)] for i, s, _ in lst] for k, lst in D.R["country_regions"].items()},
@@ -1085,7 +1153,8 @@ def write_output(D, summaries, out_path):
                 "params": {"daily": OM_DAILY, "past_days": PRIOR, "forecast_days": 16, "timezone": "auto"},
                 "max_points_per_get": 250},
         "adjust": None,
-        "metrics": {k: v for k, v in S.items() if k != "region_bss"},
+        "metrics": {k: v for k, v in S.items() if k not in ("region_bss", "region_bss_live")},
+        "noise_sd": NOISE_SD, "train_noise": TRAIN_NOISE,
         "metrics_other_event": {k: summaries[k]["variants"] for k in summaries if k != ev},
         "outage_days": D.outage_days,
         "method": METHOD,
@@ -1124,10 +1193,14 @@ METHOD = (
     "day of the year: mean maximum temperature, mean daily minimum humidity and total rain over the next "
     "14 days, and total rain over the past 30 days. Live weather comes from Open-Meteo's forecast, shifted "
     "per region by the average gap between Open-Meteo and POWER in temperature and dew point, and scaled "
-    "for rain, using 48 days both sources cover (14 August - 30 September 2026). "
+    "for rain, using 48 days both sources cover (14 August - 30 September 2026). That correction does not "
+    "hold in other months, so the model is fitted on weather inputs blurred by the full uncorrected gap "
+    "between the sources (noise_sd.full), which shrinks its weather effects to what survives such inputs. "
+    "'Normal' is the same model with every weather anomaly at 0 (norm_coef = its first two coefficients). "
     "Tested by leaving out one year at a time (2012-2025) against the usual chance alone. The test used "
-    "observed weather (POWER) for the next 14 days, so it is an upper bound: with a real forecast the "
-    "skill is lower, especially in the second week."
+    "observed weather (POWER) for the next 14 days, with and without simulated errors the size of the source "
+    "gap; it never used a real forecast, so live skill is lower, especially in the second week, and may be "
+    "no better than the usual odds."
 )
 
 

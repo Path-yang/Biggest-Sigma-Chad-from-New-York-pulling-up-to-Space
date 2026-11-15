@@ -3,7 +3,9 @@ import type { StateCode, WorldCountry } from "./types";
 import { D, STS } from "./data";
 import { $, ease, fmt, reduced, short } from "./util";
 import { loadIndex } from "./hf";
-import { buildFireLayer, fireColour, type FireStat } from "./fireglobe";
+import { areaKm2, buildFireLayer, fireColour, paintCountries, type FireStat } from "./fireglobe";
+import { COUNTRY_STEP, EDGES, RAMP, changeColour, loadSnapshot, type SnapCountry, type Snapshot } from "./wol";
+import { MONL } from "./data";
 import { go, goCountry } from "./views";
 import { WORLD, countryAt, cutEdge, lonSpan } from "./world";
 
@@ -153,6 +155,8 @@ export async function globeInit() {
   fireMesh.visible = false;
   grp.add(fireMesh);
   let fireStats = new Map<string, FireStat>(),
+    fireLo = 0,
+    fireHi = 0,
     fireT0 = 0,
     fireLoading = false;
   /** a stalled request must not leave the key on "Loading" for ever; the fetch itself carries on and a retry reuses it */
@@ -175,7 +179,10 @@ export async function globeInit() {
         fireMesh.visible = true;
         fireStats = L.stats;
         fireT0 = performance.now();
-        showKey(L.lo, L.hi);
+        fireLo = L.lo;
+        fireHi = L.hi;
+        fireMesh.visible = mode === "fire";
+        if (mode === "fire") showKey(L.lo, L.hi);
         if (hov) tagC.textContent = tagText(hov);
       })
       .catch(() => {
@@ -186,6 +193,44 @@ export async function globeInit() {
   }
   $("heroRetry").onclick = loadFire;
   loadFire();
+  /* the "Next 14 days" view: countries coloured from the daily snapshot (world_outlook_today.json), offered only
+     when a fresh one is on the site; it costs the visitor no weather calls */
+  const olM = new T.MeshBasicMaterial({ transparent: true, opacity: 1, depthWrite: false }),
+    olMesh = new T.Mesh(new T.SphereGeometry(1.001, 128, 64), olM);
+  olMesh.visible = false;
+  grp.add(olMesh);
+  let snap: Snapshot | null = null,
+    mode: "fire" | "ol" = "fire";
+  const setMode = (m: "fire" | "ol") => {
+    if (m === "ol" && !snap) return;
+    mode = m;
+    fireMesh.visible = m === "fire" && fireStats.size > 0;
+    olMesh.visible = m === "ol";
+    document.querySelectorAll<HTMLButtonElement>("#heroMode button").forEach(b => {
+      b.classList.toggle("on", b.dataset.m === m);
+      b.setAttribute("aria-pressed", String(b.dataset.m === m));
+    });
+    $("heroKey").classList.toggle("ol", m === "ol");
+    if (m === "ol" && snap) showOlKey(snap);
+    else if (fireStats.size) showKey(fireLo, fireHi);
+    if (hov) tagC.textContent = tagText(hov);
+  };
+  document.querySelectorAll<HTMLButtonElement>("#heroMode button").forEach(b => (b.onclick = () => setMode(b.dataset.m === "ol" ? "ol" : "fire")));
+  loadSnapshot().then(s => {
+    if (!s) return;
+    snap = s;
+    const items = [];
+    for (const c of WORLD) {
+      const v = s.c[c.k];
+      if (!v || v[0] === 2) continue;
+      items.push({ c, area: areaKm2(c), fill: olFill(v) });
+    }
+    const t = new T.CanvasTexture(paintCountries(items));
+    t.minFilter = T.LinearFilter;
+    olM.map = t;
+    olM.needsUpdate = true;
+    $("heroMode").hidden = false;
+  });
   /* the two states with their own pages: flat shapes on the surface that are only drawn while hovered, so the
      globe is coloured by fire everywhere, these two included; hidden shapes still catch the pointer */
   const tops: Three.Mesh[] = [],
@@ -271,6 +316,7 @@ export async function globeInit() {
     if (!c) tagC.hidden = true;
   };
   function tagText(c: WorldCountry) {
+    if (mode === "ol" && snap) return `${c.n}\n${olText(snap.c[c.k])}`;
     const f = fireStats.get(c.k);
     return f ? `${c.n}\n${short(f.perYear)} hotspots a year` : c.n;
   }
@@ -508,12 +554,63 @@ export async function globeInit() {
 function showKey(lo: number, hi: number) {
   const cv = $("heroRamp"),
     g = cv.getContext("2d")!;
+  g.clearRect(0, 0, cv.width, cv.height);
   for (let x = 0; x < cv.width; x++) {
     const f = fireColour(x / (cv.width - 1));
     g.fillStyle = `rgb(${f.c[0]},${f.c[1]},${f.c[2]})`;
     g.fillRect(x, 0, 1, cv.height);
   }
+  $("hkTitle").textContent = "Fire hotspots a year per 1,000 km²";
+  $("hkOl").textContent = "";
+  $("hkNote").textContent = "NASA FIRMS, 2001–2025, live from Hugging Face. Click any country for its record and a 14-day outlook.";
   $("heroLo").textContent = "≤" + fmt(lo);
   $("heroHi").textContent = fmt(hi) + "+";
+  $("heroKey").classList.add("ready");
+}
+
+/* ---------- the "Next 14 days" view ---------- */
+const NO_OUTLOOK = "rgba(52,56,66,.82)";
+/** a country's colour: the change the forecast weather makes to its chance of a busier fortnight than usual */
+function olFill(v: SnapCountry): string {
+  if (v[0] !== 0) return NO_OUTLOOK;
+  const hex = changeColour(v[1]),
+    n = parseInt(hex.slice(1), 16),
+    near = Math.abs(v[1]) < EDGES[3];
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${near ? 0.5 : 0.8})`;
+}
+function olText(v: SnapCountry | undefined): string {
+  if (!v) return "No 14-day outlook here";
+  if (v[0] === 2) return "No 14-day outlook: too little fire history";
+  if (v[0] === 1) return "No 14-day outlook: it did not beat the usual odds in past tests";
+  if (v[0] === 3) return "No reliable outlook today: too much of its forecast is far outside the usual range";
+  const d = v[1],
+    r = Math.round(d * 100),
+    pts = r === 0 ? "no change" : `${r > 0 ? "+" : "−"}${Math.abs(r)} point${Math.abs(r) === 1 ? "" : "s"}`;
+  return `Next 14 days: ${d >= COUNTRY_STEP ? "busier than usual" : d <= -COUNTRY_STEP ? "quieter than usual" : "about usual"} (${pts})`;
+}
+const sgn = (x: number) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x * 100).toFixed(1)}%`;
+const dayMonth = (iso: string) => {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONL[m - 1]}`;
+};
+function showOlKey(s: Snapshot) {
+  const cv = $("heroRamp"),
+    g = cv.getContext("2d")!,
+    w = cv.width / RAMP.length;
+  g.clearRect(0, 0, cv.width, cv.height);
+  RAMP.forEach((c, i) => {
+    g.fillStyle = c;
+    g.fillRect(Math.round(i * w), 0, Math.ceil(w), cv.height);
+  });
+  $("heroLo").textContent = "quieter";
+  $("heroHi").textContent = "busier";
+  $("hkTitle").textContent = `Next 14 days: busier than usual? ${dayMonth(s.today)} – ${dayMonth(s.end)}`;
+  $("hkOl").innerHTML =
+    "How the forecast weather moves each country's chance of more satellite fire detections than in a usual fortnight. " +
+    `<i class="hkSw" style="background:${NO_OUTLOOK}"></i> No outlook we can stand behind. Tested only on past weather, never on real forecasts: a hint, not a warning.`;
+  $("hkNote").textContent =
+    `Open-Meteo forecast fetched ${new Date(s.at).toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}. ` +
+    `Tested on 2012–2025: ${sgn(s.skill.observed)} against the usual odds with the weather that actually happened, ${sgn(s.skill.live)} with weather as far off as the forecast source. ` +
+    `Click a country for its regions.`;
   $("heroKey").classList.add("ready");
 }
