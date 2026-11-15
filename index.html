@@ -209,6 +209,29 @@ input[type=number]{width:84px}
 .cpHatch{background:repeating-linear-gradient(45deg,#55524c 0 1.2px,#f4f2ec 1.2px 4px)!important}
 .cpOlHow{font-size:17px;margin-top:28px}
 .cpOlHow b{font-weight:600}
+/* ---------- 2026-2027 forecast and fire stations: small flat maps, a ranked list, notes ---------- */
+.cpFcFig{margin-top:40px}
+.cpFcFig .cpPlot,.cpFcFig .cpMini{margin-top:14px}
+.cpMini{background:#f2f3f0;border:1px solid var(--hair);padding:8px;min-width:0}
+.cpMiniBox{position:relative;margin:0 auto}
+.cpMiniBox svg{display:block;width:100%;height:auto;overflow:hidden}
+.cpMiniMark{position:absolute;transform:translate(-50%,-50%);min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--cink);color:#fffefa;font:600 11px/18px var(--sans);text-align:center;pointer-events:none;box-shadow:0 0 0 1.5px #fffefa}
+.cpNote{max-width:680px;margin:20px 0 0;padding:10px 14px;border-left:3px solid var(--cink);background:var(--tint);font-size:15px}
+.cpStShow{display:block;margin:4px 0 18px;text-align:left;font-size:15px}
+.cpStList{list-style:none;margin:10px 0 0;padding:0;border-top:1px solid var(--cink)}
+.cpOlList .cpStList li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:4px 10px;padding:10px 0;border-bottom:1px solid var(--hair);font-size:15px}
+.cpOlList .cpStList li.stGrp{display:block;padding:12px 0 6px;font:600 13px/1.3 var(--sans);color:var(--cink2)}
+.cpStList small{display:block;font-size:13px;color:var(--cink2);overflow-wrap:anywhere}
+.cpStList small.stFlag{color:var(--cred)}
+.stN{display:inline-block;width:20px;height:20px;border-radius:10px;background:var(--cink);color:#fffefa;font:600 11px/20px var(--sans);text-align:center;margin-top:2px}
+.stN.muted{background:#8a8478}
+.stMuted{color:#8a8478}
+#cStDistBox{margin-top:28px}
+#cStGapBox[hidden]+#cStDistBox{margin-top:0}
+.cpStShow[hidden]+#cStGapBox[hidden]+#cStDistBox{margin-top:0}
+#cStDist{margin-top:8px}
+#cStLegend .cpNone{padding-bottom:0}
+.cpNone i.stDot{width:8px;height:8px;border-radius:4px;box-shadow:0 0 0 1px #fffefa}
 @media (max-width:860px){
   .cpCharts{grid-template-columns:minmax(0,1fr)}
   .cpTrust{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -227,6 +250,7 @@ input[type=number]{width:84px}
   .cpOlGrid{grid-template-columns:minmax(0,1fr)}
   #cOlLegend{gap:6px 16px}
   #cOlLegend .cpNone{padding-bottom:0}
+  #cFcLegend,#cStLegend{gap:6px 16px}
   .cpOlList li{grid-template-columns:minmax(0,1fr) auto;}
   .olD{grid-column:2;justify-self:end}
 }
@@ -502,6 +526,32 @@ th{color:var(--muted);font-weight:400}
         <p class="cpCap" id="cOlSrc"></p>
       </section>
 
+      <section class="cpSec cpOl cpFc" id="cFc" aria-labelledby="cFcTitle">
+        <p class="cpPart" id="cFcKick">2026 and 2027</p>
+        <h2 class="cpH" id="cFcTitle">2026 and 2027</h2>
+        <p class="cpSub" id="cFcSub"></p>
+        <div class="cpOlState" id="cFcState" role="status"><p id="cFcMsg"></p><button class="cpText" id="cFcRetry" type="button" hidden>Try again</button></div>
+        <div id="cFcMain" hidden>
+          <div class="cpAnswers cpOlFigs" id="cFcFigs"></div>
+          <p class="cpProse cpOlHow" id="cFcSkill"></p>
+          <figure class="cpChart cpWide cpFcFig">
+            <div class="cpCalBar"><h3 class="cpH3" id="cFcChartT"></h3><div class="cpSeg" id="cFcYearSeg" role="group" aria-label="Forecast year"><button type="button" data-year="2026">2026</button><button type="button" data-year="2027">2027</button></div></div>
+            <p class="cpSub" id="cFcChartS"></p>
+            <div class="cpPlot" id="cFcChart"></div>
+          </figure>
+          <figure class="cpChart cpWide cpFcFig" id="cFcMapFig">
+            <div class="cpCalBar"><h3 class="cpH3" id="cFcMapT"></h3><div class="cpSeg" id="cFcMapSeg" role="group" aria-label="Map values"><button type="button" data-mode="p">Chance</button><button type="button" data-mode="e">Expected hotspots</button></div></div>
+            <p class="cpSub" id="cFcMapS"></p>
+            <div class="cpLegend" id="cFcLegend"></div>
+            <div class="cpMini" id="cFcMap"></div>
+            <figcaption class="cpCap" id="cFcPick" aria-live="polite"></figcaption>
+          </figure>
+          <details class="cpDetails"><summary id="cFcDetailsT">How this forecast is made</summary><p class="cpCap" id="cFcMethod"></p><p class="cpCap" id="cFcVerdict"></p></details>
+          <p class="cpDl"><button class="cpText" id="cFcDl" type="button">↓ Download the 2026–2027 monthly forecast (CSV)</button> <span id="cFcDlMsg" role="status"></span></p>
+        </div>
+        <p class="cpCap" id="cFcSrc"></p>
+      </section>
+
       <section class="cpSec" aria-labelledby="cMapTitle">
         <h2 class="cpH" id="cMapTitle">Where it burns</h2>
         <p class="cpSub" id="cMapSub"></p>
@@ -532,6 +582,29 @@ th{color:var(--muted);font-weight:400}
         <figure class="cpChart"><h2 class="cpH3" id="cYearsT"></h2><p class="cpSub" id="cYearsS"></p><div class="cpPlot" id="cYears"></div></figure>
         <figure class="cpChart"><h2 class="cpH3" id="cCumT"></h2><p class="cpSub" id="cCumS"></p><div class="cpPlot" id="cCum"></div></figure>
         <figure class="cpChart"><h2 class="cpH3" id="cSeamT"></h2><p class="cpSub" id="cSeamNote"></p><div class="cpPlot" id="cSeam"></div></figure>
+      </section>
+
+      <section class="cpSec cpOl cpSt" id="cSt" aria-labelledby="cStTitle">
+        <p class="cpPart">Fire stations</p>
+        <h2 class="cpH" id="cStTitle">Fire stations</h2>
+        <p class="cpSub" id="cStSub"></p>
+        <div class="cpOlState" id="cStState" role="status"><p id="cStMsg"></p><button class="cpText" id="cStRetry" type="button" hidden>Try again</button></div>
+        <div id="cStMain" hidden>
+          <p class="cpNote" id="cStNote" hidden></p>
+          <div class="cpAnswers cpOlFigs" id="cStFigs"></div>
+          <div class="cpLegend" id="cStLegend"></div>
+          <div class="cpOlGrid">
+            <figure class="cpOlFig"><div class="cpMini" id="cStMap"></div><figcaption class="cpCap" id="cStPick" aria-live="polite"></figcaption></figure>
+            <div class="cpOlList">
+              <button class="cpText cpStShow" id="cStShow" type="button" hidden></button>
+              <div id="cStGapBox" hidden><h3 class="cpH3" id="cStListT"></h3><p class="cpCap" id="cStListS"></p><ol class="cpStList" id="cStList"></ol><p class="cpCap" id="cStListNote"></p></div>
+              <div id="cStDistBox"><h3 class="cpH3">How far regular fire is from a mapped station</h3><div class="cpScroll"><table id="cStDist"></table></div><p class="cpCap" id="cStDistNote"></p></div>
+            </div>
+          </div>
+          <p class="cpProse cpOlHow" id="cStCaveats"></p>
+          <details class="cpDetails"><summary>How the stations and the gaps were found</summary><p class="cpCap" id="cStMethod"></p></details>
+        </div>
+        <p class="cpCap" id="cStSrc"></p>
       </section>
 
       <section class="cpSec cpMethod" aria-labelledby="cMethodT">
@@ -756,6 +829,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

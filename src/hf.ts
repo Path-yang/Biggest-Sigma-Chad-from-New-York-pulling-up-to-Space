@@ -129,3 +129,66 @@ export function loadIndex(): Promise<CountryIndexEntry[]> {
   }
   return index;
 }
+
+/* =====================================================================
+   SMALL EXTRA FILES FOR THE COUNTRY PAGE: the 2026-2027 forecast (forecast/v1) and the OpenStreetMap fire
+   stations (stations/v2). Fetched only after the country's summary has arrived, so they never hold up the page,
+   and given up on after a timeout so a slow answer ends in a quiet message instead of a spinner.
+   ===================================================================== */
+export const FORECAST_DIR = "forecast/v1";
+export const STATIONS_DIR = "stations/v2";
+export const forecastPath = (k: string) => `${FORECAST_DIR}/${encodeURIComponent(k)}.json`;
+export const stationsPath = (k: string) => `${STATIONS_DIR}/${encodeURIComponent(k)}.json`;
+export { isObj, isNums };
+
+/** the answer must start within `ms`; the body then gets three times as long, so a large file on a slow link
+    still arrives, and the message says which of the two ran out */
+async function jsonWithin(url: string, ms: number): Promise<unknown> {
+  const ctl = new AbortController();
+  let phase: "answer" | "download" = "answer",
+    timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    let res = await fetch(url, { signal: ctl.signal });
+    if (res.status === 429) {
+      await wait(2500);
+      res = await fetch(url, { signal: ctl.signal });
+    }
+    if (!res.ok) throw new Error(res.status === 429 ? "Hugging Face is busy (too many requests)" : `Hugging Face answered ${res.status}`);
+    clearTimeout(timer);
+    phase = "download";
+    timer = setTimeout(() => ctl.abort(), 3 * ms);
+    return await res.json();
+  } catch (e) {
+    if (ctl.signal.aborted)
+      throw new Error(
+        phase === "answer"
+          ? `Hugging Face did not answer within ${Math.round(ms / 1000)} seconds`
+          : `the file did not finish downloading within ${Math.round((3 * ms) / 1000)} seconds`,
+      );
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+/** the last few files fetched; older ones are dropped so that a long visit does not keep every country in memory */
+const EXTRAS = new Map<string, Promise<unknown>>();
+const KEEP = 8;
+/** one dataset file, checked by `ok`; a failed or late fetch is forgotten so that Retry asks again */
+export function loadChecked<T>(path: string, ok: (x: unknown) => x is T, ms = 20000): Promise<T> {
+  const had = EXTRAS.get(path);
+  if (had) {
+    EXTRAS.delete(path);
+    EXTRAS.set(path, had);
+    return had as Promise<T>;
+  }
+  const p = jsonWithin(fileUrl(path), ms).then(data => {
+    if (!ok(data)) throw new Error("The file from Hugging Face is not in the expected format");
+    return data;
+  });
+  p.catch(() => {
+    if (EXTRAS.get(path) === p) EXTRAS.delete(path);
+  });
+  EXTRAS.set(path, p);
+  while (EXTRAS.size > KEEP) EXTRAS.delete(EXTRAS.keys().next().value!);
+  return p;
+}
