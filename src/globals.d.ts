@@ -1,5 +1,5 @@
 import type * as Three from "three";
-import type { BurnData } from "./types";
+import type { BurnData, World } from "./types";
 
 declare global {
   /** three.js r128, loaded from a script tag in index.html. Absent if that request fails. */
@@ -7,6 +7,8 @@ declare global {
   interface Window {
     /** set by data.js */
     BURN_DATA: BurnData;
+    /** set by world.js; absent if that file did not load */
+    WORLD?: World;
     THREE?: typeof Three;
     /** present only when the page runs inside a Claude artifact preview */
     claude?: {

@@ -1,5 +1,5 @@
-import type { Analysis, CalendarMode, SeriesRow } from "./types";
-import { MON, MONL, VI0, Y0 } from "./data";
+import type { CalendarMode, SeriesAnalysis, SeriesRow } from "./types";
+import { MON, MONL, VI0 } from "./data";
 import { S } from "./state";
 import { fmt, short } from "./util";
 import { div, inkOn, rgb, seq } from "./color";
@@ -16,7 +16,8 @@ interface BarOptions {
   h?: number;
   /** index of the selected bar, or -1 */
   sel: number;
-  fill?: (i: number) => string;
+  /** bars drawn striped (converted from MODIS) instead of solid */
+  hatch?: (i: number) => boolean;
   /** range whiskers, drawn on the bars where whisk(i) is true */
   lo?: number[];
   hi?: number[];
@@ -30,9 +31,11 @@ interface BarOptions {
   click: (i: number) => void;
 }
 interface LineSeries {
+  /** NaN leaves a gap */
   v: number[];
   c: string;
   name?: string;
+  dash?: string;
 }
 interface LineOptions {
   aria: string;
@@ -44,12 +47,20 @@ interface LineOptions {
   /** index of the "VIIRS starts" marker; absent or negative for none */
   vline?: number;
   base?: number | null;
+  /** a shaded range behind the lines over the first n points */
+  band?: { lo: number[]; hi: number[]; n: number; c: string };
   tip: (i: number) => string;
 }
 interface CalendarOptions {
   mode: CalendarMode;
   compact?: boolean;
   focus?: boolean;
+  /** the [year, month] to outline; the state view's S.focus when absent */
+  focusYM?: number[];
+  /** first month VIIRS is used as observed; the state data's when absent */
+  vi0?: number;
+  /** extra lines for a month's tooltip */
+  more?: (r: SeriesRow) => string;
   click?: (r: SeriesRow) => void;
 }
 
@@ -63,7 +74,11 @@ function niceMax(v: number) {
   for (const z of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (f <= z) return z * p;
   return 10 * p;
 }
-const HATCH = `<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ff8a3d" opacity=".22"/><rect width="2.2" height="5" fill="#ff8a3d"/></pattern></defs>`;
+/* each chart gets its own pattern id: url(#id) resolves to the first element with that id in the page, and a
+   pattern inside a hidden (display:none) chart paints nothing in Chrome */
+let hatchN = 0;
+const HATCH = (id: string) =>
+  `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ff8a3d" opacity=".22"/><rect width="2.2" height="5" fill="#ff8a3d"/></pattern></defs>`;
 function grid(W: number, m: Margin, ph: number, ymax: number, fy: (v: number) => string, n: number) {
   let s = "";
   for (let k = 0; k <= n; k++) {
@@ -83,13 +98,14 @@ export function bars(el: HTMLElement, xs: (string | number)[], vals: number[], o
     bw = pw / n;
   const ymax = niceMax(Math.max(1e-9, ...vals) * 1.08),
     Y = (v: number) => m.t + ph * (1 - Math.min(1, v / ymax));
-  let s = HATCH + grid(W, m, ph, ymax, short, 2);
+  const hid = "hatch" + ++hatchN;
+  let s = HATCH(hid) + grid(W, m, ph, ymax, short, 2);
   vals.forEach((v, i) => {
     const x = m.l + bw * i + 1.5,
       w = Math.max(1, bw - 3),
       y = Y(v),
       cx = x + w / 2;
-    s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.fill ? o.fill(i) : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
+    s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
     if (o.lo && o.whisk!(i))
       s += `<line x1="${cx}" x2="${cx}" y1="${Y(o.lo[i])}" y2="${Y(o.hi![i])}" stroke="#dfe5ee" stroke-width="1.3"/>`;
     if (o.top && o.top.includes(i)) s += `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">${xs[i]}</text>`;
@@ -117,10 +133,20 @@ export function lines(el: HTMLElement, xs: (string | number)[], sers: LineSeries
     ph = H - m.t - m.b,
     n = xs.length,
     fy = o.fy || short;
-  const ymax = niceMax(Math.max(1e-9, ...sers.flatMap(z => z.v))),
+  const ymax = niceMax(Math.max(1e-9, ...sers.flatMap(z => z.v).filter(Number.isFinite), ...(o.band ? o.band.hi.slice(0, o.band.n) : []))),
     X = (i: number) => m.l + (n === 1 ? pw / 2 : (pw * i) / (n - 1)),
     Y = (v: number) => m.t + ph * (1 - Math.min(1, v / ymax));
   let s = grid(W, m, ph, ymax, fy, 2);
+  if (o.band && o.band.n > 1) {
+    const b = o.band,
+      up: string[] = [],
+      down: string[] = [];
+    for (let i = 0; i < b.n; i++) {
+      up.push(`${X(i)},${Y(b.hi[i])}`);
+      down.unshift(`${X(i)},${Y(b.lo[i])}`);
+    }
+    s += `<path d="M${up.concat(down).join("L")}Z" fill="${b.c}" stroke="none"/>`;
+  }
   xs.forEach((x, i) => {
     if (i % Math.ceil(n / (o.every || 7)) === 0) s += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${x}</text>`;
   });
@@ -129,11 +155,26 @@ export function lines(el: HTMLElement, xs: (string | number)[], sers: LineSeries
   if (o.base != null)
     s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(o.base)}" y2="${Y(o.base)}" stroke="#f1f4f9" stroke-dasharray="4 3"/>`;
   sers.forEach(z => {
-    s += `<path d="M${z.v.map((v, i) => `${X(i)},${Y(v)}`).join("L")}" fill="none" stroke="${z.c}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    let d = "",
+      on = false;
+    z.v.forEach((v, i) => {
+      if (!Number.isFinite(v)) on = false;
+      else {
+        d += `${on ? "L" : "M"}${X(i)},${Y(v)}`;
+        on = true;
+      }
+    });
+    s += `<path d="${d}" fill="none" stroke="${z.c}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"${z.dash ? ` stroke-dasharray="${z.dash}"` : ""}/>`;
   });
   if (o.labels) {
-    const ends = sers.map(z => ({ z, y: Y(z.v[n - 1]) })).sort((a, b) => a.y - b.y);
+    const ends = sers
+      .filter(z => Number.isFinite(z.v[n - 1]))
+      .map(z => ({ z, y: Y(z.v[n - 1]) }))
+      .sort((a, b) => a.y - b.y);
     for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+    /* the lowest label must stay clear of the year labels under the plot; push the stack up if it is not */
+    const over = ends.length ? ends[ends.length - 1].y - (m.t + ph - 6) : 0;
+    if (over > 0) ends.forEach(e => (e.y -= over));
     ends.forEach(
       e =>
         (s += `<circle cx="${X(n - 1)}" cy="${Y(e.z.v[n - 1])}" r="4" fill="${e.z.c}" stroke="#0b0f18" stroke-width="2"/><text class="hl" x="${X(n - 1) + 9}" y="${e.y + 4}">${e.z.name}</text>`),
@@ -156,33 +197,38 @@ export function lines(el: HTMLElement, xs: (string | number)[], sers: LineSeries
     hideTip();
   };
 }
-export function calendarInto(el: HTMLElement, R: Analysis, o: CalendarOptions) {
+export function calendarInto(el: HTMLElement, R: SeriesAnalysis, o: CalendarOptions) {
   const lmax = Math.log1p(Math.max(1, ...R.ser.map(r => r.h))),
-    cmp = !!o.compact;
+    cmp = !!o.compact,
+    yFrom = R.years[0].y,
+    yTo = R.years[R.years.length - 1].y,
+    focus = o.focusYM || S.focus,
+    vi0 = o.vi0 ?? VI0;
   el.style.gridTemplateColumns = cmp ? "34px repeat(12,minmax(0,1fr))" : "44px repeat(12,minmax(0,1fr)) 70px";
   let h =
     `<div></div>` +
     MON.map(m => `<div class="h">${cmp ? m[0] : m}</div>`).join("") +
     (cmp ? "" : `<div class="h" style="text-align:right">Year total</div>`);
-  for (let y = S.yTo; y >= S.yFrom; y--) {
-    if (y === 2011 && S.yTo >= 2012)
+  for (let y = yTo; y >= yFrom; y--) {
+    if (y === 2011 && yTo >= 2012)
       h += `<div class="split">${cmp ? "converted from MODIS below" : "seen by VIIRS above · converted from MODIS below"}</div>`;
     h += `<div class="y">${y}</div>`;
     for (let m = 0; m < 12; m++) {
-      const r = R.ser[(y - S.yFrom) * 12 + m],
+      const r = R.ser[(y - yFrom) * 12 + m],
         c = o.mode === "anom" ? div(Math.log2(r.ratio) / 3) : r.h === 0 ? [22, 28, 40] : seq(0.06 + (0.94 * Math.log1p(r.h)) / lmax);
-      h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && S.focus[0] === y && S.focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
+      h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
     }
-    if (!cmp) h += `<div class="t">${fmt(R.years[y - S.yFrom].h)}</div>`;
+    if (!cmp) h += `<div class="t">${fmt(R.years[y - yFrom].h)}</div>`;
   }
   el.innerHTML = h;
   el.querySelectorAll<HTMLButtonElement>(".c").forEach(b => {
-    const r = R.ser[+b.dataset.i! - (S.yFrom - Y0) * 12];
+    const r = R.ser[+b.dataset.i! - R.ser[0].i];
     b.onmousemove = e =>
       showTip(
         e,
-        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} hotspots\nNormal for ${MON[r.m]}: ${fmt(r.med)}\n${r.src}` +
-          (r.i < VI0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : ""),
+        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}\nNormal for ${MON[r.m]}: ${fmt(r.med)}\n${r.src}` +
+          (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
+          (o.more ? "\n" + o.more(r) : ""),
       );
     b.onmouseleave = hideTip;
     if (o.click) b.onclick = () => o.click!(r);

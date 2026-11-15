@@ -16,11 +16,12 @@ python3 -m http.server 8000
 
 Then go to <http://localhost:8000>.
 
-The page fetches three things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), and street-map tiles from OpenStreetMap (one test tile when the page opens, the rest when you zoom far in). Without a connection it uses system fonts, shows plain buttons in place of the globe, and draws its own roads in place of the street map.
+The page fetches four things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), street-map tiles from OpenStreetMap (one test tile when the page opens, the rest when you zoom far in), and, when you open a country, that country's summary file from the Hugging Face dataset described below. Without a connection it uses system fonts, shows plain buttons and the country search in place of the globe, and draws its own roads in place of the street map; country views need the connection.
 
 ## What you can do
 
 - Start on a globe and pick New York or California, or compare the two states side by side.
+- Click any country on the globe, or search for it, to open its own page: busiest months, worst years, a month-by-month calendar, a map of where it burns, the evidence for the conversion and a CSV of the monthly series. Its data is fetched from Hugging Face when you open it.
 - Drill into the hexagon map: click a county, then a hexagon, then keep zooming to 2 km hexagons, roads, and fire and EMS stations.
 - Switch the map between past hotspots and the chance of fire in a chosen month.
 - Drag along the timeline, or press play, to see where each year burned.
@@ -35,6 +36,7 @@ The page fetches three things from the network: its fonts (Google Fonts), three.
 | File | Contents |
 | --- | --- |
 | `index.html` | The page's markup and styles. |
+| `world.js` | Country outlines for the globe and the country maps (Natural Earth, simplified), keyed by FIRMS country name. Built by `scripts/build_world_shapes.py`. |
 | `data.js` | The data, about 3.7 MB: monthly counts per county and per hexagon, the 2 km hexagon detail, county outlines, roads, towns, fire and EMS stations, the globe's outlines and Earth texture, exchange rates and validation results. |
 | `app.js` | The page's logic, built from `src/`. It is committed so that the site needs no build step. |
 | `src/` | The TypeScript source for `app.js`. |
@@ -51,7 +53,7 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=3` and `data.js?v=2`. Raise that number when either file changes, so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=4`, `data.js?v=2` and `world.js?v=1`. Raise the number when a file changes, so that returning visitors do not get a stale cached copy.
 
 ## Method
 

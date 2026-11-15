@@ -80,15 +80,17 @@
   var ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
   // src/model.ts
-  function harm(st, i, T, A, V2) {
-    const s = D.states[st], m = i % 12;
-    if (i >= VI0) return { h: V2, lo: V2, hi: V2, src: "VIIRS observed" };
-    const terraOnly = i < AQ0, h = terraOnly ? T * s.r_t[m] : (T + A) * s.r_ta[m], src = terraOnly ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted";
+  var STATE_EPOCHS = { vi0: VI0, aq0: AQ0, bins: D.meta.bins };
+  function harmWith(s, e, i, T, A, V2) {
+    const m = i % 12;
+    if (i >= e.vi0) return { h: V2, lo: V2, hi: V2, src: "VIIRS observed" };
+    const terraOnly = i < e.aq0, h = terraOnly ? T * s.r_t[m] : (T + A) * s.r_ta[m], src = terraOnly ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted";
     if (h === 0) return { h: 0, lo: 0, hi: s.zero_hi, src };
     let b = 0;
-    while (b < D.meta.bins.length && h > D.meta.bins[b]) b++;
+    while (b < e.bins.length && h > e.bins[b]) b++;
     return { h, lo: h * s.pi[b][0], hi: h * s.pi[b][1], src };
   }
+  var harm = (st, i, T, A, V2) => harmWith(D.states[st], STATE_EPOCHS, i, T, A, V2);
   var HX = {};
   function hexState(st) {
     if (HX[st]) return HX[st];
@@ -195,10 +197,15 @@
         V2[i] += rows[p + 4];
       }
     }
+    const R = analyseSeries({ T, A, V: V2, y0: Y0, yFrom: S.yFrom, yTo: S.yTo, vi0: VI0, harm: (i, t, a, v) => harm(st, i, t, a, v) });
+    return { st, ...R };
+  }
+  function analyseSeries(o) {
+    const { T, A, V: V2 } = o;
     const ser = [];
-    for (let i = (S.yFrom - Y0) * 12; i < (S.yTo - Y0 + 1) * 12; i++)
+    for (let i = (o.yFrom - o.y0) * 12; i < (o.yTo - o.y0 + 1) * 12; i++)
       ser.push(
-        Object.assign({ i, y: Y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V2[i] }, harm(st, i, T[i], A[i], V2[i]))
+        Object.assign({ i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V2[i] }, o.harm(i, T[i], A[i], V2[i]))
       );
     const quant = (a, q) => {
       const z = a.slice().sort((x, y) => x - y), p = (z.length - 1) * q, f = Math.floor(p);
@@ -213,15 +220,15 @@
       r.ratio = (r.h + 1) / (r.med + 1);
     });
     const years = [];
-    for (let y = S.yFrom; y <= S.yTo; y++) {
+    for (let y = o.yFrom; y <= o.yTo; y++) {
       const rr = ser.filter((r) => r.y === y), sum = (k) => rr.reduce((a, r) => a + r[k], 0);
-      years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= VI0 ? r.V : r.T + r.A), 0) });
+      years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
     }
     const total = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
-    return { st, ser, stats, years, total, mean: total / years.length, order, ranked };
+    return { ser, stats, years, total, mean: total / years.length, order, ranked };
   }
-  function verdict(R) {
-    const [fy, fm] = S.focus, f = R.ser.find((r) => r.y === fy && r.m === fm);
+  function verdict(R, focus = S.focus) {
+    const [fy, fm] = focus, f = R.ser.find((r) => r.y === fy && r.m === fm);
     if (!f) return null;
     const same = R.ser.filter((r) => r.m === fm).map((r) => r.h), n = same.length, rank = same.filter((v) => v > f.h).length + 1, pct = same.filter((v) => v < f.h).length / Math.max(1, n - 1) * 100, med = R.stats[fm].med;
     let label = "Typical", cls = "";
@@ -240,7 +247,7 @@
         cls = "lo";
       }
     }
-    return { f, fm, fy, label, cls, rank, n, med, mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + " hotspots" };
+    return { f, fm, fy, label, cls, rank, n, med, mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots") };
   }
   var riskYears = () => {
     const a = Math.max(S.yFrom, 2012);
@@ -288,7 +295,7 @@
   }
   function stationsFor(st, sel) {
     const hx = hexState(st), sn = hx.stn;
-    let n = 0, near = 1e9, c = null, rad = null;
+    let n = 0, near2 = 1e9, c = null, rad = null;
     if (sel.type === "hex") {
       c = [hx.X[sel.k] / hx.K, hx.Y[sel.k]];
       rad = 15;
@@ -301,11 +308,11 @@
       if (c) {
         const d = kmBetween(c[0], c[1], lon, lat);
         if (d <= rad) n++;
-        if (d < near) near = d;
+        if (d < near2) near2 = d;
       } else if (sel.type === "state" || sel.type === "county" && sn.c[i] === sel.ci || sel.type === "box" && lon >= sel.w && lon <= sel.e && lat >= sel.s && lat <= sel.n)
         n++;
     }
-    return { n, near: c ? near : null, rad };
+    return { n, near: c ? near2 : null, rad };
   }
   var placeName = () => {
     const s = S.sel, hx = hexState(S.st);
@@ -429,7 +436,8 @@
     for (const z of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (f <= z) return z * p;
     return 10 * p;
   }
-  var HATCH = `<defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ff8a3d" opacity=".22"/><rect width="2.2" height="5" fill="#ff8a3d"/></pattern></defs>`;
+  var hatchN = 0;
+  var HATCH = (id) => `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="#ff8a3d" opacity=".22"/><rect width="2.2" height="5" fill="#ff8a3d"/></pattern></defs>`;
   function grid(W, m, ph, ymax, fy, n) {
     let s = "";
     for (let k = 0; k <= n; k++) {
@@ -441,10 +449,11 @@
   function bars(el, xs, vals, o) {
     const W = 560, H = o.h || 240, m = { l: 42, r: 8, t: 18, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b, n = xs.length, bw = pw / n;
     const ymax = niceMax(Math.max(1e-9, ...vals) * 1.08), Y = (v) => m.t + ph * (1 - Math.min(1, v / ymax));
-    let s = HATCH + grid(W, m, ph, ymax, short, 2);
+    const hid = "hatch" + ++hatchN;
+    let s = HATCH(hid) + grid(W, m, ph, ymax, short, 2);
     vals.forEach((v, i) => {
       const x = m.l + bw * i + 1.5, w = Math.max(1, bw - 3), y = Y(v), cx = x + w / 2;
-      s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.fill ? o.fill(i) : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
+      s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(0.5, m.t + ph - y)}" rx="3" fill="${o.hatch && o.hatch(i) ? `url(#${hid})` : "#ff8a3d"}" ${o.sel === i ? 'stroke="#fff" stroke-width="2"' : ""}/>`;
       if (o.lo && o.whisk(i))
         s += `<line x1="${cx}" x2="${cx}" y1="${Y(o.lo[i])}" y2="${Y(o.hi[i])}" stroke="#dfe5ee" stroke-width="1.3"/>`;
       if (o.top && o.top.includes(i)) s += `<text class="hl" x="${cx}" y="${y - 5}" text-anchor="middle">${xs[i]}</text>`;
@@ -464,8 +473,16 @@
   }
   function lines(el, xs, sers, o) {
     const W = o.W || 620, H = o.h || 230, m = { l: 42, r: o.labels ? 92 : 10, t: 12, b: 22 }, pw = W - m.l - m.r, ph = H - m.t - m.b, n = xs.length, fy = o.fy || short;
-    const ymax = niceMax(Math.max(1e-9, ...sers.flatMap((z) => z.v))), X = (i) => m.l + (n === 1 ? pw / 2 : pw * i / (n - 1)), Y = (v) => m.t + ph * (1 - Math.min(1, v / ymax));
+    const ymax = niceMax(Math.max(1e-9, ...sers.flatMap((z) => z.v).filter(Number.isFinite), ...o.band ? o.band.hi.slice(0, o.band.n) : [])), X = (i) => m.l + (n === 1 ? pw / 2 : pw * i / (n - 1)), Y = (v) => m.t + ph * (1 - Math.min(1, v / ymax));
     let s = grid(W, m, ph, ymax, fy, 2);
+    if (o.band && o.band.n > 1) {
+      const b = o.band, up = [], down = [];
+      for (let i = 0; i < b.n; i++) {
+        up.push(`${X(i)},${Y(b.hi[i])}`);
+        down.unshift(`${X(i)},${Y(b.lo[i])}`);
+      }
+      s += `<path d="M${up.concat(down).join("L")}Z" fill="${b.c}" stroke="none"/>`;
+    }
     xs.forEach((x, i) => {
       if (i % Math.ceil(n / (o.every || 7)) === 0) s += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${x}</text>`;
     });
@@ -474,11 +491,21 @@
     if (o.base != null)
       s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(o.base)}" y2="${Y(o.base)}" stroke="#f1f4f9" stroke-dasharray="4 3"/>`;
     sers.forEach((z) => {
-      s += `<path d="M${z.v.map((v, i) => `${X(i)},${Y(v)}`).join("L")}" fill="none" stroke="${z.c}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      let d = "", on = false;
+      z.v.forEach((v, i) => {
+        if (!Number.isFinite(v)) on = false;
+        else {
+          d += `${on ? "L" : "M"}${X(i)},${Y(v)}`;
+          on = true;
+        }
+      });
+      s += `<path d="${d}" fill="none" stroke="${z.c}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"${z.dash ? ` stroke-dasharray="${z.dash}"` : ""}/>`;
     });
     if (o.labels) {
-      const ends = sers.map((z) => ({ z, y: Y(z.v[n - 1]) })).sort((a, b) => a.y - b.y);
+      const ends = sers.filter((z) => Number.isFinite(z.v[n - 1])).map((z) => ({ z, y: Y(z.v[n - 1]) })).sort((a, b) => a.y - b.y);
       for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;
+      const over = ends.length ? ends[ends.length - 1].y - (m.t + ph - 6) : 0;
+      if (over > 0) ends.forEach((e) => e.y -= over);
       ends.forEach(
         (e) => s += `<circle cx="${X(n - 1)}" cy="${Y(e.z.v[n - 1])}" r="4" fill="${e.z.c}" stroke="#0b0f18" stroke-width="2"/><text class="hl" x="${X(n - 1) + 9}" y="${e.y + 4}">${e.z.name}</text>`
       );
@@ -499,27 +526,27 @@
     };
   }
   function calendarInto(el, R, o) {
-    const lmax = Math.log1p(Math.max(1, ...R.ser.map((r) => r.h))), cmp = !!o.compact;
+    const lmax = Math.log1p(Math.max(1, ...R.ser.map((r) => r.h))), cmp = !!o.compact, yFrom = R.years[0].y, yTo = R.years[R.years.length - 1].y, focus = o.focusYM || S.focus, vi0 = o.vi0 ?? VI0;
     el.style.gridTemplateColumns = cmp ? "34px repeat(12,minmax(0,1fr))" : "44px repeat(12,minmax(0,1fr)) 70px";
     let h = `<div></div>` + MON.map((m) => `<div class="h">${cmp ? m[0] : m}</div>`).join("") + (cmp ? "" : `<div class="h" style="text-align:right">Year total</div>`);
-    for (let y = S.yTo; y >= S.yFrom; y--) {
-      if (y === 2011 && S.yTo >= 2012)
+    for (let y = yTo; y >= yFrom; y--) {
+      if (y === 2011 && yTo >= 2012)
         h += `<div class="split">${cmp ? "converted from MODIS below" : "seen by VIIRS above \xB7 converted from MODIS below"}</div>`;
       h += `<div class="y">${y}</div>`;
       for (let m = 0; m < 12; m++) {
-        const r = R.ser[(y - S.yFrom) * 12 + m], c = o.mode === "anom" ? div(Math.log2(r.ratio) / 3) : r.h === 0 ? [22, 28, 40] : seq(0.06 + 0.94 * Math.log1p(r.h) / lmax);
-        h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && S.focus[0] === y && S.focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
+        const r = R.ser[(y - yFrom) * 12 + m], c = o.mode === "anom" ? div(Math.log2(r.ratio) / 3) : r.h === 0 ? [22, 28, 40] : seq(0.06 + 0.94 * Math.log1p(r.h) / lmax);
+        h += `<button type="button" ${cmp ? 'tabindex="-1"' : ""} class="c${o.focus && focus[0] === y && focus[1] === m ? " focus" : ""}" data-i="${r.i}" style="background:${rgb(c)};color:${inkOn(c)}" aria-label="${MON[m]} ${y}: ${fmt(r.h)} hotspots">${cmp || r.h === 0 ? "" : short(r.h)}</button>`;
       }
-      if (!cmp) h += `<div class="t">${fmt(R.years[y - S.yFrom].h)}</div>`;
+      if (!cmp) h += `<div class="t">${fmt(R.years[y - yFrom].h)}</div>`;
     }
     el.innerHTML = h;
     el.querySelectorAll(".c").forEach((b) => {
-      const r = R.ser[+b.dataset.i - (S.yFrom - Y0) * 12];
+      const r = R.ser[+b.dataset.i - R.ser[0].i];
       b.onmousemove = (e) => showTip(
         e,
-        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} hotspots
+        `${MONL[r.m]} ${r.y}: ${fmt(r.h)} ${fmt(r.h) === "1" ? "hotspot" : "hotspots"}
 Normal for ${MON[r.m]}: ${fmt(r.med)}
-${r.src}` + (r.i < VI0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "")
+${r.src}` + (r.i < vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + (o.more ? "\n" + o.more(r) : "")
       );
       b.onmouseleave = hideTip;
       if (o.click) b.onclick = () => o.click(r);
@@ -631,7 +658,7 @@ Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
         sel: sh.t === "year" ? sh.y - S.yFrom : -1,
         avg: R.mean,
         top,
-        fill: (i) => xs[i] < 2012 ? "url(#hatch)" : "#ff8a3d",
+        hatch: (i) => xs[i] < 2012,
         lo: ys.map((y) => y.lo),
         hi: ys.map((y) => y.hi),
         whisk: (i) => xs[i] < 2012,
@@ -678,8 +705,8 @@ Raw counts: ${fmt(ys[i].naive)}`
     };
     const n0 = avg(2007, 2011, "naive"), n1 = avg(2012, 2016, "naive"), h0 = avg(2007, 2011, "h"), h1 = avg(2012, 2016, "h");
     $("seamNote").textContent = n0 && h0 && n1 != null && h1 != null && S.sel.type === "state" ? `Raw counts make 2012\u20132016 look ${(n1 / n0).toFixed(1)}\xD7 busier than 2007\u20132011. In the harmonized record the step is ${(h1 / h0).toFixed(1)}\xD7.` : "The blue line jumps in 2012 only because the sensor changed. Choose the whole state and all years to measure the step.";
-    const s = D.states[S.st], val = s.val, pc = (x) => Math.round(x * 100) + "%";
-    $("tiles").innerHTML = `<div class="tile"><b>${val.raw_factor.toFixed(1)}\xD7</b><span>more hotspots from VIIRS than MODIS for the same fires in ${NAME[S.st]}</span></div><div class="tile"><b>${pc(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc(val.annual_max_err)}</b><span>error in the worst tested year</span></div>`;
+    const s = D.states[S.st], val = s.val, pc2 = (x) => Math.round(x * 100) + "%";
+    $("tiles").innerHTML = `<div class="tile"><b>${val.raw_factor.toFixed(1)}\xD7</b><span>more hotspots from VIIRS than MODIS for the same fires in ${NAME[S.st]}</span></div><div class="tile"><b>${pc2(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc2(val.annual_max_err)}</b><span>error in the worst tested year</span></div>`;
     $("maskTxt").textContent = `${s.mask.static_sites} sites removed in ${NAME[S.st]}.`;
     $("rates").innerHTML = `<tr><th>Rate</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr><tr><td>Terra+Aqua</td>${s.r_ta.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr><tr><td>Terra only</td>${s.r_t.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
     $("mapNote").hidden = sh.t === "all" || S.layer === "chance";
@@ -1411,8 +1438,7 @@ ${showLabel()}`) + "\nClick to zoom in"
 
   // src/downloads.ts
   var selSlug = () => `${S.st}-${S.sel.type === "county" ? D.states[S.st].counties[S.sel.ci].name.replace(/\W+/g, "") : S.sel.type}`;
-  async function save(filename, data) {
-    const msg = $("dlMsg");
+  async function save(filename, data, msg = $("dlMsg")) {
     try {
       const d = window.claude && await window.claude.use("downloads");
       if (d) {
@@ -1485,8 +1511,596 @@ ${showLabel()}`) + "\nClick to zoom in"
     save(`hotspots-hex_${selSlug()}_${S.yFrom}-${S.yTo}.csv`, rows.join("\n"));
   }
 
+  // src/hf.ts
+  var HF_DATASET = "rogeryzd/firms-active-fire-by-country";
+  var HF_PAGE = `https://huggingface.co/datasets/${HF_DATASET}`;
+  var SUMMARY_DIR = "summary/v2";
+  var summaryPath = (k) => `${SUMMARY_DIR}/${encodeURIComponent(k)}.json`;
+  var fileUrl = (path) => `${HF_PAGE}/resolve/main/${path}`;
+  var wait = (ms) => new Promise((res) => setTimeout(res, ms));
+  async function fetchOnce(url) {
+    const res = await fetch(url);
+    if (res.status !== 429) return res;
+    const after = Number(res.headers.get("retry-after"));
+    await wait(after > 0 ? Math.min(8, after) * 1e3 : 2500);
+    return fetch(url);
+  }
+  async function fetchText(url, onProgress) {
+    const res = await fetchOnce(url);
+    if (!res.ok) throw new Error(res.status === 429 ? "Hugging Face is busy (too many requests)" : `Hugging Face answered ${res.status}`);
+    const total = Number(res.headers.get("content-length")) || null;
+    if (!res.body) return res.text();
+    const reader = res.body.getReader(), parts = [];
+    let got = 0;
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value);
+      got += value.length;
+      onProgress()?.(got, total);
+    }
+    const all = new Uint8Array(got);
+    let at = 0;
+    for (const p of parts) {
+      all.set(p, at);
+      at += p.length;
+    }
+    return new TextDecoder().decode(all);
+  }
+  var isObj = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
+  var isNums = (x, n) => Array.isArray(x) && (n === void 0 || x.length === n) && x.every((v) => typeof v === "number");
+  var isNumOrNull = (x) => x === null || typeof x === "number";
+  function isSummary(x, k) {
+    if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
+    if (typeof x.y0 !== "number" || typeof x.y1 !== "number" || x.y1 < x.y0) return false;
+    const nm = (x.y1 - x.y0 + 1) * 12, mo = x.monthly, val = x.val, src = x.source, tot = x.totals;
+    return isNums(x.viirs_from, 2) && isNums(x.aqua_from, 2) && isNums(x.bins) && typeof x.filter === "string" && isObj(mo) && ["T", "A", "V", "N20"].every((s) => isNums(mo[s], nm)) && ["r_ta", "r_t", "r_ta_lo", "r_ta_hi"].every((s) => isNums(x[s], 12)) && typeof x.r_all === "number" && Array.isArray(x.pi) && x.pi.length === x.bins.length + 1 && x.pi.every((p) => isNums(p, 2)) && typeof x.zero_hi === "number" && typeof x.rate_note === "string" && isObj(val) && ["raw_factor", "annual_med_err", "annual_max_err", "monthly_wape"].every((s) => isNumOrNull(val[s])) && Array.isArray(val.loyo) && val.loyo.every((r) => isObj(r) && ["y", "obs", "pred", "modis"].every((s) => typeof r[s] === "number")) && isNums(x.bbox, 4) && typeof x.cell === "number" && x.cell > 0 && isNums(x.cells) && isNums(x.cell_rows) && x.cell_rows.length % 5 === 0 && isObj(tot) && isObj(src) && typeof src.firms_updated === "string" && typeof src.files === "number";
+  }
+  var isIndexEntry = (x) => isObj(x) && typeof x.country === "string" && typeof x.name === "string" && typeof x.file === "string";
+  var SUMMARIES = /* @__PURE__ */ new Map();
+  function loadSummary(k, onProgress) {
+    const had = SUMMARIES.get(k);
+    if (had) {
+      had.tell.listen = onProgress;
+      return had.p;
+    }
+    const tell = { listen: onProgress }, p = fetchText(fileUrl(summaryPath(k)), () => tell.listen).then((text) => {
+      const data = JSON.parse(text);
+      if (!isSummary(data, k)) throw new Error("The file from Hugging Face is not in the expected format");
+      return data;
+    });
+    p.catch(() => SUMMARIES.delete(k));
+    SUMMARIES.set(k, { p, tell });
+    return p;
+  }
+  var index = null;
+  function loadIndex() {
+    if (!index) {
+      index = fetchText(fileUrl(`${SUMMARY_DIR}/index.json`), () => null).then((text) => {
+        const data = JSON.parse(text);
+        if (!isObj(data) || !Array.isArray(data.countries)) throw new Error("The country index is not in the expected format");
+        return data.countries.filter(isIndexEntry);
+      });
+      index.catch(() => index = null);
+    }
+    return index;
+  }
+
+  // src/world.ts
+  var WORLD = window.WORLD ? window.WORLD.countries : [];
+  var BY_KEY = new Map(WORLD.map((c) => [c.k, c]));
+  var slugOf = (k) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  var shapeOf = (k) => BY_KEY.get(k);
+  var nameOf = (k) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
+  function inRing(r, lon, lat) {
+    let inside = false;
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
+      if (yi > lat !== yj > lat && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  var boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
+  function countryAt(lon, lat) {
+    let best = null;
+    for (const c of WORLD) {
+      const b = c.b;
+      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+      if (best && boxArea(b) >= boxArea(best.b)) continue;
+      if (c.r.some((r) => inRing(r, lon, lat))) best = c;
+    }
+    return best;
+  }
+  var cutEdge = (k, a0, b0, a1, b1) => a0 === a1 && (Math.abs(a0) === 180 || k === "Antarctica" && a0 % 60 === 0) || b0 < -89.9 && b1 < -89.9;
+  var near = (lon, lon0) => lon - 360 * Math.round((lon - lon0) / 360);
+  function lonSpan(c) {
+    let a = Infinity, z = -Infinity;
+    for (const r of c.r) {
+      const off = near(r[0], c.c[0]) - r[0];
+      for (let i = 0; i < r.length; i += 2) {
+        const lon = r[i] + off;
+        if (lon < a) a = lon;
+        if (lon > z) z = lon;
+      }
+    }
+    return Math.min(360, z - a);
+  }
+
+  // src/country.ts
+  var CV = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, focus: [2025, 0], mode: "count" };
+  var SENSOR_FROM = { T: 2e3, V: 2012, N20: 2018 };
+  var SENSORS = [
+    { s: "T", name: "Terra", c: "#6fa8ff" },
+    { s: "A", name: "Aqua", c: "#a9c7f5" },
+    { s: "V", name: "Suomi NPP", c: "#ff8a3d" },
+    { s: "N20", name: "NOAA-20", c: "#bcc5d3", dash: "5 4" }
+  ];
+  var esc = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+  var pc = (x) => x == null ? "n/a" : Math.round(x * 100) + "%";
+  var nHot = (n) => `${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}`;
+  var epochs = (d) => ({
+    vi0: (d.viirs_from[0] - d.y0) * 12 + d.viirs_from[1] - 1,
+    aq0: (d.aqua_from[0] - d.y0) * 12 + d.aqua_from[1] - 1,
+    bins: d.bins
+  });
+  function openCountry(k) {
+    if (CV.k === k && CV.d) return;
+    CV.k = k;
+    CV.d = CV.R = null;
+    const el = $("country");
+    el.hidden = false;
+    el.scrollTop = 0;
+    $("cName").textContent = nameOf(k);
+    $("cCrumb").textContent = "Country";
+    requestAnimationFrame(() => el.classList.add("in"));
+    load();
+  }
+  function closeCountry() {
+    if (CV.k === null) return;
+    CV.k = null;
+    hideTip();
+    const el = $("country");
+    el.classList.remove("in");
+    el.hidden = true;
+  }
+  function countryMissing(slug) {
+    CV.k = "";
+    CV.d = CV.R = null;
+    const el = $("country");
+    el.hidden = false;
+    el.classList.add("in");
+    $("cName").textContent = "Not found";
+    $("cCrumb").textContent = "Country";
+    $("cBody").hidden = $("cCtl").hidden = true;
+    $("cStatus").hidden = false;
+    $("cBar").parentElement.hidden = $("cRetry").hidden = true;
+    $("cMsg").textContent = `There is no country at "#c/${slug}". Go back to the globe, or search for a country there.`;
+  }
+  function load() {
+    const k = CV.k, name = nameOf(k);
+    $("cBody").hidden = $("cCtl").hidden = true;
+    $("cStatus").hidden = false;
+    $("cRetry").hidden = true;
+    $("cBar").parentElement.hidden = false;
+    $("cBar").style.width = "0";
+    $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026`;
+    loadSummary(k, (got, total) => {
+      if (CV.k !== k) return;
+      const mb = (n) => (n / 1e6).toFixed(n < 1e5 ? 2 : 1) + " MB";
+      if (total && got <= total) {
+        $("cBar").style.width = got / total * 100 + "%";
+        $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026 ${mb(got)} of ${mb(total)}`;
+      } else $("cMsg").textContent = `Loading ${name} from Hugging Face\u2026 ${mb(got)}`;
+    }).then((d) => {
+      if (CV.k !== k) return;
+      CV.d = d;
+      start(d);
+    }).catch((e) => {
+      if (CV.k !== k) return;
+      $("cBar").parentElement.hidden = true;
+      $("cMsg").textContent = `Could not load ${name} from Hugging Face. ${e instanceof Error ? e.message : String(e)}.`;
+      $("cRetry").hidden = false;
+    });
+  }
+  function start(d) {
+    const yo = [];
+    for (let y = d.y0; y <= d.y1; y++) yo.push(`<option>${y}</option>`);
+    $("cFrom").innerHTML = $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
+    CV.yFrom = d.y0;
+    CV.yTo = d.y1;
+    $("cFrom").value = String(d.y0);
+    $("cTo").value = String(d.y1);
+    const last = (d.y1 - d.y0) * 12, ep = epochs(d), hs = MON.map((_, m) => harmWith(d, ep, last + m, d.monthly.T[last + m], d.monthly.A[last + m], d.monthly.V[last + m]).h);
+    CV.focus = [d.y1, hs.indexOf(Math.max(...hs))];
+    if (Math.max(...hs) === 0) {
+      for (let i = last + 11; i >= 0; i--)
+        if (harmWith(d, ep, i, d.monthly.T[i], d.monthly.A[i], d.monthly.V[i]).h > 0) {
+          CV.focus = [d.y0 + Math.floor(i / 12), i % 12];
+          break;
+        }
+    }
+    $("cStatus").hidden = true;
+    $("cBody").hidden = $("cCtl").hidden = false;
+    $("cName").textContent = d.name;
+    renderCountry();
+  }
+  function renderCountry() {
+    const d = CV.d;
+    if (!d) return;
+    const ep = epochs(d), R = analyseSeries({
+      T: d.monthly.T,
+      A: d.monthly.A,
+      V: d.monthly.V,
+      y0: d.y0,
+      yFrom: CV.yFrom,
+      yTo: CV.yTo,
+      vi0: ep.vi0,
+      harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v)
+    }), name = d.name;
+    CV.R = R;
+    $("cCrumb").textContent = `Country \xB7 ${CV.yFrom}\u2013${CV.yTo}`;
+    $("cLead").textContent = (R.total === 0 ? `No vegetation fire hotspots were counted in ${name} in these years.` : leadText(R)) + (CV.yFrom < d.viirs_from[0] && d.val.monthly_wape != null && d.val.monthly_wape > 1 ? ` Years before ${d.viirs_from[0]} are rough here: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.` : "");
+    answers(R);
+    drawMap();
+    const N20 = d.monthly.N20, pickFocus = (y, m) => {
+      CV.focus = [y, m];
+      renderCountry();
+    };
+    calendarInto($("cCal"), R, {
+      mode: CV.mode,
+      focus: true,
+      focusYM: CV.focus,
+      vi0: ep.vi0,
+      more: (r) => `Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)`,
+      click: (r) => pickFocus(r.y, r.m)
+    });
+    document.querySelectorAll("#cModeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
+    $("cCalNote").textContent = CV.mode === "count" ? "Every month of every year, newest at the top. Brighter means more hotspots. Tap a month to test whether it was unusual." : "Red months ran above what is normal for that month, blue months below. Tap a month to test it.";
+    paintRamp("cCalRamp", CV.mode === "count" ? seq : (t) => div(t * 2 - 1));
+    $("cCalLo").textContent = CV.mode === "count" ? "fewer" : "\u215B\xD7 normal";
+    $("cCalHi").textContent = CV.mode === "count" ? "more (log scale)" : "8\xD7 normal";
+    const ys = R.years, xs = ys.map((y) => y.y), top = [];
+    ys.map((y, i) => [y.h, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).forEach((a) => {
+      if (a[0] > 0 && !top.some((i) => Math.abs(i - a[1]) < 2)) top.push(a[1]);
+    });
+    bars(
+      $("cYears"),
+      xs,
+      ys.map((y) => y.h),
+      {
+        aria: "Hotspots per year",
+        step: Math.ceil(xs.length / 9),
+        sel: xs.indexOf(CV.focus[0]),
+        avg: R.mean,
+        top,
+        hatch: (i) => xs[i] < 2012,
+        lo: ys.map((y) => y.lo),
+        hi: ys.map((y) => y.hi),
+        whisk: (i) => xs[i] < 2012,
+        tip: (i) => `${xs[i]}: ${nHot(ys[i].h)}
+${R.mean > 0 ? (ys[i].h >= R.mean ? "+" : "") + Math.round((ys[i].h / R.mean - 1) * 100) + "% against the average year" : ""}` + (xs[i] < 2012 ? `
+Converted from MODIS, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "\nSeen by VIIRS"),
+        click: (i) => pickFocus(xs[i], CV.focus[1])
+      }
+    );
+    bars(
+      $("cMonths"),
+      MON,
+      R.stats.map((z) => z.med),
+      {
+        aria: "Typical hotspots by calendar month",
+        sel: CV.focus[1],
+        lo: R.stats.map((z) => z.q1),
+        hi: R.stats.map((z) => z.q3),
+        whisk: () => true,
+        tip: (m) => `${MONL[m]}
+Typical: ${nHot(R.stats[m].med)}
+Half of years fall between ${fmt(R.stats[m].q1)} and ${fmt(R.stats[m].q3)}`,
+        click: (m) => pickFocus(CV.focus[0], m)
+      }
+    );
+    const bandN = xs.filter((y) => y <= 2012).length;
+    lines(
+      $("cSeam"),
+      xs,
+      [
+        { v: ys.map((y) => y.naive), c: "#6fa8ff" },
+        { v: ys.map((y) => y.h), c: "#ff8a3d" }
+      ],
+      {
+        W: 660,
+        vline: xs.indexOf(2012),
+        band: { lo: ys.map((y) => y.lo), hi: ys.map((y) => y.hi), n: bandN, c: "rgba(255,138,61,.22)" },
+        aria: "Raw joined counts against the harmonized record",
+        tip: (i) => `${xs[i]}
+Harmonized: ${fmt(ys[i].h)}` + (xs[i] <= 2012 ? `, likely ${fmt(ys[i].lo)} to ${fmt(ys[i].hi)}` : "") + `
+Raw counts: ${fmt(ys[i].naive)}`
+      }
+    );
+    const avg = (a, b, k) => {
+      const r = ys.filter((y) => y.y >= a && y.y <= b);
+      return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
+    };
+    const n0 = avg(2007, 2011, "naive"), n1 = avg(2012, 2016, "naive"), h0 = avg(2007, 2011, "h"), h1 = avg(2012, 2016, "h");
+    $("cSeamNote").textContent = n0 == null || h0 == null || n1 == null || h1 == null ? "The blue line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step." : n0 === 0 || h0 === 0 ? "MODIS counted no hotspots here in 2007\u20132011, so the step at 2012 cannot be measured." : `Raw counts make 2012\u20132016 look ${(n1 / n0).toFixed(1)}\xD7 busier than 2007\u20132011. In the harmonized record the step is ${(h1 / h0).toFixed(1)}\xD7.`;
+    sensors(d, R);
+    method(d);
+  }
+  function answers(R) {
+    if (R.total === 0) {
+      $("ca1").textContent = $("ca2").textContent = "None";
+      $("ca1n").textContent = $("ca2n").textContent = "";
+    } else {
+      const top = R.order.slice(0, 3).filter((o) => o.sum > 0), worst = R.ranked.slice(0, 3).filter((y) => y.h > 0), quiet = R.order.filter((o) => o.sum === 0), share = Math.round(top.reduce((a, o) => a + o.sum, 0) / R.total * 100);
+      $("ca1").textContent = top.map((o) => MON[o.m]).join(", ");
+      $("ca1n").textContent = (top.length === 1 ? `Every hotspot fell in ${MONL[top[0].m]}.` : `${top.length === 2 ? "These two months" : "These three months"} hold ${share}% of all hotspots.`) + (quiet.length > 1 ? ` ${quiet.length} months had none in these years.` : ` ${MONL[R.order[11].m]} is the quietest${quiet.length ? ", with none" : ""}.`);
+      $("ca2").textContent = worst.map((y) => y.y).join(", ");
+      $("ca2n").textContent = worst.map((y) => `${y.y}: ${fmt(y.h)}${y.y < 2012 ? " (converted)" : ""}`).join(" \xB7 ") + `. An average year has ${fmt(R.mean)}.`;
+    }
+    const v = verdict(R, CV.focus), vi0 = epochs(CV.d).vi0;
+    $("cfM").value = String(CV.focus[1]);
+    $("cfY").value = String(CV.focus[0]);
+    if (!v) {
+      $("ca3").textContent = "Outside the chosen years";
+      $("ca3n").textContent = "";
+    } else if (R.ser.every((r) => r.m !== v.fm || r.h === 0)) {
+      $("ca3").textContent = "No hotspots";
+      $("ca3n").textContent = `No hotspots in ${MONL[v.fm]} in any of these years, so there is nothing to compare.`;
+    } else {
+      $("ca3").innerHTML = `<span class="pill ${v.cls}">${v.label}</span>${v.mult}`;
+      $("ca3n").textContent = `${nHot(v.f.h)} against a normal ${fmt(v.med)}. Rank ${v.rank} of ${v.n} years.` + (v.f.i < vi0 ? ` Converted from MODIS, likely between ${fmt(v.f.lo)} and ${fmt(v.f.hi)}.` : " Seen directly by VIIRS.");
+    }
+  }
+  function sensors(d, R) {
+    const from = { ...SENSOR_FROM, A: d.aqua_from[0] }, xs = R.years.map((y) => y.y), per = SENSORS.map((z) => ({
+      ...z,
+      v: xs.map((y) => {
+        if (y < from[z.s]) return NaN;
+        const i = (y - d.y0) * 12;
+        return d.monthly[z.s].slice(i, i + 12).reduce((a, b) => a + b, 0);
+      })
+    }));
+    $("cRawKey").innerHTML = per.map(
+      (z) => `<span><i style="background:${z.dash ? `repeating-linear-gradient(90deg,${z.c} 0 5px,transparent 5px 9px)` : z.c};height:3px"></i>${z.name}${z.s === "N20" ? " (not used in the harmonized record)" : ""}</span>`
+    ).join("");
+    lines($("cRaw"), xs, per, {
+      W: 560,
+      h: 250,
+      labels: true,
+      every: 9,
+      aria: "Raw detections per year from each satellite",
+      tip: (i) => `${xs[i]}
+` + per.map((z) => `${z.name}: ${Number.isFinite(z.v[i]) ? fmt(z.v[i]) : "not flying"}${z.s === "N20" ? " (not used)" : ""}`).join("\n")
+    });
+  }
+  function method(d) {
+    const val = d.val;
+    $("cTiles").innerHTML = `<div class="tile"><b>${val.raw_factor == null ? "n/a" : val.raw_factor.toFixed(1) + "\xD7"}</b><span>more hotspots from VIIRS than MODIS for the same fires in ${esc(d.name)}, 2012\u20132025</span></div><div class="tile"><b>${pc(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc(val.annual_max_err)}</b><span>error in the worst tested year</span></div><div class="tile"><b>${pc(val.monthly_wape)}</b><span>typical error of a converted month, weighted by size</span></div>`;
+    $("cRateNote").textContent = d.rate_note;
+    $("cFilter").textContent = d.filter;
+    $("cCell").textContent = `${d.cell}\xB0`;
+    const row = (label, a) => `<tr><td>${label}</td>${a.map((r) => `<td>${r.toFixed(1)}</td>`).join("")}</tr>`;
+    $("cRates").innerHTML = `<tr><th>Rate</th>${MON.map((m) => `<th>${m}</th>`).join("")}</tr>` + row("Terra+Aqua", d.r_ta) + row("  90% low", d.r_ta_lo) + row("  90% high", d.r_ta_hi) + row("Terra only", d.r_t);
+    $("cLoyo").innerHTML = `<tr><th>Held-out year</th><th>Seen by VIIRS</th><th>Predicted from MODIS</th><th>Raw MODIS</th><th>Error</th></tr>` + val.loyo.map(
+      (r) => `<tr><td>${Number(r.y)}</td><td>${fmt(r.obs)}</td><td>${fmt(r.pred)}</td><td>${fmt(r.modis)}</td><td>${r.obs > 0 ? (r.pred >= r.obs ? "+" : "") + Math.round((r.pred / r.obs - 1) * 100) + "%" : "n/a"}</td></tr>`
+    ).join("");
+    const path = summaryPath(d.country), url = fileUrl(path);
+    $("cSrc").innerHTML = `Data: <a href="${esc(url)}" target="_blank" rel="noopener">${esc(path)}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built from ${d.source.files} FIRMS files (latest FIRMS update ${esc(d.source.firms_updated.slice(0, 10))}). We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS) (<a href="https://earthdata.nasa.gov/firms" target="_blank" rel="noopener">https://earthdata.nasa.gov/firms</a>), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) (<a href="https://earthdata.nasa.gov/lance" target="_blank" rel="noopener">https://earthdata.nasa.gov/lance</a>) and NASA's Earth Science Data and Information System (ESDIS). Outlines: Natural Earth.`;
+  }
+  function csv() {
+    const d = CV.d, R = CV.R;
+    if (!d || !R) return;
+    const N20 = d.monthly.N20, rows = [
+      "year,month,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_not_used"
+    ];
+    R.ser.forEach(
+      (r) => rows.push([r.y, r.m + 1, r.h.toFixed(2), r.lo.toFixed(2), r.hi.toFixed(2), `"${r.src}"`, r.T, r.A, r.V, N20[r.i]].join(","))
+    );
+    save(`burn-calendar_${d.country}_${CV.yFrom}-${CV.yTo}.csv`, rows.join("\n"), $("cDlMsg"));
+  }
+  var MF = null;
+  function cellIndexes(d) {
+    const n = d.cells.length / 2, la = new Int32Array(n), lo = new Int32Array(n), lim = 180 / d.cell + 1;
+    for (let c = 0; c < n; c++) {
+      la[c] = d.cells[2 * c];
+      lo[c] = d.cells[2 * c + 1];
+      if (lo[c] > lim) {
+        lo[c] -= 1e5;
+        la[c] += 1;
+      }
+    }
+    return { la, lo };
+  }
+  function shiftRing(r, lon0) {
+    const off = near(r[0], lon0) - r[0];
+    return off ? r.map((v, i) => i % 2 ? v : v + off) : r;
+  }
+  function drawMap() {
+    const d = CV.d, cv = $("cMap"), W = cv.parentElement.clientWidth;
+    if (!d || !W) return;
+    const shape = shapeOf(d.country), lon0 = shape ? shape.c[0] : (d.bbox[0] + d.bbox[2]) / 2, own = shape ? shape.r.map((r) => shiftRing(r, lon0)) : [], cell = d.cell, nc = d.cells.length / 2, { la: cla, lo: clo } = cellIndexes(d), tot = new Float64Array(nc), modis = new Float64Array(nc), viirs = new Float64Array(nc), cellAt = /* @__PURE__ */ new Map();
+    for (let p = 0; p < d.cell_rows.length; p += 5) {
+      const y = d.y0 + d.cell_rows[p + 1];
+      if (y < CV.yFrom || y > CV.yTo) continue;
+      const c2 = d.cell_rows[p];
+      tot[c2] += d.cell_rows[p + 2];
+      modis[c2] += d.cell_rows[p + 3];
+      viirs[c2] += d.cell_rows[p + 4];
+    }
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const grow = (lon, lat) => {
+      if (lon < x0) x0 = lon;
+      if (lon > x1) x1 = lon;
+      if (lat < y0) y0 = lat;
+      if (lat > y1) y1 = lat;
+    };
+    for (const r of own) for (let i = 0; i < r.length; i += 2) grow(r[i], r[i + 1]);
+    const cellLon = new Float64Array(nc);
+    for (let c2 = 0; c2 < nc; c2++) {
+      const la = cla[c2] * cell, lo = clo[c2] * cell;
+      cellAt.set(cla[c2] + "," + clo[c2], c2);
+      cellLon[c2] = near(lo + cell / 2, lon0) - cell / 2;
+      grow(cellLon[c2], la);
+      grow(cellLon[c2] + cell, la + cell);
+    }
+    if (!isFinite(x0)) {
+      grow(near(d.bbox[0], lon0), d.bbox[1]);
+      grow(near(d.bbox[2], lon0), d.bbox[3]);
+    }
+    const span = Math.max(0.5, x1 - x0), spanY = Math.max(0.5, y1 - y0), k = Math.max(0.2, Math.cos((y0 + y1) / 2 * Math.PI / 180)), pad = 14, H = Math.round(Math.max(240, Math.min(560, innerHeight * 0.7, W * spanY / (span * k)))), s = Math.min((W - 2 * pad) / (span * k), (H - 2 * pad) / spanY), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, dpr = Math.min(2, devicePixelRatio || 1);
+    cv.style.height = H + "px";
+    cv.width = W * dpr;
+    cv.height = H * dpr;
+    const base = document.createElement("canvas");
+    base.width = cv.width;
+    base.height = cv.height;
+    const c = base.getContext("2d"), X = (lon) => W / 2 + (lon - cx) * k * s, Y = (lat) => H / 2 - (lat - cy) * s, ring = (r) => {
+      c.moveTo(X(r[0]), Y(r[1]));
+      for (let i = 2; i < r.length; i += 2) c.lineTo(X(r[i]), Y(r[i + 1]));
+      c.closePath();
+    }, border = (k2, r, orig) => {
+      for (let i = 0; i + 3 < r.length; i += 2) {
+        if (cutEdge(k2, orig[i], orig[i + 1], orig[i + 2], orig[i + 3])) continue;
+        c.moveTo(X(r[i]), Y(r[i + 1]));
+        c.lineTo(X(r[i + 2]), Y(r[i + 3]));
+      }
+    };
+    c.scale(dpr, dpr);
+    c.fillStyle = "#05080f";
+    c.fillRect(0, 0, W, H);
+    const vw = W / (2 * k * s), vh = H / (2 * s);
+    const near3 = [];
+    for (const o of WORLD) {
+      if (o.k === d.country) continue;
+      const b = o.b;
+      if (b[1] > cy + vh || b[3] < cy - vh) continue;
+      for (const r of o.r) {
+        const rr = shiftRing(r, lon0);
+        let a = Infinity, z = -Infinity;
+        for (let i = 0; i < rr.length; i += 2) {
+          if (rr[i] < a) a = rr[i];
+          if (rr[i] > z) z = rr[i];
+        }
+        if (z >= cx - vw && a <= cx + vw) near3.push([o.k, rr, r]);
+      }
+    }
+    c.beginPath();
+    near3.forEach((n) => ring(n[1]));
+    c.fillStyle = "#0f1522";
+    c.fill();
+    c.beginPath();
+    near3.forEach((n) => border(...n));
+    c.strokeStyle = "rgba(255,255,255,.12)";
+    c.lineWidth = 1;
+    c.stroke();
+    c.beginPath();
+    own.forEach(ring);
+    c.fillStyle = "#1b2334";
+    c.fill();
+    let mx = 0;
+    for (let j = 0; j < nc; j++) if (tot[j] > mx) mx = tot[j];
+    const lmax = Math.log1p(mx), lut2 = LUT(), side = Math.max(1.5, cell * s);
+    for (let j = 0; j < nc; j++) {
+      if (tot[j] <= 0) continue;
+      c.fillStyle = lut2[Math.round(63 * (0.06 + 0.94 * Math.log1p(tot[j]) / lmax))];
+      c.fillRect(X(cellLon[j]), Y(cla[j] * cell + cell), Math.max(side, cell * k * s) + 0.5, side + 0.5);
+    }
+    c.beginPath();
+    own.forEach((r, i) => border(d.country, r, shape.r[i]));
+    c.strokeStyle = "rgba(241,244,249,.65)";
+    c.lineWidth = 1.2;
+    c.stroke();
+    MF = { W, H, cx, cy, lon0, k, s, base, cellAt, la: cla, lo: clo, tot, modis, viirs, hover: -1 };
+    blit();
+    paintRamp("cMapRamp", seq);
+    $("cMapHi").textContent = mx > 0 ? `${short(mx)} per square (log scale)` : "";
+    $("cMapNote").textContent = nc ? `Each square is ${cell}\xB0 across, about ${Math.round(cell * 111)} km north to south. Colour shows the hotspots counted in it over ${CV.yFrom}\u2013${CV.yTo}, in VIIRS terms, on a log scale. Hover or tap a square for its numbers.` : `No hotspots were counted anywhere in ${d.name}, so the map has no squares.`;
+  }
+  function blit() {
+    const f = MF, d = CV.d;
+    if (!f || !d) return;
+    const cv = $("cMap"), c = cv.getContext("2d"), dpr = cv.width / f.W;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(f.base, 0, 0);
+    if (f.hover < 0) return;
+    const cell = d.cell, la = f.la[f.hover] * cell, lo = near(f.lo[f.hover] * cell + cell / 2, f.lon0) - cell / 2, x = f.W / 2 + (lo - f.cx) * f.k * f.s, y = f.H / 2 - (la + cell - f.cy) * f.s, side = Math.max(1.5, cell * f.s);
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.strokeStyle = "#fff";
+    c.lineWidth = 2;
+    c.strokeRect(x - 1, y - 1, Math.max(side, cell * f.k * f.s) + 2, side + 2);
+  }
+  function mapHover(e) {
+    const f = MF, d = CV.d;
+    if (!f || !d) return;
+    const r = $("cMap").getBoundingClientRect(), lonU = f.cx + (e.clientX - r.left - f.W / 2) / (f.k * f.s), lat = f.cy - (e.clientY - r.top - f.H / 2) / f.s, lon = near(lonU, 0), key = Math.floor(lat / d.cell) + "," + Math.floor(lon / d.cell), j = f.cellAt.get(key) ?? -1, hit = j >= 0 && f.tot[j] + f.modis[j] + f.viirs[j] > 0 ? j : -1;
+    if (hit !== f.hover) {
+      f.hover = hit;
+      blit();
+    }
+    if (hit >= 0) {
+      const la = f.la[hit] * d.cell, lo = f.lo[hit] * d.cell, deg = (v, p, n) => `${Math.abs(v).toFixed(2)}\xB0${v < 0 ? n : p}`;
+      showTip(
+        e,
+        `${deg(la, "N", "S")} to ${deg(la + d.cell, "N", "S")}, ${deg(lo, "E", "W")} to ${deg(lo + d.cell, "E", "W")}
+${CV.yFrom}\u2013${CV.yTo}: ${nHot(f.tot[hit])} in VIIRS terms
+Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
+      );
+      return;
+    }
+    const o = countryAt(lon, lat);
+    if (o && o.k !== d.country) showTip(e, o.n);
+    else hideTip();
+  }
+  function countryEvents() {
+    $("cBack").onclick = () => {
+      location.hash = "";
+    };
+    $("cRetry").onclick = () => {
+      if (CV.k) load();
+    };
+    $("cFrom").onchange = $("cTo").onchange = (e) => {
+      let a = +$("cFrom").value, b = +$("cTo").value;
+      if (a > b) {
+        if (e.target === $("cFrom")) b = a;
+        else a = b;
+      }
+      CV.yFrom = a;
+      CV.yTo = b;
+      $("cFrom").value = String(a);
+      $("cTo").value = String(b);
+      renderCountry();
+    };
+    $("cfM").innerHTML = MON.map((m, i) => `<option value="${i}">${m}</option>`).join("");
+    $("cfM").onchange = $("cfY").onchange = () => {
+      CV.focus = [+$("cfY").value, +$("cfM").value];
+      renderCountry();
+    };
+    document.querySelectorAll("#cModeSeg button").forEach(
+      (b) => b.onclick = () => {
+        CV.mode = b.dataset.mode === "anom" ? "anom" : "count";
+        renderCountry();
+      }
+    );
+    $("cDl").onclick = csv;
+    const cv = $("cMap");
+    cv.onpointermove = cv.onpointerdown = mapHover;
+    cv.onpointerleave = () => {
+      if (MF) MF.hover = -1;
+      blit();
+      hideTip();
+    };
+    let rt;
+    addEventListener("resize", () => {
+      clearTimeout(rt);
+      rt = setTimeout(() => {
+        if (CV.d && !$("country").hidden) drawMap();
+      }, 120);
+    });
+  }
+
   // src/views.ts
   function openState(st, fresh) {
+    closeCountry();
     stopPlay();
     closeSheet(true);
     S.st = st;
@@ -1528,11 +2142,60 @@ ${showLabel()}`) + "\nClick to zoom in"
   }
   function go(st) {
     if (location.hash !== "#" + SLUG[st]) {
-      G.pending = st;
+      G.pending = "#" + SLUG[st];
       location.hash = SLUG[st];
     }
   }
+  function goCountry(k) {
+    const h = "#c/" + slugOf(k);
+    if (location.hash !== h) {
+      G.pending = h;
+      location.hash = h;
+    }
+  }
+  function leaveForCountry() {
+    stopPlay();
+    closeSheet(true);
+    S.st = null;
+    $("app").classList.remove("in");
+    $("app").hidden = true;
+    $("hero").hidden = true;
+    G.stop && G.stop();
+  }
+  async function routeCountry(hash) {
+    let raw = hash.slice(3);
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+    }
+    const slug = slugOf(raw);
+    let k = WORLD.find((c) => slugOf(c.k) === slug)?.k;
+    if (!k) {
+      k = await loadIndex().then((list) => list.find((c) => slugOf(c.country) === slug)?.country).catch(() => void 0);
+      if (location.hash !== hash) return;
+    }
+    const shape = k ? shapeOf(k) : void 0;
+    if (k && shape && G.pending === hash && G.ok && !$("hero").hidden) {
+      const key = k, b = shape.b;
+      G.pending = null;
+      G.flyTo(aimAt(shape.c[0], shape.c[1], Math.min(lonSpan(shape), 180) * Math.cos(shape.c[1] * Math.PI / 180) + (b[3] - b[1])), () => {
+        if (location.hash !== hash) return;
+        leaveForCountry();
+        openCountry(key);
+      });
+      return;
+    }
+    G.pending = null;
+    leaveForCountry();
+    if (k) openCountry(k);
+    else countryMissing(slug);
+  }
   function route() {
+    if (location.hash.startsWith("#c/")) {
+      routeCountry(location.hash);
+      return;
+    }
+    closeCountry();
     const st = STS.find((k) => "#" + SLUG[k] === location.hash);
     if (!st) {
       closeSheet(true);
@@ -1540,9 +2203,9 @@ ${showLabel()}`) + "\nClick to zoom in"
       if (location.hash === "#compare") openSheet("compare");
       return;
     }
-    if (G.pending === st && G.ok && !$("hero").hidden) {
+    if (G.pending === location.hash && G.ok && !$("hero").hidden) {
       G.pending = null;
-      G.flyTo(st, () => openState(st, true));
+      G.flyTo({ ry: G.st[st].ry, rx: G.st[st].rx, z: 1.62 }, () => openState(st, true));
     } else {
       G.pending = null;
       openState(st, !$("hero").hidden);
@@ -1550,6 +2213,11 @@ ${showLabel()}`) + "\nClick to zoom in"
   }
 
   // src/globe.ts
+  var aimAt = (lon, lat, span = 0) => ({
+    ry: -((lon + 360) % 360 - 360 + 90) * Math.PI / 180,
+    rx: lat * Math.PI / 180,
+    z: 1.62 + Math.min(0.9, span / 90)
+  });
   var G = { ok: false, run: false };
   var loadImg = (src) => new Promise((res, rej) => {
     const im = new Image();
@@ -1657,11 +2325,48 @@ ${showLabel()}`) + "\nClick to zoom in"
       G.st[st] = {
         topM,
         cen: cen.clone().multiplyScalar(RT + 0.02),
-        ry: -((lon + 360) % 360 - 360 + 90) * Math.PI / 180,
-        rx: lat * Math.PI / 180,
+        ry: aimAt(lon, lat).ry,
+        rx: aimAt(lon, lat).rx,
         hover: false
       };
     }
+    const bpos = [], spans = /* @__PURE__ */ new Map(), RB = 1.002;
+    for (const c of WORLD) {
+      const first = bpos.length / 3;
+      for (const r of c.r)
+        for (let i = 0; i + 3 < r.length; i += 2) {
+          const a0 = r[i], b0 = r[i + 1], a1 = r[i + 2], b1 = r[i + 3];
+          if (cutEdge(c.k, a0, b0, a1, b1)) continue;
+          const n = Math.max(1, Math.ceil(Math.max(Math.abs(a1 - a0), Math.abs(b1 - b0)) / 1.5));
+          for (let j = 0; j < n; j++) {
+            const p = v3(a0 + (a1 - a0) * j / n, b0 + (b1 - b0) * j / n, RB), q = v3(a0 + (a1 - a0) * (j + 1) / n, b0 + (b1 - b0) * (j + 1) / n, RB);
+            bpos.push(p.x, p.y, p.z, q.x, q.y, q.z);
+          }
+        }
+      spans.set(c.k, [first, bpos.length / 3 - first]);
+    }
+    const bAttr = new T.Float32BufferAttribute(bpos, 3), bGeo = new T.BufferGeometry(), hlGeo = new T.BufferGeometry();
+    bGeo.setAttribute("position", bAttr);
+    hlGeo.setAttribute("position", bAttr);
+    hlGeo.computeBoundingSphere();
+    grp.add(new T.LineSegments(bGeo, new T.LineBasicMaterial({ color: 10466e3, transparent: true, opacity: 0.5, depthWrite: false })));
+    const hlLine = new T.LineSegments(hlGeo, new T.LineBasicMaterial({ color: 16747069, depthWrite: false }));
+    hlLine.visible = false;
+    grp.add(hlLine);
+    const tagC = $("tagC");
+    let hov = null;
+    const setHov = (c) => {
+      if (c === hov) return;
+      hov = c;
+      const sp2 = c && spans.get(c.k);
+      hlLine.visible = !!sp2 && sp2[1] > 0;
+      if (sp2) hlGeo.setDrawRange(sp2[0], sp2[1]);
+      tagC.textContent = c ? c.n : "";
+      if (!c) tagC.hidden = true;
+    };
+    tagC.onclick = () => {
+      if (hov) goCountry(hov.k);
+    };
     const rt = new T.WebGLRenderTarget(4, 4, { minFilter: T.NearestFilter, magFilter: T.NearestFilter }), post = new T.Scene(), pcam = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const pmat = new T.ShaderMaterial({
       uniforms: { tex: { value: rt.texture }, res: { value: new T.Vector2(4, 4) } },
@@ -1672,7 +2377,7 @@ ${showLabel()}`) + "\nClick to zoom in"
     post.add(new T.Mesh(new T.PlaneGeometry(2, 2), pmat));
     const base = { ry: 8 * Math.PI / 180, rx: 34 * Math.PI / 180 }, user = { ry: 0, rx: 0 };
     let fly = null, drag = null, off = { x: 0, y: 0 }, camZ = 4.6, last = 0;
-    const ray = new T.Raycaster(), ndc = new T.Vector2();
+    const ray = new T.Raycaster(), ndc = new T.Vector2(), ball = new T.Sphere(new T.Vector3(), 1), hitP = new T.Vector3();
     function size() {
       const w = cv.clientWidth, h = cv.clientHeight;
       if (!w || !h) return;
@@ -1693,6 +2398,34 @@ ${showLabel()}`) + "\nClick to zoom in"
       const h = ray.intersectObjects(tops);
       return h.length ? h[0].object.userData.st : null;
     };
+    const SMALL_PX = 12, NEAR_PX = 12, NEAR_LAND_PX = 6, sizeDeg = WORLD.map((c) => Math.max(lonSpan(c) * Math.cos(c.c[1] * Math.PI / 180), c.b[3] - c.b[1])), lp = new T.Vector3(), edge = new T.Vector3();
+    const nearestSmall = (e, maxPx) => {
+      const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      lp.copy(grp.position).project(cam);
+      edge.set(0, 1, 0).add(grp.position).project(cam);
+      const perDeg = Math.abs(edge.y - lp.y) * 0.5 * r.height * Math.PI / 180;
+      let best = null, bd = maxPx;
+      WORLD.forEach((c, i) => {
+        if (sizeDeg[i] * perDeg >= SMALL_PX) return;
+        lp.copy(v3(c.c[0], c.c[1], 1));
+        grp.localToWorld(lp);
+        if (lp.clone().sub(grp.position).normalize().dot(cam.position.clone().sub(lp).normalize()) <= 0.15) return;
+        lp.project(cam);
+        const dd = Math.hypot((lp.x * 0.5 + 0.5) * r.width - px, (-lp.y * 0.5 + 0.5) * r.height - py);
+        if (dd < bd) {
+          bd = dd;
+          best = c;
+        }
+      });
+      return best;
+    };
+    const pickCountry = (e) => {
+      ball.center.copy(grp.position);
+      if (!ray.ray.intersectSphere(ball, hitP)) return null;
+      grp.worldToLocal(hitP);
+      const lat = 90 - Math.acos(Math.max(-1, Math.min(1, hitP.y))) * 180 / Math.PI, lon = (Math.atan2(hitP.z, -hitP.x) * 180 / Math.PI + 360) % 360 - 180, under = countryAt(lon, lat);
+      return nearestSmall(e, under ? NEAR_LAND_PX : NEAR_PX) || under;
+    };
     cv.onpointerdown = (e) => {
       if (fly) return;
       cv.setPointerCapture(e.pointerId);
@@ -1706,29 +2439,38 @@ ${showLabel()}`) + "\nClick to zoom in"
         user.rx = Math.max(-0.9, Math.min(0.9, drag.rx + dy * 5e-3));
         return;
       }
-      const st = pick(e);
+      if (fly) return;
+      const st = pick(e), c = st ? null : pickCountry(e);
+      setHov(c);
       for (const k in G.st) G.st[k].hover = k === st;
-      cv.style.cursor = st ? "pointer" : "grab";
+      cv.style.cursor = st || c ? "pointer" : "grab";
       document.querySelectorAll(".pick").forEach((b) => b.classList.toggle("hover", b.dataset.st === st));
     };
     cv.onpointerup = (e) => {
       const d = drag;
       drag = null;
       if (d && !d.moved) {
-        const st = pick(e);
+        const st = pick(e), c = st ? null : pickCountry(e);
         if (st) go(st);
+        else if (c) goCountry(c.k);
       }
+    };
+    cv.onpointerleave = (e) => {
+      if (e.relatedTarget !== tagC) setHov(null);
     };
     G.hover = (st) => {
       for (const k in G.st) G.st[k].hover = k === st;
     };
-    G.flyTo = (st, done) => {
+    G.flyTo = (to, done) => {
       if (reduced) {
         done();
         return;
       }
+      setHov(null);
+      const ry0 = grp.rotation.y;
       fly = {
-        st,
+        /* turn the short way round */
+        to: { ...to, ry: ry0 + ((to.ry - ry0) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI },
         t0: performance.now(),
         from: { ry: grp.rotation.y, rx: grp.rotation.x, x: grp.position.x, y: grp.position.y, z: cam.position.z },
         done
@@ -1736,6 +2478,7 @@ ${showLabel()}`) + "\nClick to zoom in"
     };
     G.reset = () => {
       fly = null;
+      setHov(null);
       user.ry = user.rx = 0;
       size();
       if (!G.run) {
@@ -1753,12 +2496,12 @@ ${showLabel()}`) + "\nClick to zoom in"
       const t = now / 1e3, dt = last ? Math.min(0.1, t - last) : 0;
       last = t;
       if (fly) {
-        const u = Math.min(1, (now - fly.t0) / 1500), e = ease(u), f = fly.from, s = G.st[fly.st];
+        const u = Math.min(1, (now - fly.t0) / 1500), e = ease(u), f = fly.from, s = fly.to;
         grp.rotation.y = f.ry + (s.ry - f.ry) * e;
         grp.rotation.x = f.rx + (s.rx - f.rx) * e;
         grp.position.x = f.x * (1 - e);
         grp.position.y = f.y * (1 - e);
-        cam.position.z = f.z + (1.62 - f.z) * e;
+        cam.position.z = f.z + (s.z - f.z) * e;
         if (u > 0.62) $("hero").classList.add("leaving");
         if (u >= 1) {
           const d = fly.done;
@@ -1791,6 +2534,15 @@ ${showLabel()}`) + "\nClick to zoom in"
         tag.style.left = (tmp.x * 0.5 + 0.5) * cv.clientWidth + "px";
         tag.style.top = (-tmp.y * 0.5 + 0.5) * cv.clientHeight + "px";
       }
+      if (hov) {
+        tmp.copy(v3(hov.c[0], hov.c[1], RB));
+        grp.localToWorld(tmp);
+        const facing = tmp.clone().sub(grp.position).normalize().dot(cam.position.clone().sub(tmp).normalize()) > 0.15;
+        tmp.project(cam);
+        tagC.hidden = !facing || !!fly;
+        tagC.style.left = (tmp.x * 0.5 + 0.5) * cv.clientWidth + "px";
+        tagC.style.top = (-tmp.y * 0.5 + 0.5) * cv.clientHeight + "px";
+      }
       ren.setRenderTarget(rt);
       ren.render(scene, cam);
       ren.setRenderTarget(null);
@@ -1804,6 +2556,88 @@ ${showLabel()}`) + "\nClick to zoom in"
   }
 
   // src/main.ts
+  var fold = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/^st /, "saint ");
+  var ALIAS = {
+    us: "United_States",
+    usa: "United_States",
+    "u s": "United_States",
+    "u s a": "United_States",
+    america: "United_States",
+    "united states of america": "United_States",
+    uk: "United_Kingdom",
+    "u k": "United_Kingdom",
+    britain: "United_Kingdom",
+    "great britain": "United_Kingdom",
+    england: "United_Kingdom",
+    scotland: "United_Kingdom",
+    wales: "United_Kingdom",
+    "northern ireland": "United_Kingdom",
+    "ivory coast": "Cote_d_Ivoire",
+    drc: "Democratic_Republic_of_the_Congo",
+    "dr congo": "Democratic_Republic_of_the_Congo",
+    "congo kinshasa": "Democratic_Republic_of_the_Congo",
+    "congo brazzaville": "Republic_of_Congo",
+    burma: "Myanmar",
+    czechia: "Czech_Republic",
+    turkiye: "Turkey",
+    "cabo verde": "Cape_Verde",
+    "east timor": "Timor-Leste",
+    "viet nam": "Vietnam",
+    holland: "Netherlands",
+    faeroe: "Faeroe_Islands",
+    "faeroe islands": "Faeroe_Islands",
+    swaziland: "Swaziland",
+    macedonia: "Macedonia_Former_Yugoslav_Republic_of",
+    micronesia: "Federated_States_of_Micronesia",
+    uae: "United_Arab_Emirates",
+    bosnia: "Bosnia_and_Herzegovina",
+    "south korea": "Republic_of_Korea",
+    "north korea": "Dem_Rep_Korea"
+  };
+  function heroSearch() {
+    const list = [...STS.map((st) => ({ name: NAME[st], st })), ...WORLD.map((c) => ({ name: c.n, k: c.k }))];
+    const fill = () => {
+      $("countryList").innerHTML = list.map((f) => f.name).sort((a, b) => a.localeCompare(b)).map((n) => `<option value="${n.replace(/"/g, "&quot;")}"></option>`).join("");
+    };
+    fill();
+    let asked = false;
+    $("heroFind").onfocus = () => {
+      if (asked) return;
+      asked = true;
+      loadIndex().then((idx) => {
+        const have = new Set(WORLD.map((c) => c.k)), extra = idx.filter((c) => !have.has(c.country));
+        if (!extra.length) return;
+        list.push(...extra.map((c) => ({ name: c.name, k: c.country })));
+        fill();
+      }).catch(() => asked = false);
+    };
+    const find = (q) => {
+      const f = fold(q);
+      if (!f) return null;
+      const alias = ALIAS[f];
+      return list.find((c) => fold(c.name) === f || "k" in c && fold(c.k) === f) || alias && list.find((c) => "k" in c && c.k === alias) || list.find((c) => fold(c.name).startsWith(f)) || /* a word inside the name, such as "guinea" in "Papua New Guinea"; not single letters or pairs */
+      f.length >= 3 && list.find((c) => (" " + fold(c.name)).includes(" " + f)) || null;
+    };
+    const open = (hit) => {
+      $("heroFind").value = "";
+      $("heroMsg").textContent = "";
+      $("heroFind").blur();
+      if ("st" in hit) go(hit.st);
+      else goCountry(hit.k);
+    };
+    $("heroForm").onsubmit = (e) => {
+      e.preventDefault();
+      const q = $("heroFind").value, hit = find(q);
+      if (hit) open(hit);
+      else $("heroMsg").textContent = q.trim() ? `No country called "${q.trim()}". Try another spelling.` : "Type a country's name.";
+    };
+    $("heroFind").oninput = (e) => {
+      $("heroMsg").textContent = "";
+      if (e instanceof InputEvent && e.inputType && e.inputType !== "insertReplacementText") return;
+      const v = fold($("heroFind").value), hit = list.find((c) => fold(c.name) === v);
+      if (hit) open(hit);
+    };
+  }
   function init() {
     const yo = [];
     for (let y = Y0; y <= Y1; y++) yo.push(`<option>${y}</option>`);
@@ -1949,6 +2783,8 @@ ${showLabel()}`) + "\nClick to zoom in"
       b.onmouseenter = () => G.hover && G.hover(b.dataset.st);
       b.onmouseleave = () => G.hover && G.hover(null);
     });
+    heroSearch();
+    countryEvents();
     $("dlCal").onclick = csvCal;
     $("dlHot").onclick = csvHot;
     mapEvents();

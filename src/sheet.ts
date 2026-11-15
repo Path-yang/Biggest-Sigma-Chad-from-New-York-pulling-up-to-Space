@@ -114,7 +114,7 @@ export function renderArea(R: Analysis) {
       sel: sh.t === "year" ? sh.y - S.yFrom : -1,
       avg: R.mean,
       top,
-      fill: i => (xs[i] < 2012 ? "url(#hatch)" : "#ff8a3d"),
+      hatch: i => xs[i] < 2012,
       lo: ys.map(y => y.lo),
       hi: ys.map(y => y.hi),
       whisk: i => xs[i] < 2012,

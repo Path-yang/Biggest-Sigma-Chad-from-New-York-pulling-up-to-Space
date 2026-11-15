@@ -7,12 +7,16 @@ import { V, fitView, flyTo, mapSize, setDraw } from "./map";
 import { closeSheet, openSheet } from "./sheet";
 import { stopPlay } from "./play";
 import { render } from "./render";
-import { G } from "./globe";
+import { G, aimAt } from "./globe";
+import { closeCountry, countryMissing, openCountry } from "./country";
+import { loadIndex } from "./hf";
+import { WORLD, lonSpan, shapeOf, slugOf } from "./world";
 
 /* =====================================================================
    VIEWS AND WIRING
    ===================================================================== */
 function openState(st: StateCode, fresh?: boolean) {
+  closeCountry();
   stopPlay();
   closeSheet(true);
   S.st = st;
@@ -56,11 +60,68 @@ function openHero() {
 }
 export function go(st: StateCode) {
   if (location.hash !== "#" + SLUG[st]) {
-    G.pending = st;
+    G.pending = "#" + SLUG[st];
     location.hash = SLUG[st];
   }
 }
+/** open a country by its FIRMS name; from the globe, fly there first */
+export function goCountry(k: string) {
+  const h = "#c/" + slugOf(k);
+  if (location.hash !== h) {
+    G.pending = h;
+    location.hash = h;
+  }
+}
+/** hide the globe and the state view, for the country view to take the screen */
+function leaveForCountry() {
+  stopPlay();
+  closeSheet(true);
+  S.st = null;
+  $("app").classList.remove("in");
+  $("app").hidden = true;
+  $("hero").hidden = true;
+  G.stop && G.stop();
+}
+/** a country address: find the country by its slug (in world.js, else in the dataset's index), then fly or open */
+async function routeCountry(hash: string) {
+  /* any spelling that folds to the same slug opens the country: "#c/United_States", "#c/cote-d'ivoire" */
+  let raw = hash.slice(3);
+  try {
+    raw = decodeURIComponent(raw);
+  } catch {
+    /* a malformed escape such as %E0: match the text as it is */
+  }
+  const slug = slugOf(raw);
+  let k = WORLD.find(c => slugOf(c.k) === slug)?.k;
+  if (!k) {
+    k = await loadIndex()
+      .then(list => list.find(c => slugOf(c.country) === slug)?.country)
+      .catch(() => undefined);
+    if (location.hash !== hash) return;
+  }
+  const shape = k ? shapeOf(k) : undefined;
+  if (k && shape && G.pending === hash && G.ok && !$("hero").hidden) {
+    const key = k,
+      b = shape.b;
+    G.pending = null;
+    G.flyTo!(aimAt(shape.c[0], shape.c[1], Math.min(lonSpan(shape), 180) * Math.cos((shape.c[1] * Math.PI) / 180) + (b[3] - b[1])), () => {
+      if (location.hash !== hash) return;
+      leaveForCountry();
+      openCountry(key);
+    });
+    return;
+  }
+  G.pending = null;
+  leaveForCountry();
+  if (k) openCountry(k);
+  else countryMissing(slug);
+}
 export function route() {
+  if (location.hash.startsWith("#c/")) {
+    routeCountry(location.hash);
+    return;
+  }
+  closeCountry();
   const st = STS.find(k => "#" + SLUG[k] === location.hash);
   if (!st) {
     closeSheet(true);
@@ -68,9 +129,9 @@ export function route() {
     if (location.hash === "#compare") openSheet("compare");
     return;
   }
-  if (G.pending === st && G.ok && !$("hero").hidden) {
+  if (G.pending === location.hash && G.ok && !$("hero").hidden) {
     G.pending = null;
-    G.flyTo!(st, () => openState(st, true));
+    G.flyTo!({ ry: G.st![st].ry, rx: G.st![st].rx, z: 1.62 }, () => openState(st, true));
   } else {
     G.pending = null;
     openState(st, !$("hero").hidden);

@@ -46,6 +46,28 @@ input[type=number]{width:84px}
 .pick.hover{border-color:var(--ember)}
 .mark{position:absolute;left:22px;bottom:34px;margin:0;font:700 15px var(--font-d);letter-spacing:-.01em;color:var(--ink2)}
 @media (max-width:760px){.mark{display:none}}
+.heroFind{flex:1 1 100%;display:flex;justify-content:center;gap:8px}
+.heroFind input{width:min(340px,100%);min-width:0;min-height:40px;border-radius:999px;padding:6px 16px;background:rgba(19,26,40,.86);border:1px solid var(--line);font-size:14px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.heroMsg{flex:1 1 100%;margin:0;text-align:center;font-size:13px;color:var(--ink2);text-shadow:0 1px 6px #000;min-height:0}
+.heroMsg:empty{display:none}
+
+/* ---------- country view: one scrolling page of data fetched from Hugging Face ---------- */
+#country{position:fixed;inset:0;z-index:5;overflow-y:auto;overflow-x:hidden;background:#000;opacity:0;transition:opacity .45s ease}
+#country.in{opacity:1}
+.cHead{position:sticky;top:0;z-index:3;display:flex;gap:12px 16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;padding:16px 24px 14px;background:rgba(8,11,19,.96);border-bottom:1px solid var(--line)}
+.cWho{display:flex;gap:14px;align-items:flex-end;min-width:0}
+.cWho h2{font:800 clamp(28px,4vw,44px)/1 var(--font-d);letter-spacing:-.03em;margin:4px 0 0;overflow-wrap:anywhere}
+.cMain{max-width:1260px;margin:0 auto}
+.cStatus{margin:12vh 16px 0;max-width:520px;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+@media (min-width:552px){.cStatus{margin-left:auto;margin-right:auto}}
+.cStatus p{margin:0;color:var(--ink2)}
+.cBar{width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+.cBar i{display:block;height:100%;width:0;background:var(--ember);transition:width .15s linear}
+#cMap{display:block;width:100%;height:320px;border-radius:10px;cursor:crosshair}
+.cSrc a{color:var(--ember)}
+.cSrc{overflow-wrap:anywhere}
+#country .rampRow canvas{flex:0 1 200px;min-width:60px}
+@media (max-width:900px){.cHead{padding:14px 16px}}
 
 /* ---------- state view: the map is the page ---------- */
 #app{position:fixed;inset:0;opacity:0;transition:opacity .45s ease;background:#000}
@@ -170,7 +192,7 @@ th{color:var(--muted);font-weight:400}
   .grid{padding:16px}.shHead{padding:14px 16px}
   #bigYear{font-size:56px;top:120px}
 }
-@media (prefers-reduced-motion:reduce){#hero,#app{transition:none}#sheet{animation:none}}
+@media (prefers-reduced-motion:reduce){#hero,#app,#country{transition:none}#sheet{animation:none}}
 </style>
 </head>
 <body>
@@ -179,11 +201,87 @@ th{color:var(--muted);font-weight:400}
   <canvas id="globe" aria-hidden="true"></canvas>
   <button class="tag" id="tagNY" type="button" data-st="NY">New York</button>
   <button class="tag" id="tagCA" type="button" data-st="CA">California</button>
+  <button class="tag" id="tagC" type="button" hidden></button>
   <p class="mark">Burn Calendar</p>
   <div class="heroBar">
+    <form class="heroFind" id="heroForm" role="search">
+      <input id="heroFind" list="countryList" placeholder="Find a country or territory…" aria-label="Find a country" autocomplete="off" enterkeyhint="go">
+      <datalist id="countryList"></datalist>
+      <button class="btn primary" type="submit">Open</button>
+    </form>
     <button class="btn pick" type="button" data-st="NY">New York</button>
     <button class="btn pick" type="button" data-st="CA">California</button>
     <button class="btn" type="button" id="heroCmp">Compare the two states</button>
+    <p class="heroMsg" id="heroMsg" role="status"></p>
+  </div>
+</section>
+
+<section id="country" hidden>
+  <header class="cHead">
+    <div class="cWho"><button class="btn" id="cBack" type="button">← Globe</button><div><p class="eyebrow" id="cCrumb"></p><h2 id="cName"></h2></div></div>
+    <div class="shCtl" id="cCtl" hidden>
+      <div class="yrs"><span>Years</span><select id="cFrom" aria-label="From year"></select><span>to</span><select id="cTo" aria-label="To year"></select></div>
+    </div>
+  </header>
+  <div class="cMain">
+    <div class="cStatus glass" id="cStatus" role="status">
+      <p id="cMsg"></p>
+      <div class="cBar"><i id="cBar"></i></div>
+      <button class="btn primary" id="cRetry" type="button" hidden>Retry</button>
+    </div>
+    <div class="grid" id="cBody" hidden>
+      <p class="lead" id="cLead"></p>
+      <section class="sec s12"><span class="num">01</span><h3>The short answer</h3>
+        <div class="ans">
+          <div class="a"><span class="q">Which months have the most fires?</span><span class="v" id="ca1"></span><span class="d" id="ca1n"></span></div>
+          <div class="a"><span class="q">Which years were the worst?</span><span class="v" id="ca2"></span><span class="d" id="ca2n"></span></div>
+          <div class="a"><span class="q">Was <select id="cfM" aria-label="Month"></select> <select id="cfY" aria-label="Year"></select> unusual?</span><span class="v" id="ca3"></span><span class="d" id="ca3n"></span></div>
+        </div></section>
+      <section class="sec s12"><span class="num">02</span><h3>Where it burns</h3>
+        <p class="note" id="cMapNote"></p>
+        <canvas id="cMap" role="img" aria-label="Map of hotspots in the country by grid square"></canvas>
+        <div class="rampRow"><span>fewer</span><canvas id="cMapRamp" width="200" height="10"></canvas><span id="cMapHi"></span></div></section>
+      <section class="sec s12"><span class="num">03</span><div class="row between"><h3>The full calendar</h3>
+          <div class="seg" id="cModeSeg" role="group" aria-label="Calendar values"><button type="button" data-mode="count">Hotspots</button><button type="button" data-mode="anom">Versus normal</button></div></div>
+        <p class="note" id="cCalNote"></p>
+        <div class="scroll"><div class="cal" id="cCal" style="min-width:640px"></div></div>
+        <div class="rampRow"><span id="cCalLo"></span><canvas id="cCalRamp" width="200" height="10"></canvas><span id="cCalHi"></span></div></section>
+      <section class="sec s6"><span class="num">04</span><h3>Year by year</h3>
+        <p class="note">Each year against the average year, the dashed line. Tap a bar to test that year below.</p>
+        <div class="key"><span><i style="background:var(--ember)"></i>Seen by VIIRS</span><span><i style="background:repeating-linear-gradient(45deg,var(--ember) 0 2px,transparent 2px 4px)"></i>Converted from MODIS, with likely range</span></div>
+        <div id="cYears"></div></section>
+      <section class="sec s6"><span class="num">05</span><h3>When it burns</h3>
+        <p class="note">A typical year, month by month: the median, with a line over the middle half of years. Tap a bar to test that month.</p>
+        <div id="cMonths"></div></section>
+      <section class="sec s7"><span class="num">06</span><h3>Can you trust the early years?</h3>
+        <p class="note">Before 2012 only the older MODIS sensor was flying, and it sees fewer hotspots than VIIRS for the same fire. Joined as they are, the two records make 2012 look like a fire explosion. We convert MODIS into VIIRS terms so that false step disappears.</p>
+        <div class="key"><span><i style="background:var(--ember);height:3px"></i>Our harmonized record</span><span><i style="background:rgba(255,138,61,.35)"></i>90% range of the converted years</span><span><i style="background:var(--cool);height:3px"></i>Raw counts joined as they are</span></div>
+        <div id="cSeam"></div>
+        <p class="note small" id="cSeamNote"></p>
+        <div class="tiles" id="cTiles"></div>
+        <p class="note small" id="cRateNote"></p>
+        <details><summary>Method, exchange rates and limits</summary>
+          <ol class="steps">
+            <li><span id="cFilter"></span></li>
+            <li>Count hotspots per month for the whole country, and per year in grid squares of <span id="cCell"></span>.</li>
+            <li>On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS (Suomi NPP) hotspots divided by MODIS hotspots, pulled toward the country's all-month rate, and that toward a global rate, where the country has few hotspots.</li>
+            <li>From February 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.</li>
+            <li>Test: predict each year from 2012 to 2025 from MODIS alone, using rates learned on the other years. The 90% range comes from those held-out errors and is wider for small counts.</li>
+            <li>NOAA-20 VIIRS is shown for comparison only; it is not used in the harmonized record.</li></ol>
+          <div class="scroll" style="margin:8px 0"><table id="cRates"></table></div>
+          <div class="scroll" style="margin:8px 0"><table id="cLoyo"></table></div>
+          <p class="note small">Limits. The record ends in December 2025. Converted months are estimates and small countries are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
+        </details></section>
+      <section class="sec s5"><span class="num">07</span><h3>What each satellite saw</h3>
+        <p class="note">Raw yearly detections from each sensor, after the same filter. NOAA-20 sees much like Suomi NPP but is not used in the harmonized record.</p>
+        <div class="key" id="cRawKey"></div>
+        <div id="cRaw"></div></section>
+      <section class="sec s12"><span class="num">08</span><h3>Take the data</h3>
+        <p class="note">The monthly series for the years chosen above: harmonized count, 90% range, and the raw counts from each satellite.</p>
+        <div class="row"><button class="btn primary" id="cDl" type="button">Monthly CSV</button></div>
+        <p class="note small" id="cDlMsg" role="status"></p>
+        <p class="note small cSrc" id="cSrc"></p></section>
+    </div>
   </div>
 </section>
 
@@ -318,7 +416,8 @@ th{color:var(--muted);font-weight:400}
 <div id="tip"></div>
 
 <script src="data.js?v=2"></script>
+<script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

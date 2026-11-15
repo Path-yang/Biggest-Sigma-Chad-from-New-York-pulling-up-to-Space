@@ -61,7 +61,8 @@ The copy was made on 14 November 2026 from files NASA last updated on 10 October
 
 ```text
 <sensor>/<year>/<sensor>_<year>_<Country>.parquet
-summary/v1/<Country>.json and summary/v1/index.json   (derived; see Country summaries)
+summary/v2/<Country>.json and summary/v2/index.json   (derived; see Country summaries)
+summary/v1/...                                         (earlier method, kept as published)
 manifest.csv
 firms_index.csv
 AttributesReadme.txt
@@ -142,28 +143,30 @@ From a web page, fetch the file URL shown under Layout. As of November 2026, Hug
 
 ## Country summaries
 
-`summary/v1/` holds one small JSON file per country, `summary/v1/<Country>.json`, and a list of them, `summary/v1/index.json`. They exist so a web page can show a country's fire history from one request of a few kB to 1.4 MB (median 66 kB) instead of hundreds of MB of Parquet.
+`summary/v2/` holds one small JSON file per country, `summary/v2/<Country>.json`, and a list of them, `summary/v2/index.json`. They exist so a web page can show a country's fire history from one request of a few kB to 1.4 MB (median 66 kB) instead of hundreds of MB of Parquet.
 
 Unlike the rest of this dataset, these files are derived and harmonized: they are counts and estimates computed from the raw files, not a copy of them.
 
-**What is counted.** Vegetation fires only (`type` 0) at nominal or high confidence: MODIS `confidence` of 30 or more, VIIRS `n` or `h`. January 2001 to December 2025.
+**What is counted.** Vegetation fires only (`type` 0) at nominal or high confidence: MODIS `confidence` of 30 or more, VIIRS `n` or `h`. January 2001 to December 2025. On top of that, a 0.05 degree square is left out for a whole calendar year, for every sensor, when any of the three sensors flags any detection there that year as a volcano, other static land source or offshore (`type` 1, 2 or 3). The sensors do not flag the same sources: in the 2014 Holuhraun eruption in Iceland, for example, Suomi NPP reported 49,776 detections over the lava field as `type` 0, while MODIS flagged 8,169 of its 8,227 there as `type` 2. Without the mask, lava and some flares count as vegetation fire for VIIRS only, which distorts the exchange rates below. Over all countries the mask removes 1.2% of counted MODIS detections and 3.6% of Suomi NPP ones (Brazil: 1.0% and 2.5%), and far more where there are many flares or eruptions.
 
 **What each file holds.**
 
 - `monthly`: counts per month for Terra (`T`), Aqua (`A`), Suomi NPP VIIRS (`V`) and NOAA-20 VIIRS (`N20`), 300 values each. Month index is `(year - 2001) * 12 + (month - 1)`.
 - `r_ta`, `r_t`: a VIIRS-per-MODIS exchange rate for each calendar month, for Terra and Aqua together and for Terra alone, with a 90% range for `r_ta` (`r_ta_lo`, `r_ta_hi`) and the all-months rate `r_all`.
-- `pi`, `zero_hi`: 90% range multipliers for converted values, by size (bins up to 10, 100, 1000 and above), and the top of the range when a converted month is zero.
+- `pi`, `zero_hi`: 90% range multipliers for converted values, by size (bins up to 10, 100, 1000 and above), and the top of the range when a converted month is zero (at least 1).
 - `val`: leave-one-year-out validation, 2012 to 2025, per year and in summary.
 - `cell`, `cells`, `cell_rows`: a grid of 0.1, 0.25, 0.5 or 1 degree cells (the finest that keeps the file under about 1.5 MB). Each row is cell, year, harmonized count, raw MODIS Terra+Aqua count, raw Suomi NPP count. A cell's indices are `floor(lat / cell)` and `floor(lon / cell)`.
 - `bbox`, `totals`, `source`, and a display `name`. `bbox` is the extent of the counted detections; for countries that cross the 180th meridian it runs from about -180 to 180.
 
 **Harmonization.** VIIRS sees several times more detections than MODIS for the same burning, so the two records cannot be joined directly. On the overlap, February 2012 to December 2025, each country gets one exchange rate per calendar month: Suomi NPP detections divided by MODIS detections. From February 2012 the Suomi NPP count is used as observed. Before that, the MODIS count is multiplied by the rate, with a Terra-only rate before July 2002, when Aqua had not yet started. The harmonized grid values apply the same rule month by month and are then summed per year.
 
-**Small countries.** A country with few detections cannot support twelve rates of its own. Each monthly rate is shrunk toward the country's all-months rate with a pseudo-count of 30 MODIS detections, and the all-months rate toward the global rate (4.10) with a pseudo-count of 3,000. These values were chosen by leave-one-year-out error across the 206 countries with at least 50 Suomi NPP detections on the overlap: they bring the mean held-out monthly error from 0.57 with almost no pooling to 0.41, within 1% of the best pair tried. Each file's `rate_note` says how much of its rates came from its own data.
+**Small countries.** A country with few detections cannot support twelve rates of its own. Each monthly rate is shrunk toward the country's all-months rate with a pseudo-count of 30 MODIS detections, and the all-months rate toward the global rate (4.04) with a pseudo-count of 300. These values were chosen by leave-one-year-out error across the 203 countries with at least 50 Suomi NPP detections on the overlap: they bring the mean held-out monthly error from 0.59 with almost no pooling to 0.39, within 1% of the best pair tried. Each file's `rate_note` says how much of its rates came from its own data. It also warns when the held-out monthly error is above 100% (29 countries, mostly small islands and territories with few detections, and Iceland, whose 2021 eruption both sensors report as vegetation fire), and when the all-months rate is more than twice the global one (7 countries, all oil and gas producers), where flares that VIIRS reports and MODIS does not may push the converted years too high.
 
 **Ranges.** The 90% range multipliers are the 5th and 95th percentiles of observed divided by predicted over held-out months, for the country as a whole and for its 1 degree cells. A size bin with fewer than 30 such months uses the value pooled over all countries, and every range includes the estimate itself.
 
-**Limits.** FIRMS's `type` flag stands in for a hand-made mask of industrial sites. Converted months are estimates, and a converted zero can hide real burning. A change of method would be published under a new folder, such as `summary/v2/`, rather than by rewriting `v1`.
+**Limits.** FIRMS's `type` flag, through the mask above, stands in for a hand-made mask of industrial sites, and an eruption or flare that no sensor flags stays in the counts. Converted months are estimates, and a converted zero can hide real burning. A change of method is published under a new folder rather than by rewriting an old one.
+
+**Earlier version.** `summary/v1/` is the first method, without the static-source mask, kept for anyone who used it. Its files have `"v": 1`. On 14 November 2026 its `cells` were corrected: every grid square west of Greenwich had been written as `floor(lat / cell) - 1` and `floor(lon / cell) + 100000`. Nothing else in v1 changed.
 
 ## Before you use it
 

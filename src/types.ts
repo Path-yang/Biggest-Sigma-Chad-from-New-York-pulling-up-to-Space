@@ -224,8 +224,20 @@ export interface YearRow {
   hi: number;
   naive: number;
 }
-export interface Analysis {
-  st: StateCode;
+/** what harmonization needs from a place: its exchange rates and range multipliers */
+export interface Rates {
+  r_ta: number[];
+  r_t: number[];
+  pi: [number, number][];
+  zero_hi: number;
+}
+/** month indexes (from January of the first year) where VIIRS and Aqua start, and the range size bins */
+export interface Epochs {
+  vi0: number;
+  aq0: number;
+  bins: number[];
+}
+export interface SeriesAnalysis {
   ser: SeriesRow[];
   stats: MonthStat[];
   years: YearRow[];
@@ -233,6 +245,9 @@ export interface Analysis {
   mean: number;
   order: { m: number; sum: number }[];
   ranked: YearRow[];
+}
+export interface Analysis extends SeriesAnalysis {
+  st: StateCode;
 }
 export interface Verdict {
   f: SeriesRow;
@@ -275,4 +290,76 @@ export interface View extends ViewTarget {
   mask: Uint8Array | null;
   dpr: number;
   early?: boolean;
+}
+
+/* ---------- world.js: country outlines for the globe ---------- */
+export interface WorldCountry {
+  /** the FIRMS country name, as in the data files */
+  k: string;
+  /** display name */
+  n: string;
+  /** label point inside the country: lon, lat */
+  c: [number, number];
+  /** bounding box: west, south, east, north */
+  b: [number, number, number, number];
+  /** outer rings, flat lon, lat pairs, closed */
+  r: Ring[];
+}
+export interface World {
+  countries: WorldCountry[];
+}
+
+/* ---------- country summaries fetched from Hugging Face (summary/v2/<Country>.json) ---------- */
+export interface CountryVal {
+  /** VIIRS-per-MODIS ratio of raw totals on the overlap; null where MODIS saw nothing */
+  raw_factor: number | null;
+  annual_med_err: number | null;
+  annual_max_err: number | null;
+  monthly_wape: number | null;
+  loyo: { y: number; obs: number; pred: number; modis: number }[];
+}
+export interface SensorSeries {
+  /** MODIS Terra */
+  T: number[];
+  /** MODIS Aqua */
+  A: number[];
+  /** VIIRS Suomi NPP */
+  V: number[];
+  /** VIIRS NOAA-20, not used in the harmonized record */
+  N20: number[];
+}
+export interface CountrySummary extends Rates {
+  v: 2;
+  country: string;
+  name: string;
+  y0: number;
+  y1: number;
+  viirs_from: [number, number];
+  aqua_from: [number, number];
+  bins: number[];
+  filter: string;
+  /** filtered detections per month, index (year - y0) * 12 + month */
+  monthly: SensorSeries;
+  r_ta_lo: number[];
+  r_ta_hi: number[];
+  r_all: number;
+  rate_note: string;
+  val: CountryVal;
+  bbox: [number, number, number, number];
+  /** grid cell size in degrees */
+  cell: number;
+  /** flat pairs: floor(lat / cell), floor(lon / cell) */
+  cells: number[];
+  /** flat rows of five: cell index, year index, harmonized count, raw MODIS Terra+Aqua, raw Suomi NPP */
+  cell_rows: number[];
+  totals: { T: number; A: number; V: number; N20: number };
+  source: { dataset: string; firms_updated: string; files: number };
+}
+export interface CountryIndexEntry {
+  country: string;
+  name: string;
+  file: string;
+  bytes: number;
+  bbox: [number, number, number, number];
+  total: number;
 }

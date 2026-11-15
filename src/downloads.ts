@@ -5,8 +5,8 @@ import { analyseFor, harm, hexState, selMask } from "./model";
 
 /* ---------- downloads ---------- */
 const selSlug = () => `${S.st}-${S.sel.type === "county" ? D.states[S.st!].counties[S.sel.ci].name.replace(/\W+/g, "") : S.sel.type}`;
-async function save(filename: string, data: string) {
-  const msg = $("dlMsg");
+/** hand the reader a CSV file, and say how it went in msg */
+export async function save(filename: string, data: string, msg: HTMLElement = $("dlMsg")) {
   try {
     const d = window.claude && (await window.claude.use("downloads"));
     if (d) {

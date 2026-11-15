@@ -2,8 +2,8 @@
 """Build one small, harmonized fire summary per FIRMS country.
 
 Reads the Parquet copy of the FIRMS yearly country files under build/hf/ and
-writes, for each of the 238 FIRMS countries, build/hf/summary/v1/<Country>.json,
-plus build/hf/summary/v1/index.json. The Burn Calendar page fetches one of
+writes, for each of the 238 FIRMS countries, build/hf/summary/v2/<Country>.json,
+plus build/hf/summary/v2/index.json (or summary/v1/ with --summary-version 1). The Burn Calendar page fetches one of
 these when a reader clicks a country, instead of hundreds of MB of raw files.
 
 Method (the same one the page uses for New York and California, as far as
@@ -12,6 +12,13 @@ the world data allows):
   * Count vegetation fires at nominal or high confidence: type = 0, MODIS
     confidence >= 30, VIIRS confidence 'n' or 'h'. FIRMS's type flag stands
     in for the hand-made industrial-site mask used for the two states.
+  * v2 only: a 0.05 degree cell is dropped for a whole calendar year, for every
+    sensor, when any of the three sensors flags any detection there that year
+    as a volcano, other static land source or offshore (type 1, 2 or 3). The
+    sensors do not flag the same sources: MODIS often flags eruption lava and
+    some flares as type 1 or 2 where Suomi NPP VIIRS gives them type 0, which
+    in v1 put lava into VIIRS only and broke the exchange rates of Iceland
+    and Reunion. v1 had no such mask and is kept as published.
   * Monthly counts per sensor: Terra, Aqua, Suomi NPP VIIRS, NOAA-20 VIIRS.
   * On the overlap, February 2012 to December 2025, learn one VIIRS-per-MODIS
     exchange rate per calendar month (Terra+Aqua, and Terra alone). Each
@@ -30,10 +37,10 @@ the world data allows):
     of 0.1, 0.25, 0.5 or 1 degree that keeps the file small.
 
 Usage:
-    .venv/bin/python scripts/build_country_summaries.py [--cache DIR] [--refresh] [--stage1-only]
+    .venv/bin/python scripts/build_country_summaries.py [--summary-version 1|2] [--cache DIR] [--refresh] [--stage1-only]
 
 Stage 1 reads the Parquet files once per country with DuckDB and keeps the
-counts on a 0.05 degree grid in --cache (reused on later runs unless
+counts on a 0.05 degree grid in --cache (one cache per summary version) (reused on later runs unless
 --refresh). Stage 2 computes rates, validation and grids from the cache.
 Needs duckdb and numpy.
 """
@@ -51,7 +58,6 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 HF = ROOT / "build" / "hf"
-OUT = HF / "summary" / "v1"
 DATASET = "rogeryzd/firms-active-fire-by-country"
 
 Y0, Y1 = 2001, 2025
@@ -78,9 +84,16 @@ MIN_EVAL_V = 50  # countries with fewer overlap VIIRS detections do not vote on 
 BOOT = 1000
 SEED = 20120201
 
-FILTER = ("Vegetation fires only (FIRMS type 0) at nominal or high confidence (MODIS confidence 30 or more, "
+FILTER_V1 = ("Vegetation fires only (FIRMS type 0) at nominal or high confidence (MODIS confidence 30 or more, "
           "VIIRS confidence n or h); FIRMS's own type flag stands in for the hand-made industrial-site mask "
           "used for New York and California, and detections before 2001 are dropped.")
+FILTER_V2 = ("Vegetation fires only (FIRMS type 0) at nominal or high confidence (MODIS confidence 30 or more, "
+             "VIIRS confidence n or h), with every 0.05 degree cell dropped for a whole year, for all sensors, when any "
+             "sensor flags a detection there that year as a volcano, static land source or offshore (type 1, 2 or 3), "
+             "because MODIS and VIIRS do not flag the same sources (VIIRS gave the lava of several eruptions type 0); "
+             "detections before 2001 are dropped.")
+UNRELIABLE_WAPE = 1.0  # v2: held-out monthly error above this gets a warning in rate_note
+HIGH_RATE = 2  # v2: an all-months rate above this many times the global one gets a note in rate_note
 
 # Display names where swapping underscores for spaces reads wrong.
 NAME_FIX = {
@@ -132,19 +145,40 @@ def read_manifest():
     return files, updated
 
 
-CELL_SQL = (f"CAST(floor(round(latitude * 100000) / {BASE_STEP}) AS INTEGER) AS la, "
-            f"CAST(floor(round(longitude * 100000) / {BASE_STEP}) AS INTEGER) AS lo")
+CELL_LA = f"CAST(floor(round(latitude * 100000) / {BASE_STEP}) AS INTEGER)"
+CELL_LO = f"CAST(floor(round(longitude * 100000) / {BASE_STEP}) AS INTEGER)"
+CELL_SQL = f"{CELL_LA} AS la, {CELL_LO} AS lo"
 MONTH_SQL = f"CAST((year(acq_date) - {Y0}) * 12 + month(acq_date) - 1 AS SMALLINT) AS i"
 WHEN = f"type = 0 AND acq_date >= DATE '{Y0}-01-01' AND acq_date < DATE '{Y1 + 1}-01-01'"
 
 
-def extract(con, files, path):
+def src(files, masked):
+    """FROM clause: the files, and in v2 without the cell-years in the mask table (see make_mask)."""
+    if not masked:
+        return "read_parquet($f)"
+    return (f"(SELECT * FROM read_parquet($f) d ANTI JOIN static_mask m ON m.la = {CELL_LA} AND m.lo = {CELL_LO} "
+            f"AND m.y = year(d.acq_date))")
+
+
+def make_mask(con, files):
+    """v2: every 0.05 degree cell and calendar year in which any sensor, at any confidence, has a detection
+    that FIRMS does not class as vegetation fire (type 1 volcano, 2 static land source, 3 offshore)."""
+    paths = [p for v in files.values() for p in v]
+    con.execute("CREATE OR REPLACE TEMP TABLE static_mask (la INTEGER, lo INTEGER, y INTEGER)")
+    if paths:
+        con.execute(f"INSERT INTO static_mask SELECT DISTINCT {CELL_LA}, {CELL_LO}, year(acq_date) "
+                    f"FROM read_parquet($f, union_by_name = true) WHERE type <> 0", {"f": paths})
+    return con.execute("SELECT count(*) FROM static_mask").fetchone()[0]
+
+
+def extract(con, files, path, masked):
     """Filtered counts for one country, on the 0.05 degree base grid, saved as .npz."""
     out = {}
     empty_i = np.zeros(0, np.int32)
+    out["mask_cell_years"] = np.array(make_mask(con, files) if masked else 0, np.int64)
     if files["modis"]:
         r = con.execute(f"SELECT {CELL_SQL}, {MONTH_SQL}, CAST(satellite = 'Aqua' AS TINYINT) AS s, "
-                        f"CAST(count(*) AS INTEGER) AS n FROM read_parquet($f) WHERE {WHEN} AND confidence >= 30 "
+                        f"CAST(count(*) AS INTEGER) AS n FROM {src(files, masked)} WHERE {WHEN} AND confidence >= 30 "
                         f"GROUP BY ALL", {"f": files["modis"]}).fetchnumpy()
         for k in ("la", "lo", "i", "s", "n"):
             out["m_" + k] = np.asarray(r[k], np.int32)
@@ -152,7 +186,7 @@ def extract(con, files, path):
         for k in ("la", "lo", "i", "s", "n"):
             out["m_" + k] = empty_i
     if files["viirs-snpp"]:
-        r = con.execute(f"SELECT {CELL_SQL}, {MONTH_SQL}, CAST(count(*) AS INTEGER) AS n FROM read_parquet($f) "
+        r = con.execute(f"SELECT {CELL_SQL}, {MONTH_SQL}, CAST(count(*) AS INTEGER) AS n FROM {src(files, masked)} "
                         f"WHERE {WHEN} AND confidence IN ('n', 'h') GROUP BY ALL", {"f": files["viirs-snpp"]}).fetchnumpy()
         for k in ("la", "lo", "i", "n"):
             out["v_" + k] = np.asarray(r[k], np.int32)
@@ -161,7 +195,7 @@ def extract(con, files, path):
             out["v_" + k] = empty_i
     n20 = np.zeros(NM, np.int64)
     if files["viirs-jpss1"]:
-        r = con.execute(f"SELECT {MONTH_SQL}, count(*) AS n FROM read_parquet($f) "
+        r = con.execute(f"SELECT {MONTH_SQL}, count(*) AS n FROM {src(files, masked)} "
                         f"WHERE {WHEN} AND confidence IN ('n', 'h') GROUP BY ALL", {"f": files["viirs-jpss1"]}).fetchnumpy()
         np.add.at(n20, np.asarray(r["i"], np.int64), np.asarray(r["n"], np.int64))
     out["n20"] = n20
@@ -170,7 +204,7 @@ def extract(con, files, path):
     os.replace(tmp, path)
 
 
-def stage1(countries, files, cache, refresh):
+def stage1(countries, files, cache, refresh, masked):
     cache.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute(f"SET threads = {os.cpu_count()}")
@@ -178,7 +212,7 @@ def stage1(countries, files, cache, refresh):
     todo = [c for c in countries if refresh or not (cache / f"{c}.npz").exists()]
     for n, c in enumerate(todo, 1):
         t = time.time()
-        extract(con, files[c], cache / f"{c}.npz")
+        extract(con, files[c], cache / f"{c}.npz", masked)
         print(f"  [{n}/{len(todo)}] {c}: {time.time() - t:.1f}s", flush=True)
     print(f"stage 1: {len(todo)} countries read in {time.time() - t0:.0f}s ({len(countries) - len(todo)} cached)")
 
@@ -332,8 +366,10 @@ def harmonized_cells(d, r_ta, r_t, cell, max_bytes=TARGET_BYTES):
     H = np.bincount(slot, weights=np.concatenate([h_m, h_v]), minlength=uk.size * NYR)
     M = np.bincount(slot[:nm], weights=d["m_n"], minlength=uk.size * NYR)
     V = np.bincount(slot[nm:], weights=d["v_n"], minlength=uk.size * NYR)
-    la_c = np.floor_divide(uk, 100000)
-    lo_c = uk - la_c * 100000
+    # keys are la * 100000 + lo with |lo| < 50000 (pack_keys_ok); a plain floor division would give
+    # la - 1 and lo + 100000 for every cell west of Greenwich
+    lo_c = (uk + 50000) % 100000 - 50000
+    la_c = (uk - lo_c) // 100000
     cells = np.empty(uk.size * 2, np.int64)
     cells[0::2], cells[1::2] = la_c, lo_c
     nz = np.nonzero((H > 0) | (M > 0) | (V > 0))[0]
@@ -358,7 +394,7 @@ def dumps(o):
     return json.dumps(o, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
-def stage2(countries, files, updated, cache, out_dir):
+def stage2(countries, files, updated, cache, out_dir, version):
     t0 = time.time()
     data = {}
     for c in countries:
@@ -416,6 +452,8 @@ def stage2(countries, files, updated, cache, out_dir):
             # whose held-out months all miss one way would otherwise get one
             pi.append([sig(min(lo, 1.0)), sig(max(hi, 1.0))])
         zero_hi = own_zero[0] if own_zero[1] >= MIN_BIN_MONTHS else pooled_zero[0]
+        if version >= 2:
+            zero_hi = max(zero_hi, 1.0)  # a range of exactly 0 to 0 for a month with no MODIS overstates what is known
 
         obs_y = (Vo[ci] * ym).sum(1)
         pred_y = (pred[ci] * ym).sum(1)
@@ -448,12 +486,20 @@ def stage2(countries, files, updated, cache, out_dir):
             f"{own_share:.0%} of the weight in the monthly rates on average, and its own all-months rate "
             f"{1 - w_all[ci]:.0%} against the global one."
         )
+        if version >= 2 and val["monthly_wape"] is not None and val["monthly_wape"] > UNRELIABLE_WAPE:
+            rate_note += (f" Warning: tested on 2012-2025 with each year held out, the converted months were off by "
+                          f"{val['monthly_wape']:.0%} of the observed VIIRS count (size-weighted), so converted years "
+                          f"before 2012 are not reliable here.")
+        if version >= 2 and r_all[ci] > HIGH_RATE * G:
+            rate_note += (f" The all-months rate is more than {HIGH_RATE} times the global one. That can be real (small "
+                          f"fires only VIIRS sees), or come from gas flares and other industrial heat that VIIRS reports "
+                          f"as vegetation fire and MODIS flags or misses; converted years before 2012 may then be too high.")
 
         # grid: finest cell that keeps the file under TARGET_BYTES
         base = {
-            "v": 1, "country": c, "name": display_name(c),
+            "v": version, "country": c, "name": display_name(c),
             "y0": Y0, "y1": Y1, "viirs_from": list(VIIRS_FROM), "aqua_from": list(AQUA_FROM), "bins": BINS,
-            "filter": FILTER,
+            "filter": FILTER_V2 if version >= 2 else FILTER_V1,
             "monthly": {"T": mon[0].tolist(), "A": mon[1].tolist(), "V": mon[2].tolist(), "N20": mon[3].tolist()},
             "r_ta": rta, "r_t": rt, "r_ta_lo": [sig(x) for x in r_lo[ci]], "r_ta_hi": [sig(x) for x in r_hi[ci]],
             "r_all": sig(r_all[ci]),
@@ -478,9 +524,12 @@ def stage2(countries, files, updated, cache, out_dir):
         if nbytes > MAX_BYTES:
             raise SystemExit(f"{c}: {nbytes} bytes even at {cell} degree")
         (out_dir / f"{c}.json").write_text(text, encoding="utf-8")
-        index.append({"country": c, "name": display_name(c), "file": f"summary/v1/{c}.json", "bytes": nbytes,
+        index.append({"country": c, "name": display_name(c), "file": f"summary/v{version}/{c}.json", "bytes": nbytes,
                       "bbox": bbox, "total": int(round(total))})
-    (out_dir / "index.json").write_text(dumps({"v": 1, "countries": index}), encoding="utf-8")
+    (out_dir / "index.json").write_text(dumps({"v": version, "countries": index}), encoding="utf-8")
+    masked = sum(int(data[c]["mask_cell_years"]) for c in countries if "mask_cell_years" in data[c])
+    if version >= 2:
+        print(f"static-source mask: {masked:,} cell-years over all countries")
     print(f"stage 2: {len(countries)} files written to {out_dir} in {time.time() - t0:.0f}s")
 
 
@@ -506,18 +555,23 @@ def raw_bbox(files):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--cache", type=Path, default=ROOT / "build" / "summary_cache",
-                    help="where stage 1 keeps per-country counts (default build/summary_cache)")
-    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--summary-version", type=int, choices=(1, 2), default=2,
+                    help="1: the published v1 method (type 0 only); 2 (default): also drop static-source cell-years")
+    ap.add_argument("--cache", type=Path, default=None,
+                    help="where stage 1 keeps per-country counts (default build/summary_cache/v<N>)")
+    ap.add_argument("--out", type=Path, default=None, help="default build/hf/summary/v<N>")
     ap.add_argument("--refresh", action="store_true", help="read the Parquet files again even if cached")
     ap.add_argument("--stage1-only", action="store_true")
     args = ap.parse_args()
+    ver = args.summary_version
+    cache = args.cache or ROOT / "build" / "summary_cache" / f"v{ver}"
+    out = args.out or HF / "summary" / f"v{ver}"
     files, updated = read_manifest()
     countries = sorted(files)
     print(f"{len(countries)} countries in the manifest")
-    stage1(countries, files, args.cache, args.refresh)
+    stage1(countries, files, cache, args.refresh, ver >= 2)
     if not args.stage1_only:
-        stage2(countries, files, updated, args.cache, args.out)
+        stage2(countries, files, updated, cache, out, ver)
 
 
 if __name__ == "__main__":

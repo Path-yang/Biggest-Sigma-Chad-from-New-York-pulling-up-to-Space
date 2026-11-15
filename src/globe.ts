@@ -1,8 +1,9 @@
 import type * as Three from "three";
-import type { StateCode } from "./types";
+import type { StateCode, WorldCountry } from "./types";
 import { D, STS } from "./data";
 import { $, ease, reduced } from "./util";
-import { go } from "./views";
+import { go, goCountry } from "./views";
+import { WORLD, countryAt, cutEdge, lonSpan } from "./world";
 
 interface GlobeState {
   topM: Three.MeshBasicMaterial;
@@ -11,20 +12,32 @@ interface GlobeState {
   rx: number;
   hover: boolean;
 }
+/** where a flight ends: the globe's rotation and the camera distance */
+export interface Aim {
+  ry: number;
+  rx: number;
+  z: number;
+}
 /** the handle the rest of the page holds on the globe; the methods exist once globeInit has finished */
 interface Globe {
   ok: boolean;
   run: boolean;
   st?: Record<string, GlobeState>;
   hover?: (st: StateCode | null) => void;
-  flyTo?: (st: StateCode, done: () => void) => void;
+  flyTo?: (to: Aim, done: () => void) => void;
   reset?: () => void;
   stop?: () => void;
-  /** a state the reader picked on the globe, so route() flies to it before opening it */
-  pending?: StateCode | null;
+  /** the address of a place the reader picked on the globe, so route() flies to it before opening it */
+  pending?: string | null;
 }
+/** the rotation that brings lon, lat to the front; span (degrees) is how much of the globe should stay in view */
+export const aimAt = (lon: number, lat: number, span = 0): Aim => ({
+  ry: (-(((lon + 360) % 360) - 360 + 90) * Math.PI) / 180,
+  rx: (lat * Math.PI) / 180,
+  z: 1.62 + Math.min(0.9, span / 90),
+});
 interface Flight {
-  st: StateCode;
+  to: Aim;
   t0: number;
   from: { ry: number; rx: number; x: number; y: number; z: number };
   done: () => void;
@@ -178,11 +191,57 @@ export async function globeInit() {
     G.st[st] = {
       topM,
       cen: cen.clone().multiplyScalar(RT + 0.02),
-      ry: (-(((lon + 360) % 360) - 360 + 90) * Math.PI) / 180,
-      rx: (lat * Math.PI) / 180,
+      ry: aimAt(lon, lat).ry,
+      rx: aimAt(lon, lat).rx,
       hover: false,
     };
   }
+  /* country borders: thin lines just above the surface; long edges are split so they follow the curve */
+  const bpos: number[] = [],
+    spans = new Map<string, [number, number]>(),
+    RB = 1.002;
+  for (const c of WORLD) {
+    const first = bpos.length / 3;
+    for (const r of c.r)
+      for (let i = 0; i + 3 < r.length; i += 2) {
+        const a0 = r[i],
+          b0 = r[i + 1],
+          a1 = r[i + 2],
+          b1 = r[i + 3];
+        if (cutEdge(c.k, a0, b0, a1, b1)) continue;
+        const n = Math.max(1, Math.ceil(Math.max(Math.abs(a1 - a0), Math.abs(b1 - b0)) / 1.5));
+        for (let j = 0; j < n; j++) {
+          const p = v3(a0 + ((a1 - a0) * j) / n, b0 + ((b1 - b0) * j) / n, RB),
+            q = v3(a0 + ((a1 - a0) * (j + 1)) / n, b0 + ((b1 - b0) * (j + 1)) / n, RB);
+          bpos.push(p.x, p.y, p.z, q.x, q.y, q.z);
+        }
+      }
+    spans.set(c.k, [first, bpos.length / 3 - first]);
+  }
+  const bAttr = new T.Float32BufferAttribute(bpos, 3),
+    bGeo = new T.BufferGeometry(),
+    hlGeo = new T.BufferGeometry();
+  bGeo.setAttribute("position", bAttr);
+  hlGeo.setAttribute("position", bAttr);
+  hlGeo.computeBoundingSphere();
+  grp.add(new T.LineSegments(bGeo, new T.LineBasicMaterial({ color: 0x9fb2d0, transparent: true, opacity: 0.5, depthWrite: false })));
+  const hlLine = new T.LineSegments(hlGeo, new T.LineBasicMaterial({ color: 0xff8a3d, depthWrite: false }));
+  hlLine.visible = false;
+  grp.add(hlLine);
+  const tagC = $("tagC");
+  let hov: WorldCountry | null = null;
+  const setHov = (c: WorldCountry | null) => {
+    if (c === hov) return;
+    hov = c;
+    const sp = c && spans.get(c.k);
+    hlLine.visible = !!sp && sp[1] > 0;
+    if (sp) hlGeo.setDrawRange(sp[0], sp[1]);
+    tagC.textContent = c ? c.n : "";
+    if (!c) tagC.hidden = true;
+  };
+  tagC.onclick = () => {
+    if (hov) goCountry(hov.k);
+  };
   /* the pixel pass */
   const rt = new T.WebGLRenderTarget(4, 4, { minFilter: T.NearestFilter, magFilter: T.NearestFilter }),
     post = new T.Scene(),
@@ -203,7 +262,9 @@ export async function globeInit() {
     camZ = 4.6,
     last = 0;
   const ray = new T.Raycaster(),
-    ndc = new T.Vector2();
+    ndc = new T.Vector2(),
+    ball = new T.Sphere(new T.Vector3(), 1),
+    hitP = new T.Vector3();
   function size() {
     const w = cv.clientWidth,
       h = cv.clientHeight;
@@ -227,6 +288,49 @@ export async function globeInit() {
     const h = ray.intersectObjects(tops);
     return h.length ? h[0].object.userData.st : null;
   };
+  /* small places: many territories are under a pixel on the globe, so each country smaller than SMALL_PX on screen
+     can also be picked by its label point, from up to NEAR_PX away over the sea or NEAR_LAND_PX over another country */
+  const SMALL_PX = 12,
+    NEAR_PX = 12,
+    NEAR_LAND_PX = 6,
+    sizeDeg = WORLD.map(c => Math.max(lonSpan(c) * Math.cos((c.c[1] * Math.PI) / 180), c.b[3] - c.b[1])),
+    lp = new T.Vector3(),
+    edge = new T.Vector3();
+  const nearestSmall = (e: MouseEvent, maxPx: number): WorldCountry | null => {
+    const r = cv.getBoundingClientRect(),
+      px = e.clientX - r.left,
+      py = e.clientY - r.top;
+    /* screen pixels per degree at the middle of the globe */
+    lp.copy(grp.position).project(cam);
+    edge.set(0, 1, 0).add(grp.position).project(cam);
+    const perDeg = ((Math.abs(edge.y - lp.y) * 0.5 * r.height) * Math.PI) / 180;
+    let best: WorldCountry | null = null,
+      bd = maxPx;
+    WORLD.forEach((c, i) => {
+      if (sizeDeg[i] * perDeg >= SMALL_PX) return;
+      lp.copy(v3(c.c[0], c.c[1], 1));
+      grp.localToWorld(lp);
+      if (lp.clone().sub(grp.position).normalize().dot(cam.position.clone().sub(lp).normalize()) <= 0.15) return;
+      lp.project(cam);
+      const dd = Math.hypot((lp.x * 0.5 + 0.5) * r.width - px, (-lp.y * 0.5 + 0.5) * r.height - py);
+      if (dd < bd) {
+        bd = dd;
+        best = c;
+      }
+    });
+    return best;
+  };
+  /** the country under the pointer: the ray from pick() meets the unit sphere, turned back into lon, lat; a small
+      place whose label point is close enough wins */
+  const pickCountry = (e: MouseEvent): WorldCountry | null => {
+    ball.center.copy(grp.position);
+    if (!ray.ray.intersectSphere(ball, hitP)) return null;
+    grp.worldToLocal(hitP);
+    const lat = 90 - (Math.acos(Math.max(-1, Math.min(1, hitP.y))) * 180) / Math.PI,
+      lon = (((Math.atan2(hitP.z, -hitP.x) * 180) / Math.PI + 360) % 360) - 180,
+      under = countryAt(lon, lat);
+    return nearestSmall(e, under ? NEAR_LAND_PX : NEAR_PX) || under;
+  };
   cv.onpointerdown = e => {
     if (fly) return;
     cv.setPointerCapture(e.pointerId);
@@ -241,29 +345,40 @@ export async function globeInit() {
       user.rx = Math.max(-0.9, Math.min(0.9, drag.rx + dy * 0.005));
       return;
     }
-    const st = pick(e);
+    if (fly) return;
+    const st = pick(e),
+      c = st ? null : pickCountry(e);
+    setHov(c);
     for (const k in G.st!) G.st![k].hover = k === st;
-    cv.style.cursor = st ? "pointer" : "grab";
+    cv.style.cursor = st || c ? "pointer" : "grab";
     document.querySelectorAll<HTMLButtonElement>(".pick").forEach(b => b.classList.toggle("hover", b.dataset.st === st));
   };
   cv.onpointerup = e => {
     const d = drag;
     drag = null;
     if (d && !d.moved) {
-      const st = pick(e);
+      const st = pick(e),
+        c = st ? null : pickCountry(e);
       if (st) go(st);
+      else if (c) goCountry(c.k);
     }
+  };
+  cv.onpointerleave = e => {
+    if (e.relatedTarget !== tagC) setHov(null);
   };
   G.hover = st => {
     for (const k in G.st!) G.st![k].hover = k === st;
   };
-  G.flyTo = (st, done) => {
+  G.flyTo = (to, done) => {
     if (reduced) {
       done();
       return;
     }
+    setHov(null);
+    const ry0 = grp.rotation.y;
     fly = {
-      st,
+      /* turn the short way round */
+      to: { ...to, ry: ry0 + ((((to.ry - ry0) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI },
       t0: performance.now(),
       from: { ry: grp.rotation.y, rx: grp.rotation.x, x: grp.position.x, y: grp.position.y, z: cam.position.z },
       done,
@@ -271,6 +386,7 @@ export async function globeInit() {
   };
   G.reset = () => {
     fly = null;
+    setHov(null);
     user.ry = user.rx = 0;
     size();
     if (!G.run) {
@@ -293,12 +409,12 @@ export async function globeInit() {
       const u = Math.min(1, (now - fly.t0) / 1500),
         e = ease(u),
         f = fly.from,
-        s = G.st![fly.st];
+        s = fly.to;
       grp.rotation.y = f.ry + (s.ry - f.ry) * e;
       grp.rotation.x = f.rx + (s.rx - f.rx) * e;
       grp.position.x = f.x * (1 - e);
       grp.position.y = f.y * (1 - e);
-      cam.position.z = f.z + (1.62 - f.z) * e;
+      cam.position.z = f.z + (s.z - f.z) * e;
       if (u > 0.62) $("hero").classList.add("leaving");
       if (u >= 1) {
         const d = fly.done;
@@ -331,6 +447,15 @@ export async function globeInit() {
       tag.style.display = facing && !fly ? "block" : "none";
       tag.style.left = (tmp.x * 0.5 + 0.5) * cv.clientWidth + "px";
       tag.style.top = (-tmp.y * 0.5 + 0.5) * cv.clientHeight + "px";
+    }
+    if (hov) {
+      tmp.copy(v3(hov.c[0], hov.c[1], RB));
+      grp.localToWorld(tmp);
+      const facing = tmp.clone().sub(grp.position).normalize().dot(cam.position.clone().sub(tmp).normalize()) > 0.15;
+      tmp.project(cam);
+      tagC.hidden = !facing || !!fly;
+      tagC.style.left = (tmp.x * 0.5 + 0.5) * cv.clientWidth + "px";
+      tagC.style.top = (-tmp.y * 0.5 + 0.5) * cv.clientHeight + "px";
     }
     ren.setRenderTarget(rt);
     ren.render(scene, cam);

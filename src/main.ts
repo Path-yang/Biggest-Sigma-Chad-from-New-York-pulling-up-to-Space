@@ -9,7 +9,120 @@ import { stopPlay, togglePlay } from "./play";
 import { csvCal, csvHot } from "./downloads";
 import { render } from "./render";
 import { G, globeInit } from "./globe";
-import { go, route } from "./views";
+import { go, goCountry, route } from "./views";
+import { countryEvents } from "./country";
+import { loadIndex } from "./hf";
+import { WORLD } from "./world";
+
+/** a place the hero's search can open: a country by its FIRMS name, or one of the two detailed states */
+type Findable = { name: string; k: string } | { name: string; st: StateCode };
+const fold = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/^st /, "saint ");
+/** other names people type, folded, to FIRMS names; checked before any partial match */
+const ALIAS: Record<string, string> = {
+  us: "United_States",
+  usa: "United_States",
+  "u s": "United_States",
+  "u s a": "United_States",
+  america: "United_States",
+  "united states of america": "United_States",
+  uk: "United_Kingdom",
+  "u k": "United_Kingdom",
+  britain: "United_Kingdom",
+  "great britain": "United_Kingdom",
+  england: "United_Kingdom",
+  scotland: "United_Kingdom",
+  wales: "United_Kingdom",
+  "northern ireland": "United_Kingdom",
+  "ivory coast": "Cote_d_Ivoire",
+  drc: "Democratic_Republic_of_the_Congo",
+  "dr congo": "Democratic_Republic_of_the_Congo",
+  "congo kinshasa": "Democratic_Republic_of_the_Congo",
+  "congo brazzaville": "Republic_of_Congo",
+  burma: "Myanmar",
+  czechia: "Czech_Republic",
+  turkiye: "Turkey",
+  "cabo verde": "Cape_Verde",
+  "east timor": "Timor-Leste",
+  "viet nam": "Vietnam",
+  holland: "Netherlands",
+  faeroe: "Faeroe_Islands",
+  "faeroe islands": "Faeroe_Islands",
+  swaziland: "Swaziland",
+  macedonia: "Macedonia_Former_Yugoslav_Republic_of",
+  micronesia: "Federated_States_of_Micronesia",
+  uae: "United_Arab_Emirates",
+  bosnia: "Bosnia_and_Herzegovina",
+  "south korea": "Republic_of_Korea",
+  "north korea": "Dem_Rep_Korea",
+};
+function heroSearch() {
+  const list: Findable[] = [...STS.map(st => ({ name: NAME[st], st })), ...WORLD.map(c => ({ name: c.n, k: c.k }))];
+  const fill = () => {
+    $("countryList").innerHTML = list
+      .map(f => f.name)
+      .sort((a, b) => a.localeCompare(b))
+      .map(n => `<option value="${n.replace(/"/g, "&quot;")}"></option>`)
+      .join("");
+  };
+  fill();
+  /* countries in the data without an outline: only the dataset's index knows them */
+  let asked = false;
+  $("heroFind").onfocus = () => {
+    if (asked) return;
+    asked = true;
+    loadIndex()
+      .then(idx => {
+        const have = new Set(WORLD.map(c => c.k)),
+          extra = idx.filter(c => !have.has(c.country));
+        if (!extra.length) return;
+        list.push(...extra.map(c => ({ name: c.name, k: c.country })));
+        fill();
+      })
+      .catch(() => (asked = false));
+  };
+  const find = (q: string) => {
+    const f = fold(q);
+    if (!f) return null;
+    const alias = ALIAS[f];
+    return (
+      list.find(c => fold(c.name) === f || ("k" in c && fold(c.k) === f)) ||
+      (alias && list.find(c => "k" in c && c.k === alias)) ||
+      list.find(c => fold(c.name).startsWith(f)) ||
+      /* a word inside the name, such as "guinea" in "Papua New Guinea"; not single letters or pairs */
+      (f.length >= 3 && list.find(c => (" " + fold(c.name)).includes(" " + f))) ||
+      null
+    );
+  };
+  const open = (hit: Findable) => {
+    $("heroFind").value = "";
+    $("heroMsg").textContent = "";
+    $("heroFind").blur();
+    if ("st" in hit) go(hit.st);
+    else goCountry(hit.k);
+  };
+  $("heroForm").onsubmit = e => {
+    e.preventDefault();
+    const q = $("heroFind").value,
+      hit = find(q);
+    if (hit) open(hit);
+    else $("heroMsg").textContent = q.trim() ? `No country called "${q.trim()}". Try another spelling.` : "Type a country's name.";
+  };
+  /* picking a suggestion from the list opens it straight away */
+  $("heroFind").oninput = e => {
+    $("heroMsg").textContent = "";
+    if (e instanceof InputEvent && e.inputType && e.inputType !== "insertReplacementText") return;
+    const v = fold($("heroFind").value),
+      hit = list.find(c => fold(c.name) === v);
+    if (hit) open(hit);
+  };
+}
 
 function init() {
   const yo: string[] = [];
@@ -162,6 +275,8 @@ function init() {
     b.onmouseenter = () => G.hover && G.hover(b.dataset.st as StateCode);
     b.onmouseleave = () => G.hover && G.hover(null);
   });
+  heroSearch();
+  countryEvents();
   $("dlCal").onclick = csvCal;
   $("dlHot").onclick = csvHot;
   mapEvents();

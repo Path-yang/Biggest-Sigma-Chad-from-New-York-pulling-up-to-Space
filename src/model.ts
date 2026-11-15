@@ -1,21 +1,39 @@
-import type { Analysis, Harmonized, HexState, MonthStat, Sel, SeriesRow, StateCode, Town, Verdict, YearRow } from "./types";
+import type {
+  Analysis,
+  Epochs,
+  Harmonized,
+  HexState,
+  MonthStat,
+  Rates,
+  Sel,
+  SeriesAnalysis,
+  SeriesRow,
+  StateCode,
+  Town,
+  Verdict,
+  YearRow,
+} from "./types";
 import { AQ0, D, MON, MONL, NAME, NM, VI0, Y0 } from "./data";
 import { S } from "./state";
 import { fmt, times } from "./util";
 
 /* ---------- harmonization (same rule as the pipeline) ---------- */
-export function harm(st: StateCode, i: number, T: number, A: number, V: number): Harmonized {
-  const s = D.states[st],
-    m = i % 12;
-  if (i >= VI0) return { h: V, lo: V, hi: V, src: "VIIRS observed" };
-  const terraOnly = i < AQ0,
+/** the month indexes and size bins of the state data */
+export const STATE_EPOCHS: Epochs = { vi0: VI0, aq0: AQ0, bins: D.meta.bins };
+/** one month in VIIRS terms: observed from vi0 on, otherwise MODIS times the place's exchange rate, with a 90% range */
+export function harmWith(s: Rates, e: Epochs, i: number, T: number, A: number, V: number): Harmonized {
+  const m = i % 12;
+  if (i >= e.vi0) return { h: V, lo: V, hi: V, src: "VIIRS observed" };
+  const terraOnly = i < e.aq0,
     h = terraOnly ? T * s.r_t[m] : (T + A) * s.r_ta[m],
     src = terraOnly ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted";
   if (h === 0) return { h: 0, lo: 0, hi: s.zero_hi, src };
   let b = 0;
-  while (b < D.meta.bins.length && h > D.meta.bins[b]) b++;
+  while (b < e.bins.length && h > e.bins[b]) b++;
   return { h, lo: h * s.pi[b][0], hi: h * s.pi[b][1], src };
 }
+export const harm = (st: StateCode, i: number, T: number, A: number, V: number): Harmonized =>
+  harmWith(D.states[st], STATE_EPOCHS, i, T, A, V);
 const HX: Partial<Record<StateCode, HexState>> = {};
 /** the lookup tables for one state, built on first use; the object is filled in step by step */
 export function hexState(st: StateCode): HexState {
@@ -143,10 +161,27 @@ export function analyseFor(st: StateCode, sel: Sel): Analysis {
       V[i] += rows[p + 4];
     }
   }
+  const R = analyseSeries({ T, A, V, y0: Y0, yFrom: S.yFrom, yTo: S.yTo, vi0: VI0, harm: (i, t, a, v) => harm(st, i, t, a, v) });
+  return { st, ...R };
+}
+/** monthly counts of one place, as arrays indexed by month from January of y0 */
+export interface SeriesInput {
+  T: ArrayLike<number>;
+  A: ArrayLike<number>;
+  V: ArrayLike<number>;
+  y0: number;
+  yFrom: number;
+  yTo: number;
+  vi0: number;
+  harm: (i: number, T: number, A: number, V: number) => Harmonized;
+}
+/** the harmonized series of one place over the chosen years, with its monthly and yearly summaries */
+export function analyseSeries(o: SeriesInput): SeriesAnalysis {
+  const { T, A, V } = o;
   const ser: SeriesRow[] = [];
-  for (let i = (S.yFrom - Y0) * 12; i < (S.yTo - Y0 + 1) * 12; i++)
+  for (let i = (o.yFrom - o.y0) * 12; i < (o.yTo - o.y0 + 1) * 12; i++)
     ser.push(
-      Object.assign({ i, y: Y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V[i] }, harm(st, i, T[i], A[i], V[i])) as SeriesRow,
+      Object.assign({ i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V[i] }, o.harm(i, T[i], A[i], V[i])) as SeriesRow,
     );
   const quant = (a: number[], q: number) => {
     const z = a.slice().sort((x, y) => x - y),
@@ -163,18 +198,18 @@ export function analyseFor(st: StateCode, sel: Sel): Analysis {
     r.ratio = (r.h + 1) / (r.med + 1);
   });
   const years: YearRow[] = [];
-  for (let y = S.yFrom; y <= S.yTo; y++) {
+  for (let y = o.yFrom; y <= o.yTo; y++) {
     const rr = ser.filter(r => r.y === y),
       sum = (k: "h" | "lo" | "hi") => rr.reduce((a, r) => a + r[k], 0);
-    years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= VI0 ? r.V : r.T + r.A), 0) });
+    years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
   }
   const total = stats.reduce((a, z) => a + z.sum, 0),
     order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum),
     ranked = years.slice().sort((a, b) => b.h - a.h);
-  return { st, ser, stats, years, total, mean: total / years.length, order, ranked };
+  return { ser, stats, years, total, mean: total / years.length, order, ranked };
 }
-export function verdict(R: Analysis): Verdict | null {
-  const [fy, fm] = S.focus,
+export function verdict(R: SeriesAnalysis, focus: number[] = S.focus): Verdict | null {
+  const [fy, fm] = focus,
     f = R.ser.find(r => r.y === fy && r.m === fm);
   if (!f) return null;
   const same = R.ser.filter(r => r.m === fm).map(r => r.h),
@@ -199,7 +234,7 @@ export function verdict(R: Analysis): Verdict | null {
       cls = "lo";
     }
   }
-  return { f, fm, fy, label, cls, rank, n, med, mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + " hotspots" };
+  return { f, fm, fy, label, cls, rank, n, med, mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots") };
 }
 /* how often has it burned in a given calendar month? Uses the VIIRS years, which see small fires too */
 export const riskYears = () => {
@@ -244,7 +279,7 @@ export function countyRisk(st: StateCode, m: number) {
     })
     .sort((x, y) => y.med - x.med || y.p - x.p);
 }
-export const leadText = (R: Analysis) =>
+export const leadText = (R: SeriesAnalysis) =>
   R.total === 0
     ? "No fire hotspots were detected here in these years. Try a larger area."
     : `Fire activity here peaks in ${MONL[R.order[0].m]}. ${R.ranked[0].y} was the most active year on record, ${times(R.ranked[0].h / R.mean).replace("×", "")} times an average year.`;

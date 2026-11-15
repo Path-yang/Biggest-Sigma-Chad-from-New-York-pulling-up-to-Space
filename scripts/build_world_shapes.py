@@ -59,6 +59,9 @@ TOLERANCE = 0.05
 SMALL_AREA = 1.0  # square degrees at 1:50m below which a territory uses 1:10m
 SMALL_TOLERANCE = 0.003
 TINY_TOLERANCE = 0.005
+# Island countries whose 1:50m outline at TOLERANCE misses towns and fire-holding islands; built from 1:10m
+# at a finer tolerance. Fiji at 1:50m / 0.05 left Suva, half of Taveuni and 9% of its detections outside.
+FINE = {"Fiji": 0.01}
 DECIMALS = 2
 MIN_AREA = 1e-6  # square degrees; a rounded ring smaller than this is a sliver
 SLICE = 60  # degrees of longitude per slice for shapes that wrap the globe
@@ -283,7 +286,7 @@ def main():
     for n in names:
         if n not in c10:
             continue
-        if n not in claimed or union(claimed[n]).area < SMALL_AREA:
+        if n not in claimed or union(claimed[n]).area < SMALL_AREA or n in FINE:
             from10[n] = c10[n]
     claimed.update(from10)
     no_shape = [n for n in names if n not in claimed]
@@ -300,7 +303,7 @@ def main():
                            "inside_final": "", "inside_source": ""})
             continue
         geom = union(feats)
-        rings = build_rings(geom, SMALL_TOLERANCE if firms in from10 else TOLERANCE)
+        rings = build_rings(geom, FINE.get(firms, SMALL_TOLERANCE if firms in from10 else TOLERANCE))
         final = unary_union([Polygon(r).buffer(0) for r in rings])
         xs_all = [p[0] for r in rings for p in r]
         ys_all = [p[1] for r in rings for p in r]
