@@ -1,20 +1,24 @@
 /* Copilot: launcher, chat window, result cards */
-#cpLaunch { position: absolute; right: 30px; bottom: 28px; z-index: 6; display: inline-flex; align-items: center; gap: 9px; padding: 10px 16px 10px 12px;
-  border-radius: 999px; border: 1px solid #ffb37a66; background: linear-gradient(180deg, #232836, #171b24); font-weight: 650; font-size: 14.5px;
-  box-shadow: 0 8px 28px #000a, 0 0 0 4px #ff8a3d1f; transition: transform .15s ease, box-shadow .15s ease; }
-#cpLaunch:hover { transform: translateY(-1px); box-shadow: 0 10px 32px #000c, 0 0 0 5px #ff8a3d33; }
+#cpLaunch { position: absolute; left: min(max(50%, 560px), calc(100% - 180px)); bottom: 24px; transform: translateX(-50%); z-index: 6; display: inline-flex; align-items: center; gap: 10px;
+  width: min(340px, calc(100% - 32px)); padding: 8px 8px 8px 14px; border-radius: 999px; border: 1px solid #ffb37a66; background: linear-gradient(180deg, #232836f5, #171b24f5);
+  font-weight: 600; font-size: 14px; text-align: left; box-shadow: 0 8px 28px #000a, 0 0 0 4px #ff8a3d1f; transition: box-shadow .15s ease, border-color .15s ease; backdrop-filter: blur(8px); }
+#cpLaunch:hover { border-color: #ffb37aaa; box-shadow: 0 10px 32px #000c, 0 0 0 5px #ff8a3d33; }
+#cpLaunch .cp-ltext { flex: 1; min-width: 0; color: #d5d9e3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#cpLaunch .cp-lmic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #ff8a3d; color: #1a0f06; flex: none; }
+#cpLaunch .cp-lmic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .cp-mark { width: 16px; height: 16px; border-radius: 50%; flex: none; background: radial-gradient(circle at 50% 60%, #f8f39a 0 22%, #f6850f 45%, #bb3654 75%, #5c126e 100%); box-shadow: 0 0 12px #f6850f88; }
 .cp-mark.big { width: 30px; height: 30px; margin-bottom: 10px; }
 
-#copilot { position: absolute; right: 30px; bottom: 16px; top: 16px; width: 404px; max-width: calc(100% - 32px); z-index: 8; display: none; flex-direction: column;
+#copilot { position: absolute; left: min(max(50%, 560px), calc(100% - 316px)); bottom: 16px; transform: translateX(-50%); width: min(600px, calc(100% - 32px)); height: auto; max-height: min(78%, 800px); max-width: none; z-index: 8; display: none; flex-direction: column;
   background: #10131af7; border: 1px solid #333a49; border-radius: 16px; box-shadow: 0 18px 60px #000d; backdrop-filter: blur(10px); overflow: hidden; }
-#copilot.open { display: flex; animation: cp-in .18s ease-out; }
-@keyframes cp-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+#copilot.open { display: flex; }
+#copilot.open.anim { animation: cp-in .18s ease-out; }
+@keyframes cp-in { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .cp-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line); }
 .cp-title { flex: 1; min-width: 0; line-height: 1.25; }
 .cp-title b { display: block; font-size: 15px; }
 .cp-title span { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.cp-log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+.cp-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
 .cp-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px; border-top: 1px solid var(--line); background: #0d0f15; }
 .cp-form textarea { flex: 1; resize: none; background: #1a1f29; border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; color: var(--text); font: inherit; line-height: 1.4; max-height: 120px; }
 .cp-form textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
@@ -97,7 +101,7 @@
 
 /* expanded: a centred window over the page */
 #cpBackdrop { position: fixed; inset: 0; z-index: 49; background: #05070b8c; backdrop-filter: blur(2px); }
-#copilot.wide { position: fixed; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(920px, 94vw); max-width: none; height: min(88vh, 960px); z-index: 50; animation: none; }
+#copilot.wide { position: fixed; top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); width: min(920px, 94vw); max-width: none; height: min(88vh, 960px); max-height: none; z-index: 50; animation: none; }
 #copilot.wide .cp-log { padding: 22px max(18px, calc((100% - 760px) / 2)); gap: 16px; }
 #copilot.wide .cp-form, #copilot.wide .cp-voicebar { padding-inline: max(12px, calc((100% - 760px) / 2)); }
 #copilot.wide .cp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); align-items: start; }
@@ -133,14 +137,11 @@
 @keyframes cp-pulse { to { box-shadow: 0 0 0 9px #ff8a3d00; } }
 
 /* keep the map's own messages clear of the open chat window */
-.cp-open #mapToast, .cp-open #drawHint { left: 16px; top: 124px; transform: none; max-width: 370px; }
-.cp-open #clearChip { left: 16px; top: 162px; transform: none; }
-.cp-open .maplibregl-ctrl-top-right, .cp-open .maplibregl-ctrl-bottom-right { right: 434px; }
+.cp-open #layerbar { opacity: .35; pointer-events: none; }
 
 @media (max-width: 900px), (max-height: 520px) {
-  .cp-open #mapToast, .cp-open #drawHint { left: 50%; top: 10px; transform: translateX(-50%); max-width: calc(100% - 32px); }
-  .cp-open #clearChip { position: static; transform: none; }
-  #cpLaunch { position: fixed; right: 14px; bottom: 14px; z-index: 40; }
+  .cp-open #layerbar { opacity: 1; pointer-events: auto; }
+  #cpLaunch { position: fixed; left: 50%; bottom: 14px; z-index: 40; }
   #copilot, #copilot.wide { position: fixed; inset: 0; top: 0; left: 0; transform: none; width: auto; height: auto; max-width: none; border-radius: 0; border: 0; z-index: 60; }
   #cpWide { display: none; }
   .cp-vhint { display: none; }

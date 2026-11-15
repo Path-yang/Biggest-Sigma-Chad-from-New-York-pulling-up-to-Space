@@ -46,7 +46,7 @@ const Copilot = (() => {
     t.innerHTML = `<span class="cp-pulse"></span>${esc(text)}`; t.hidden = false;
     clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 4200);
   }
-  const fit = (b, maxZoom = 8) => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 90, bottom: 60, left: 60, right: opened && innerWidth > 900 ? 440 : 60 }, duration: 1100, maxZoom });
+  const fit = (b, maxZoom = 8) => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 70, left: 60, right: 60, bottom: opened && innerWidth > 900 && !root.classList.contains("wide") ? Math.min(root.offsetHeight + 30, map.getContainer().offsetHeight - 180) : 60 }, duration: 1100, maxZoom });
   async function loadPack(path) {
     if (!packs.has(path)) packs.set(path, fetch("data/" + path).then(r => r.ok ? r.json() : null));
     return packs.get(path);
@@ -324,14 +324,16 @@ const Copilot = (() => {
   /* --------------------------------------------------------------- window */
   function open() {
     if (!root) return;
-    opened = true; root.classList.add("open"); document.getElementById("cpLaunch").hidden = true; document.getElementById("mapwrap").classList.add("cp-open");
+    opened = true; root.classList.add("open", "anim"); root.addEventListener("animationend", () => root.classList.remove("anim"), { once: true }); document.getElementById("cpLaunch").hidden = true; document.getElementById("mapwrap").classList.add("cp-open");
     connect().catch(() => {});
     if (innerWidth > 900) setTimeout(() => input.focus(), 150);
   }
   function close() { opened = false; root.classList.remove("open"); document.getElementById("cpLaunch").hidden = false; document.getElementById("mapwrap").classList.remove("cp-open"); }
   function init() {
     const wrap = document.getElementById("mapwrap");
-    const launch = el("button", "", `<span class="cp-mark"></span><span>Ask Copilot</span>`); launch.id = "cpLaunch"; launch.title = "Ask questions about fire activity"; launch.onclick = open;
+    const launch = el("button", "", `<span class="cp-mark"></span><span class="cp-ltext">Ask Copilot about any place...</span><span class="cp-lmic" title="Talk to the copilot"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></svg></span>`);
+    launch.id = "cpLaunch"; launch.title = "Ask questions about fire activity";
+    launch.onclick = e => { open(); if (e.target.closest(".cp-lmic")) voiceStart(); };
     root = el("section", "", `
       <header class="cp-head">
         <div class="cp-mark"></div>
