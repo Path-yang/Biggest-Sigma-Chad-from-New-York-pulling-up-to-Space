@@ -1,5 +1,6 @@
 import type * as Three from "three";
 import type { BurnData, Forecast, OutlookData, ResponseData, World } from "./types";
+import type { WorldOutlook } from "./wol";
 
 declare global {
   /** three.js r128, loaded from a script tag in index.html. Absent if that request fails. */
@@ -15,6 +16,8 @@ declare global {
     FORECAST?: Forecast;
     /** set by outlook.js; absent if that file did not load, and the 14-day outlook is then not offered */
     OUTLOOK?: OutlookData;
+    /** set by world_outlook.js, which the country page loads when it first opens (src/wol.ts) */
+    WORLD_OUTLOOK?: WorldOutlook;
     THREE?: typeof Three;
     /* the country page's libraries, loaded on demand by libs.ts (MapLibre GL 5.24.0, d3 7.9.0, Observable Plot
        0.6.17); typed loosely because their type packages are not installed */

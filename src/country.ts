@@ -4,7 +4,8 @@ import { $, fmt, short, times } from "./util";
 import { analyseSeries, harmWith, verdict } from "./model";
 import { save } from "./downloads";
 import { HF_DATASET, HF_PAGE, fileUrl, loadSummary, summaryPath } from "./hf";
-import { nameOf } from "./world";
+import { nameOf, theName } from "./world";
+import { olClose, olEventsWorld, olOpen } from "./wolui";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
 import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
@@ -48,14 +49,7 @@ const epochs = (d: CountrySummary): Epochs => ({
 /** first whole year seen by VIIRS: the year VIIRS starts, as the rest of the page counts it */
 const viirsYear = (d: CountrySummary) => d.viirs_from[0];
 const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
-/** "the United States", "France": the names that read with an article in a sentence */
-function the(name: string) {
-  return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
-    name,
-  )
-    ? "the " + name
-    : name;
-}
+const the = theName;
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 /** "2005" or "2001–2025" */
 const yrs = () => (CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}–${CV.yTo}`);
@@ -102,11 +96,13 @@ export function openCountry(k: string) {
   $("cCrumb").textContent = "Fire, month by month";
   requestAnimationFrame(() => el.classList.add("in"));
   load();
+  olOpen(k);
 }
 export function closeCountry() {
   if (CV.k === null) return;
   CV.k = null;
   CV.mapKey = "";
+  olClose();
   destroyMap();
   const el = $("country");
   el.classList.remove("in");
@@ -116,6 +112,7 @@ export function closeCountry() {
 export function countryMissing(slug: string) {
   CV.k = "";
   CV.d = CV.R = null;
+  olClose();
   destroyMap();
   loadFonts();
   const el = $("country");
@@ -599,6 +596,7 @@ export function countryEvents() {
       }),
   );
   $("cDl").onclick = csv;
+  olEventsWorld();
   /* the charts are drawn to their box's width; redraw them when it changes */
   let rt: number | undefined,
     lastW = 0;

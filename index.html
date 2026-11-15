@@ -176,6 +176,31 @@ input[type=number]{width:84px}
 .cpPop .maplibregl-popup-tip{display:none}
 /* Plot's tip box inherits the page font */
 #country [aria-label="tip"] text{font-family:var(--sans)}
+/* the 14-day outlook */
+.cpOl .cpPart{margin:0 0 6px}
+.cpOlState{display:flex;flex-direction:column;gap:10px;align-items:flex-start;margin:16px 0 0;max-width:680px}
+.cpOlState p{margin:0;font:400 18px/1.45 var(--serif)}
+.cpOlFigs{margin-top:28px}
+.cpOlGrid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:24px 40px;align-items:start}
+.cpOlFig{margin:0;min-width:0}
+.cpOlGrid.wide{grid-template-columns:minmax(0,1fr)}
+.cpOlGrid.wide .cpOlList{max-width:680px}
+.cpOlMap{background:#f2f3f0;border:1px solid var(--hair);padding:8px}
+.cpOlMap svg{display:block;width:100%;height:auto;max-height:440px;overflow:hidden}
+.cpOlMap .olCell{cursor:default}
+.cpOlMap .olCell.on{stroke:var(--cink);stroke-width:2}
+.cpOlFig .cpCap{min-height:3em}
+.cpOlList{min-width:0}
+.cpOlList ol{list-style:none;margin:10px 0 0;padding:0;border-top:1px solid var(--cink)}
+.cpOlList li{display:grid;grid-template-columns:minmax(0,1fr) auto 92px;gap:4px 14px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--hair);font-size:15px}
+.cpOlList small{display:block;font-size:13px;color:var(--cink2)}
+.olN{font:600 20px/1.1 var(--serif);text-align:right;white-space:nowrap}
+.olN small{font:400 13px var(--sans)}
+.olD{justify-self:end;white-space:nowrap;font-size:14px;font-weight:600;padding-left:14px;position:relative}
+.olD::before{content:"";position:absolute;left:0;top:50%;width:9px;height:9px;margin-top:-5px;background:var(--c);box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.cpHatch{background:repeating-linear-gradient(45deg,#55524c 0 1.2px,#f4f2ec 1.2px 4px)!important}
+.cpOlHow{font-size:17px;margin-top:28px}
+.cpOlHow b{font-weight:600}
 @media (max-width:860px){
   .cpCharts{grid-template-columns:minmax(0,1fr)}
   .cpTrust{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -191,6 +216,11 @@ input[type=number]{width:84px}
   .cpMap{height:60vh;min-height:320px}
   .cpSec{margin-top:48px}
   .cpRamp{grid-template-columns:auto minmax(80px,1fr) auto}
+  .cpOlGrid{grid-template-columns:minmax(0,1fr)}
+  #cOlLegend{gap:6px 16px}
+  #cOlLegend .cpNone{padding-bottom:0}
+  .cpOlList li{grid-template-columns:minmax(0,1fr) auto;}
+  .olD{grid-column:2;justify-self:end}
 }
 
 /* ---------- state view: the map is the page ---------- */
@@ -407,7 +437,7 @@ th{color:var(--muted);font-weight:400}
     <p class="hkT">Fire hotspots a year per 1,000 km²</p>
     <p class="hkW"><span id="heroWait">Loading every country from Hugging Face…</span> <button class="link" id="heroRetry" type="button" hidden>Retry</button></p>
     <div class="hkS"><span id="heroLo"></span><canvas id="heroRamp" width="160" height="8" aria-hidden="true"></canvas><span id="heroHi"></span></div>
-    <p class="hkN">NASA FIRMS, 2001–2025, live from Hugging Face. Click any country.</p>
+    <p class="hkN">NASA FIRMS, 2001–2025, live from Hugging Face. Click any country for its record and a 14-day outlook.</p>
   </div>
   <div class="heroBar">
     <form class="heroFind" id="heroForm" role="search">
@@ -444,6 +474,23 @@ th{color:var(--muted);font-weight:400}
         <div class="cpAns"><h2>Worst years</h2><p class="cpFig" id="ca2"></p><p id="ca2n"></p></div>
         <div class="cpAns"><h2>Was <select id="cfM" aria-label="Month"></select> <select id="cfY" aria-label="Year"></select> unusual?</h2><p class="cpFig" id="ca3"></p><p id="ca3n"></p></div>
       </div>
+
+      <section class="cpSec cpOl" id="cOl" aria-labelledby="cOlTitle">
+        <p class="cpPart" id="cOlKick">Next 14 days</p>
+        <h2 class="cpH" id="cOlTitle">Next 14 days</h2>
+        <p class="cpSub" id="cOlSub"></p>
+        <div class="cpOlState" id="cOlState" role="status"><p id="cOlMsg"></p><button class="cpText" id="cOlRetry" type="button" hidden>Try again</button></div>
+        <div id="cOlMain" hidden>
+          <div class="cpAnswers cpOlFigs" id="cOlFigs"></div>
+          <div class="cpLegend" id="cOlLegend"></div>
+          <div class="cpOlGrid">
+            <figure class="cpOlFig"><div class="cpOlMap" id="cOlMap"></div><figcaption class="cpCap" id="cOlPick" aria-live="polite"></figcaption></figure>
+            <div class="cpOlList"><h3 class="cpH3" id="cOlListT"></h3><ol id="cOlList"></ol><p class="cpCap" id="cOlListNote"></p></div>
+          </div>
+        </div>
+        <p class="cpProse cpOlHow" id="cOlHow"></p>
+        <p class="cpCap" id="cOlSrc"></p>
+      </section>
 
       <section class="cpSec" aria-labelledby="cMapTitle">
         <h2 class="cpH" id="cMapTitle">Where it burns</h2>
@@ -699,6 +746,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

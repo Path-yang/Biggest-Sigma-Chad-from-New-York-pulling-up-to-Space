@@ -14,6 +14,14 @@ export const slugOf = (k: string) =>
     .replace(/^-+|-+$/g, "");
 export const shapeOf = (k: string) => BY_KEY.get(k);
 export const nameOf = (k: string) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
+/** "the United States", "France": the names that read with an article in a sentence */
+export function theName(name: string) {
+  return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
+    name,
+  )
+    ? "the " + name
+    : name;
+}
 
 function inRing(r: Ring, lon: number, lat: number) {
   let inside = false;
