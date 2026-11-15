@@ -422,7 +422,7 @@ function buildPanel() {
     `<header class="aHead"><div class="aHeadT"><p class="cpPart">Selected area</p><h3 class="aName" id="aName">${esc(A.d ? A.d.name : "")}</h3></div>` +
     `<button type="button" class="aX" id="aClose" aria-label="Close the area tools">×</button></header>` +
     `<p class="aNote" id="aNote"></p>` +
-    `<div class="aActs"><button type="button" class="aBtn" id="aPin">Pin to compare</button><button type="button" class="aBtn" id="aShare">Copy link</button><button type="button" class="aBtn" id="aCsv">CSV</button><button type="button" class="cpText aSmallText" id="aWhole" hidden>Whole country</button></div>` +
+    `<div class="aActs"><button type="button" class="aBtn" id="aPin">Pin to compare</button><button type="button" class="aBtn" id="aShare">Copy link</button><button type="button" class="aBtn" id="aCsv">CSV</button><button type="button" class="aBtn" id="aAsk">Ask the copilot</button><button type="button" class="cpText aSmallText" id="aWhole" hidden>Whole country</button></div>` +
     `<p class="aMsg" id="aMsg" role="status"></p>` +
     `<div class="aState" id="aState"><p id="aStateMsg"></p><button type="button" class="cpText" id="aRetry" hidden>Try again</button></div>` +
     `<div id="aMain" hidden>` +
@@ -445,6 +445,7 @@ function buildPanel() {
   $("aPin").onclick = pinCurrent;
   $("aShare").onclick = share;
   $("aCsv").onclick = csv;
+  $("aAsk").onclick = () => window.dispatchEvent(new CustomEvent("ask-area"));
   $("aUnpin").onclick = () => {
     A.pins = [];
     writeHash();
@@ -1030,9 +1031,7 @@ function csv() {
     filled = new Set([...(d.y2026?.conv_months ?? []).map(c => c.i), ...(d.y2026?.hist_gaps ?? []).map(g => g.i)]),
     src = (i: number) =>
       filled.has(i) ? FILL_SRC : i >= vi0 ? "VIIRS observed" : i < aq0 ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted",
-    rows = [
-      `area,shape,squares,square_deg,year,month,month_status,harmonized_viirs_snpp_equivalent,source,usual_median_${F.y0}_${F.yb}`,
-    ];
+    rows = [`area,shape,squares,square_deg,year,month,month_status,harmonized_viirs_snpp_equivalent,source,usual_median_${F.y0}_${F.yb}`];
   for (const { label, a } of areas) {
     const sh = a.shape ? encode(a.shape) : "whole_country";
     for (let i = 0; i < F.nm; i++) {
@@ -1256,7 +1255,12 @@ function fitTo(s: Shape) {
     const g = A.g,
       xs = Array.from(cur.idx, c => near(g.lon[c], A.lon0)),
       ys = Array.from(cur.idx, c => g.lat[c]);
-    b = [Math.min(...xs) - g.cell / 2, Math.min(...ys) - g.cell / 2, Math.max(...xs) + g.cell / 2, Math.min(85, Math.max(...ys) + g.cell / 2)];
+    b = [
+      Math.min(...xs) - g.cell / 2,
+      Math.min(...ys) - g.cell / 2,
+      Math.max(...xs) + g.cell / 2,
+      Math.min(85, Math.max(...ys) + g.cell / 2),
+    ];
     off = 0;
   }
   map.fitBounds(
@@ -1601,3 +1605,19 @@ addEventListener("resize", () => {
     drawCompare();
   }, 150);
 });
+
+/** the fire copilot's months run from January 2000 to November 2026 (323), as HotSpotters counts them */
+const COPILOT_MONTHS = 323;
+/** the drawn area as the copilot's "selection": its name, bounds and monthly record in VIIRS terms (this site's
+    harmonized cells), so questions about "here" are answered from these numbers. Null for the whole country. */
+export function areaForCopilot(): { name: string; bbox: [number, number, number, number]; series: number[] } | null {
+  const a = A.cur,
+    F = A.F;
+  if (!A.open || !a || !a.shape || !F || !A.d || !(a.st.total > 0)) return null;
+  const off = (F.y0 - 2000) * 12,
+    series = new Array<number>(COPILOT_MONTHS).fill(0);
+  for (let i = 0; i < a.S.length; i++) if (i + off >= 0 && i + off < COPILOT_MONTHS) series[i + off] = Math.round(a.S[i] * 10) / 10;
+  const r2 = (v: number) => Math.round(v * 100) / 100,
+    [w, so, e, n] = bbox(a.shape);
+  return { name: `${describe(a.shape)} in ${theName(A.d.name)}`, bbox: [r2(w), r2(so), r2(e), r2(n)], series };
+}

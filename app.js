@@ -6261,13 +6261,14 @@ Click to show ${r.y} on the map`
   function buildPanel() {
     const p = $("aPanel");
     if (p.firstChild) return;
-    p.innerHTML = `<header class="aHead"><div class="aHeadT"><p class="cpPart">Selected area</p><h3 class="aName" id="aName">${esc5(A.d ? A.d.name : "")}</h3></div><button type="button" class="aX" id="aClose" aria-label="Close the area tools">\xD7</button></header><p class="aNote" id="aNote"></p><div class="aActs"><button type="button" class="aBtn" id="aPin">Pin to compare</button><button type="button" class="aBtn" id="aShare">Copy link</button><button type="button" class="aBtn" id="aCsv">CSV</button><button type="button" class="cpText aSmallText" id="aWhole" hidden>Whole country</button></div><p class="aMsg" id="aMsg" role="status"></p><div class="aState" id="aState"><p id="aStateMsg"></p><button type="button" class="cpText" id="aRetry" hidden>Try again</button></div><div id="aMain" hidden><dl class="aKpis" id="aKpis"></dl><p class="aNone" id="aNone" hidden></p><div id="aFigs"><section class="aBlock"><div class="aBH"><h4>Burning activity calendar</h4><div class="cpSeg aSeg" id="aCalSeg" role="group" aria-label="Calendar values"><button type="button" data-m="count">How much fire</button><button type="button" data-m="anom">More or less than usual</button></div></div><div class="aKey" id="aCalKey"></div><div class="cpPlot" id="aCal"></div><p class="aCap" id="aCalNote"></p></section><section class="aBlock"><div class="aBH"><h4 id="aSeasonT">This year against a usual one</h4><select id="aSeasonY" aria-label="Year to show"></select></div><div class="cpPlot" id="aSeason"></div><p class="aCap" id="aSeasonNote"></p></section><section class="aBlock"><div class="aBH"><h4 id="aTrendT">Hotspots per year</h4></div><div class="cpPlot" id="aTrend"></div><p class="aCap" id="aTrendNote"></p></section></div><section class="aBlock" id="aCmp" hidden><div class="aBH"><h4>Areas side by side</h4><button type="button" class="cpText aSmallText" id="aUnpin">Remove all</button></div><div class="cpScroll"><table class="aCmpT" id="aCmpT"></table></div><div class="aBH aSub"><span id="aCmpCT">A usual year in each</span><div class="cpSeg aSeg" id="aCmpSeg" role="group" aria-label="Compare by"><button type="button" data-s="n" aria-pressed="true">Hotspots</button><button type="button" data-s="p" aria-pressed="false">Share of the year</button></div></div><div class="cpPlot" id="aCmpC"></div><p class="aCap" id="aCmpNote"></p></section><section class="aBlock" id="aWatch"><div class="aBH"><h4>Where to watch in <select id="aWM" aria-label="Month ahead"></select></h4><label class="aChk"><input type="checkbox" id="aWOn"> On the map</label></div><p class="aCap aWSub" id="aWSub"></p><ol class="aWList" id="aWList"></ol><p class="aCap" id="aWFoot"></p></section></div>`;
+    p.innerHTML = `<header class="aHead"><div class="aHeadT"><p class="cpPart">Selected area</p><h3 class="aName" id="aName">${esc5(A.d ? A.d.name : "")}</h3></div><button type="button" class="aX" id="aClose" aria-label="Close the area tools">\xD7</button></header><p class="aNote" id="aNote"></p><div class="aActs"><button type="button" class="aBtn" id="aPin">Pin to compare</button><button type="button" class="aBtn" id="aShare">Copy link</button><button type="button" class="aBtn" id="aCsv">CSV</button><button type="button" class="aBtn" id="aAsk">Ask the copilot</button><button type="button" class="cpText aSmallText" id="aWhole" hidden>Whole country</button></div><p class="aMsg" id="aMsg" role="status"></p><div class="aState" id="aState"><p id="aStateMsg"></p><button type="button" class="cpText" id="aRetry" hidden>Try again</button></div><div id="aMain" hidden><dl class="aKpis" id="aKpis"></dl><p class="aNone" id="aNone" hidden></p><div id="aFigs"><section class="aBlock"><div class="aBH"><h4>Burning activity calendar</h4><div class="cpSeg aSeg" id="aCalSeg" role="group" aria-label="Calendar values"><button type="button" data-m="count">How much fire</button><button type="button" data-m="anom">More or less than usual</button></div></div><div class="aKey" id="aCalKey"></div><div class="cpPlot" id="aCal"></div><p class="aCap" id="aCalNote"></p></section><section class="aBlock"><div class="aBH"><h4 id="aSeasonT">This year against a usual one</h4><select id="aSeasonY" aria-label="Year to show"></select></div><div class="cpPlot" id="aSeason"></div><p class="aCap" id="aSeasonNote"></p></section><section class="aBlock"><div class="aBH"><h4 id="aTrendT">Hotspots per year</h4></div><div class="cpPlot" id="aTrend"></div><p class="aCap" id="aTrendNote"></p></section></div><section class="aBlock" id="aCmp" hidden><div class="aBH"><h4>Areas side by side</h4><button type="button" class="cpText aSmallText" id="aUnpin">Remove all</button></div><div class="cpScroll"><table class="aCmpT" id="aCmpT"></table></div><div class="aBH aSub"><span id="aCmpCT">A usual year in each</span><div class="cpSeg aSeg" id="aCmpSeg" role="group" aria-label="Compare by"><button type="button" data-s="n" aria-pressed="true">Hotspots</button><button type="button" data-s="p" aria-pressed="false">Share of the year</button></div></div><div class="cpPlot" id="aCmpC"></div><p class="aCap" id="aCmpNote"></p></section><section class="aBlock" id="aWatch"><div class="aBH"><h4>Where to watch in <select id="aWM" aria-label="Month ahead"></select></h4><label class="aChk"><input type="checkbox" id="aWOn"> On the map</label></div><p class="aCap aWSub" id="aWSub"></p><ol class="aWList" id="aWList"></ol><p class="aCap" id="aWFoot"></p></section></div>`;
     $("aClose").onclick = closeTools;
     $("aRetry").onclick = () => openTools(true);
     $("aWhole").onclick = () => setArea(null, true);
     $("aPin").onclick = pinCurrent;
     $("aShare").onclick = share;
     $("aCsv").onclick = csv;
+    $("aAsk").onclick = () => window.dispatchEvent(new CustomEvent("ask-area"));
     $("aUnpin").onclick = () => {
       A.pins = [];
       writeHash();
@@ -6652,9 +6653,7 @@ Click to show ${r.y} on the map`
     const areas = A.pins.map((p) => ({ label: p.letter, a: p }));
     if (!A.pins.some((p) => p === cur2 || p.shape && cur2.shape && encode(p.shape) === encode(cur2.shape) || !p.shape && !cur2.shape))
       areas.unshift({ label: "selected", a: cur2 });
-    const d = A.d, vi0 = (d.viirs_from[0] - F2.y0) * 12 + d.viirs_from[1] - 1, aq0 = (d.aqua_from[0] - F2.y0) * 12 + d.aqua_from[1] - 1, filled = /* @__PURE__ */ new Set([...(d.y2026?.conv_months ?? []).map((c) => c.i), ...(d.y2026?.hist_gaps ?? []).map((g) => g.i)]), src = (i) => filled.has(i) ? FILL_SRC : i >= vi0 ? "VIIRS observed" : i < aq0 ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted", rows = [
-      `area,shape,squares,square_deg,year,month,month_status,harmonized_viirs_snpp_equivalent,source,usual_median_${F2.y0}_${F2.yb}`
-    ];
+    const d = A.d, vi0 = (d.viirs_from[0] - F2.y0) * 12 + d.viirs_from[1] - 1, aq0 = (d.aqua_from[0] - F2.y0) * 12 + d.aqua_from[1] - 1, filled = /* @__PURE__ */ new Set([...(d.y2026?.conv_months ?? []).map((c) => c.i), ...(d.y2026?.hist_gaps ?? []).map((g) => g.i)]), src = (i) => filled.has(i) ? FILL_SRC : i >= vi0 ? "VIIRS observed" : i < aq0 ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted", rows = [`area,shape,squares,square_deg,year,month,month_status,harmonized_viirs_snpp_equivalent,source,usual_median_${F2.y0}_${F2.yb}`];
     for (const { label, a } of areas) {
       const sh = a.shape ? encode(a.shape) : "whole_country";
       for (let i = 0; i < F2.nm; i++) {
@@ -6841,7 +6840,12 @@ Click to show ${r.y} on the map`
     const cur2 = A.cur;
     if (b[2] - b[0] > 300 && cur2?.shape === s2 && cur2.idx.length && A.g) {
       const g = A.g, xs = Array.from(cur2.idx, (c) => near(g.lon[c], A.lon0)), ys = Array.from(cur2.idx, (c) => g.lat[c]);
-      b = [Math.min(...xs) - g.cell / 2, Math.min(...ys) - g.cell / 2, Math.max(...xs) + g.cell / 2, Math.min(85, Math.max(...ys) + g.cell / 2)];
+      b = [
+        Math.min(...xs) - g.cell / 2,
+        Math.min(...ys) - g.cell / 2,
+        Math.max(...xs) + g.cell / 2,
+        Math.min(85, Math.max(...ys) + g.cell / 2)
+      ];
       off = 0;
     }
     map2.fitBounds(
@@ -7146,6 +7150,15 @@ Click to show ${r.y} on the map`
       drawCompare();
     }, 150);
   });
+  var COPILOT_MONTHS = 323;
+  function areaForCopilot() {
+    const a = A.cur, F2 = A.F;
+    if (!A.open || !a || !a.shape || !F2 || !A.d || !(a.st.total > 0)) return null;
+    const off = (F2.y0 - 2e3) * 12, series = new Array(COPILOT_MONTHS).fill(0);
+    for (let i = 0; i < a.S.length; i++) if (i + off >= 0 && i + off < COPILOT_MONTHS) series[i + off] = Math.round(a.S[i] * 10) / 10;
+    const r22 = (v) => Math.round(v * 100) / 100, [w, so, e, n] = bbox(a.shape);
+    return { name: `${describe(a.shape)} in ${theName(A.d.name)}`, bbox: [r22(w), r22(so), r22(e), r22(n)], series };
+  }
 
   // src/minimap.ts
   var S2 = 10;
@@ -9521,12 +9534,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
     return "";
   }
   function placeNote(at) {
+    const a = at.kind === "country" ? areaForCopilot() : null;
+    if (a) return `(I've selected an area on the map: ${a.name}. "Here" means that area.)`;
     if (at.kind === "country" && at.name) return `(I'm looking at ${theName(at.name)}.)`;
     if (at.kind === "state") return `(I'm looking at ${stateName(at.st)}.)`;
     if (at.kind === "compare") return "(I'm comparing New York State and California.)";
     return "";
   }
-  var NOTE_RE = /\s*\(I'm (?:looking at|comparing) [^()]*\.\)$/;
+  var NOTE_RE = /\s*\((?:I'm (?:looking at|comparing)|I've selected) [^()]*\.\)$/;
   var fold = (t) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   var NOT_PLACES = new Set(
     [
@@ -9674,7 +9689,12 @@ ${short(f.perYear)} hotspots a year` : c.n;
     ws?.send(JSON.stringify(msg));
   }
   function context() {
-    return { selection: null, view: here().kind === "country" ? mapView() : null, layer: null };
+    const a = here().kind === "country" ? areaForCopilot() : null;
+    return {
+      selection: a ? { kind: "custom", name: a.name, bbox: a.bbox, series: a.series } : null,
+      view: here().kind === "country" ? mapView() : null,
+      layer: null
+    };
   }
   var scroll = () => {
     if (UI.log) UI.log.scrollTop = UI.log.scrollHeight;
@@ -9684,6 +9704,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
   }
   function starters(at) {
     const m = nextMonth();
+    if (at.kind === "country" && areaForCopilot())
+      return ["Was 2025 unusual for this area?", "When is the fire season here?", `What should we expect here in ${m}?`];
     if (at.kind === "country" && at.name) {
       const n = theName(at.name);
       return [
@@ -9727,7 +9749,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
     return box2;
   }
   var hooks = {
-    go: (p) => gotoPlace(p, true),
+    /* the drawn area is already on the page: bring its map into view instead of opening anything */
+    go: (p) => p.id === "custom" ? document.getElementById("cMap")?.scrollIntoView({ behavior: "smooth", block: "center" }) : gotoPlace(p, true),
     focus: (name, b) => gotoPlace({ id: "", name, label: name, level: 2, b, g: null }, true)
   };
   function botBlock(cards2, text2) {
@@ -10029,6 +10052,16 @@ ${short(f.perYear)} hotspots a year` : c.n;
   }
   function act(a, t) {
     const moved = location.hash !== t.hash;
+    if (a.type === "goto" && a.place.id === "custom") return;
+    if (a.type === "outline") {
+      const places2 = a.places.filter((p) => p.id !== "custom");
+      if (!places2.length) return;
+      a = { ...a, places: places2 };
+    } else if (a.type === "mark") {
+      const places2 = a.places.filter((p) => p.id !== "custom"), focus = a.focus?.id === "custom" ? null : a.focus;
+      if (!places2.length && !focus) return;
+      a = { ...a, places: places2, focus };
+    }
     switch (a.type) {
       case "goto":
         if (moved) return offerPlace(a.place, t, () => gotoPlace(a.place, true));
@@ -10115,7 +10148,19 @@ ${short(f.perYear)} hotspots a year` : c.n;
     m.append(h("i"), h("i"), h("i"));
     return m;
   };
+  function askAboutArea() {
+    open();
+    const log = UI.log;
+    if (!log || turn2) return;
+    if (!log.querySelector(".askWelcome")) {
+      log.querySelectorAll(".askChips.area").forEach((x) => x.remove());
+      log.appendChild(chips(starters(here()), "area"));
+      scroll();
+    }
+    if (innerWidth > 600) UI.input?.focus();
+  }
   function copilotInit() {
+    window.addEventListener("ask-area", askAboutArea);
     const launch = h("button", "askLaunch");
     launch.type = "button";
     launch.id = "askLaunch";

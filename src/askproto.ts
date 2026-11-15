@@ -7,8 +7,10 @@ import type { Box } from "./cmap";
    ===================================================================== */
 
 export type View = { lat: number; lon: number; zoom: number; bbox: Box };
-/** the agent's selection ids are its own region ids, which this page does not have, so selection is always null */
-export type Context = { selection: null; view: View | null; layer: null };
+/** a drawn area sent with its own monthly record (the agent's "custom" selection); the agent's region ids are its
+    own, which this page does not have, so a selection is never a region */
+export type Selection = { kind: "custom"; name: string; bbox: Box; series: number[] };
+export type Context = { selection: Selection | null; view: View | null; layer: null };
 export type Outbound = { type: "chat"; text: string; context: Context } | { type: "reset" };
 
 export type Geometry = { type: "Polygon" | "MultiPolygon"; coordinates: unknown[] };

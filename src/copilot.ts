@@ -6,6 +6,7 @@ import { WORLD, countryAt, nameOf, slugOf, theName } from "./world";
 import { countryKey } from "./country";
 import { mapCountry, mapFocus, mapMarks, mapView } from "./cmap";
 import { go, goCountry } from "./views";
+import { areaForCopilot } from "./areas";
 import { parseInbound } from "./askproto";
 import { cardEl, h, prose } from "./askcards";
 
@@ -59,12 +60,14 @@ function whereLabel(at: Here) {
 }
 /** the plain note added after a question that names no place, so the agent knows what "here" is */
 function placeNote(at: Here) {
+  const a = at.kind === "country" ? areaForCopilot() : null;
+  if (a) return `(I've selected an area on the map: ${a.name}. "Here" means that area.)`;
   if (at.kind === "country" && at.name) return `(I'm looking at ${theName(at.name)}.)`;
   if (at.kind === "state") return `(I'm looking at ${stateName(at.st)}.)`;
   if (at.kind === "compare") return "(I'm comparing New York State and California.)";
   return "";
 }
-const NOTE_RE = /\s*\(I'm (?:looking at|comparing) [^()]*\.\)$/;
+const NOTE_RE = /\s*\((?:I'm (?:looking at|comparing)|I've selected) [^()]*\.\)$/;
 
 const fold = (t: string) =>
   t
@@ -255,7 +258,12 @@ function post(msg: Outbound) {
   ws?.send(JSON.stringify(msg));
 }
 function context(): Context {
-  return { selection: null, view: here().kind === "country" ? mapView() : null, layer: null };
+  const a = here().kind === "country" ? areaForCopilot() : null;
+  return {
+    selection: a ? { kind: "custom", name: a.name, bbox: a.bbox, series: a.series } : null,
+    view: here().kind === "country" ? mapView() : null,
+    layer: null,
+  };
 }
 
 /* ---------- conversation ---------- */
@@ -267,6 +275,8 @@ function nextMonth() {
 }
 function starters(at: Here): string[] {
   const m = nextMonth();
+  if (at.kind === "country" && areaForCopilot())
+    return ["Was 2025 unusual for this area?", "When is the fire season here?", `What should we expect here in ${m}?`];
   if (at.kind === "country" && at.name) {
     const n = theName(at.name);
     return [
@@ -311,7 +321,9 @@ function welcome() {
   return box;
 }
 const hooks = {
-  go: (p: Place) => gotoPlace(p, true),
+  /* the drawn area is already on the page: bring its map into view instead of opening anything */
+  go: (p: Place) =>
+    p.id === "custom" ? document.getElementById("cMap")?.scrollIntoView({ behavior: "smooth", block: "center" }) : gotoPlace(p, true),
   focus: (name: string, b: Box) => gotoPlace({ id: "", name, label: name, level: 2, b, g: null }, true),
 };
 function botBlock(cards: Card[], text: string) {
@@ -617,7 +629,11 @@ function gotoPlace(p: Place, byHand = false, shapes: Place[] = [], focus: Box | 
   } else if (onIt && byHand) showMapSection();
 }
 const outlined = (list: Place[]) =>
-  list.length === 1 ? `Outlined ${list[0].name} on the map.` : list.length ? `Outlined ${list.length} places on the map.` : "Moved the map.";
+  list.length === 1
+    ? `Outlined ${list[0].name} on the map.`
+    : list.length
+      ? `Outlined ${list.length} places on the map.`
+      : "Moved the map.";
 /** the reader went to another page while the agent worked: offer the agent's place instead of pulling them back */
 function offerPlace(p: Place, t: Live, run: () => void) {
   const dest = destOf(p);
@@ -640,6 +656,19 @@ function mapHere() {
 }
 function act(a: Action, t: Live) {
   const moved = location.hash !== t.hash;
+  /* the agent's "custom" place is the area drawn on this page: it is already on the map */
+  if (a.type === "goto" && a.place.id === "custom") return;
+  if (a.type === "outline") {
+    const places = a.places.filter(p => p.id !== "custom");
+    if (!places.length) return;
+    a = { ...a, places };
+  } else if (a.type === "mark") {
+    const places = a.places.filter(p => p.id !== "custom"),
+      focus = a.focus?.id === "custom" ? null : a.focus;
+    if (!places.length && !focus) return;
+    a = { ...a, places, focus };
+  }
+
   switch (a.type) {
     case "goto":
       if (moved) return offerPlace(a.place, t, () => gotoPlace(a.place, true));
@@ -744,7 +773,20 @@ const MARK = () => {
   m.append(h("i"), h("i"), h("i"));
   return m;
 };
+/** "Ask the copilot" on the area panel: open the chat with questions about the drawn area */
+function askAboutArea() {
+  open();
+  const log = UI.log;
+  if (!log || turn) return;
+  if (!log.querySelector(".askWelcome")) {
+    log.querySelectorAll(".askChips.area").forEach(x => x.remove());
+    log.appendChild(chips(starters(here()), "area"));
+    scroll();
+  }
+  if (innerWidth > 600) UI.input?.focus();
+}
 export function copilotInit() {
+  window.addEventListener("ask-area", askAboutArea);
   const launch = h("button", "askLaunch");
   launch.type = "button";
   launch.id = "askLaunch";
