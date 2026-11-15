@@ -131,7 +131,7 @@ function init() {
   });
   document.querySelectorAll<HTMLButtonElement>("#tabs button").forEach(b => (b.onclick = () => openSheet(b.dataset.tab as SheetTab)));
   const usePt = (lat: number, lon: number, rad: number) => {
-    if (!isFinite(lat) || !isFinite(lon) || !(rad > 0)) {
+    if (!isFinite(lat) || !isFinite(lon) || !(rad > 0) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
       $("dlMsg").textContent = "Enter a latitude, a longitude and a radius first.";
       return;
     }

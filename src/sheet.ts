@@ -165,7 +165,7 @@ export function renderArea(R: Analysis) {
     h0 = avg(2007, 2011, "h"),
     h1 = avg(2012, 2016, "h");
   $("seamNote").textContent =
-    n0 && h0 && S.sel.type === "state"
+    n0 && h0 && n1 != null && h1 != null && S.sel.type === "state"
       ? `Raw counts make 2012–2016 look ${(n1! / n0).toFixed(1)}× busier than 2007–2011. In the harmonized record the step is ${(h1! / h0).toFixed(1)}×.`
       : "The blue line jumps in 2012 only because the sensor changed. Choose the whole state and all years to measure the step.";
   const s = D.states[S.st!],

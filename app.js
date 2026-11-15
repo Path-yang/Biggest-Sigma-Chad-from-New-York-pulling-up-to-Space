@@ -677,7 +677,7 @@ Raw counts: ${fmt(ys[i].naive)}`
       return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
     };
     const n0 = avg(2007, 2011, "naive"), n1 = avg(2012, 2016, "naive"), h0 = avg(2007, 2011, "h"), h1 = avg(2012, 2016, "h");
-    $("seamNote").textContent = n0 && h0 && S.sel.type === "state" ? `Raw counts make 2012\u20132016 look ${(n1 / n0).toFixed(1)}\xD7 busier than 2007\u20132011. In the harmonized record the step is ${(h1 / h0).toFixed(1)}\xD7.` : "The blue line jumps in 2012 only because the sensor changed. Choose the whole state and all years to measure the step.";
+    $("seamNote").textContent = n0 && h0 && n1 != null && h1 != null && S.sel.type === "state" ? `Raw counts make 2012\u20132016 look ${(n1 / n0).toFixed(1)}\xD7 busier than 2007\u20132011. In the harmonized record the step is ${(h1 / h0).toFixed(1)}\xD7.` : "The blue line jumps in 2012 only because the sensor changed. Choose the whole state and all years to measure the step.";
     const s = D.states[S.st], val = s.val, pc = (x) => Math.round(x * 100) + "%";
     $("tiles").innerHTML = `<div class="tile"><b>${val.raw_factor.toFixed(1)}\xD7</b><span>more hotspots from VIIRS than MODIS for the same fires in ${NAME[S.st]}</span></div><div class="tile"><b>${pc(val.annual_med_err)}</b><span>typical error of a converted year, tested on years we could check</span></div><div class="tile"><b>${pc(val.annual_max_err)}</b><span>error in the worst tested year</span></div>`;
     $("maskTxt").textContent = `${s.mask.static_sites} sites removed in ${NAME[S.st]}.`;
@@ -1257,7 +1257,7 @@ Raw counts: ${fmt(ys[i].naive)}`
     c.textAlign = "center";
     c.font = "500 11px 'JetBrains Mono',monospace";
     c.fillStyle = "rgba(255,255,255,.42)";
-    if (R < 40) for (const [n, la, lo] of NBR[S.st]) c.fillText(n.toUpperCase().split("").join(" "), sx(lo * hx.K), sy(la));
+    if (R < 40) for (const [n, la, lo] of NBR[S.st]) c.fillText(n.toUpperCase().split("").join("\u200A"), sx(lo * hx.K), sy(la));
     drawLabels(c, hx);
   }
   var hexAt = (px, py) => {
@@ -1919,7 +1919,7 @@ ${showLabel()}`) + "\nClick to zoom in"
     });
     document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => openSheet(b.dataset.tab));
     const usePt = (lat, lon, rad) => {
-      if (!isFinite(lat) || !isFinite(lon) || !(rad > 0)) {
+      if (!isFinite(lat) || !isFinite(lon) || !(rad > 0) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         $("dlMsg").textContent = "Enter a latitude, a longitude and a radius first.";
         return;
       }

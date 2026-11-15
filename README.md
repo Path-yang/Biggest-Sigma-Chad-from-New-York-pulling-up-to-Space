@@ -16,7 +16,7 @@ python3 -m http.server 8000
 
 Then go to <http://localhost:8000>.
 
-The page fetches three things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), and street-map tiles when you zoom far in (OpenStreetMap). Without a connection it uses system fonts, shows plain buttons in place of the globe, and draws its own roads in place of the street map.
+The page fetches three things from the network: its fonts (Google Fonts), three.js for the globe (cdnjs), and street-map tiles from OpenStreetMap (one test tile when the page opens, the rest when you zoom far in). Without a connection it uses system fonts, shows plain buttons in place of the globe, and draws its own roads in place of the street map.
 
 ## What you can do
 
@@ -25,6 +25,7 @@ The page fetches three things from the network: its fonts (Google Fonts), three.
 - Switch the map between past hotspots and the chance of fire in a chosen month.
 - Drag along the timeline, or press play, to see where each year burned.
 - Find a town or city, draw a box on the map, or enter a point and radius.
+- Click any month in the full calendar to test whether it was unusual and to show it on the map.
 - Open the full data for the selected area: the busiest months, the worst years, whether a given month was unusual, the counties to watch, the full calendar and the evidence for the conversion.
 - Choose a range of years and a colour palette.
 - Download the monthly calendar or the hexagon hotspots as CSV for the current selection.
@@ -50,16 +51,16 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=2` and `data.js?v=2`. Raise that number when either file changes, so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=3` and `data.js?v=2`. Raise that number when either file changes, so that returning visitors do not get a stale cached copy.
 
 ## Method
 
 1. Keep vegetation fires only, at nominal or high confidence, from MODIS Collection 6.1 (Terra, Aqua) and VIIRS 375 m (Suomi NPP).
 2. Remove industrial heat sources: 500 m spots that VIIRS flags in 5 or more years, mostly at night.
 3. Count hotspots per month in each county and hexagon.
-4. On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS hotspots divided by MODIS hotspots.
-5. From 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.
-6. The 90% range on converted months comes from held-out errors, and is wider for small counts.
+4. On the overlap, February 2012 to December 2025, learn one exchange rate per calendar month: VIIRS hotspots divided by MODIS hotspots, pulled toward the state's all-month rate where a month has few hotspots.
+5. From February 2012 use VIIRS as observed. Before that, multiply the MODIS count by the rate. Before July 2002 only Terra flew, so a Terra-only rate applies.
+6. The 90% range on converted months comes from held-out errors: each year from 2012 to 2025 is predicted from MODIS alone, using rates learned on the other years.
 
 ## Limits
 

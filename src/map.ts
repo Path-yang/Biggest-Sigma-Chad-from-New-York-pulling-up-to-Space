@@ -541,7 +541,7 @@ export function mapDraw() {
   c.textAlign = "center";
   c.font = "500 11px 'JetBrains Mono',monospace";
   c.fillStyle = "rgba(255,255,255,.42)";
-  if (R < 40) for (const [n, la, lo] of NBR[S.st]) c.fillText(n.toUpperCase().split("").join(" "), sx(lo * hx.K), sy(la));
+  if (R < 40) for (const [n, la, lo] of NBR[S.st]) c.fillText(n.toUpperCase().split("").join("\u200a"), sx(lo * hx.K), sy(la));
   drawLabels(c, hx);
 }
 const hexAt = (px: number, py: number) => {
