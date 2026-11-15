@@ -19,6 +19,8 @@ interface ElementById {
   pal: HTMLSelectElement;
   rmMap: HTMLSelectElement;
   rmSheet: HTMLSelectElement;
+  rmResp: HTMLSelectElement;
+  planN: HTMLInputElement;
   lat: HTMLInputElement;
   lon: HTMLInputElement;
   rad: HTMLInputElement;

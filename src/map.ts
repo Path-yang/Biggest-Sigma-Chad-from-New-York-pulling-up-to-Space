@@ -3,9 +3,14 @@ import { D, MON, MONL, NBR, NM, Y0 } from "./data";
 import { S } from "./state";
 import { $, ease, fmt, reduced, short } from "./util";
 import { LUT, colT, pop } from "./color";
-import { hexKey, hexState, riskYears, selMask } from "./model";
+import { hexKey, hexState, notFireName, riskYears, selMask } from "./model";
 import { hideTip, showTip } from "./tooltip";
 import { render } from "./render";
+import { drawResponse, respClick, respTip } from "./respui";
+import type { Chance } from "./forecast";
+import { chanceNow, isFc, monthWhen, pctP } from "./forecast";
+import { olFill, olLegend, olTip } from "./olui";
+import { olRun } from "./outlook";
 
 /* =====================================================================
    MAP: hexagons on a canvas with a pan/zoom view.
@@ -30,6 +35,12 @@ export const V: View = {
   mask: null,
   dpr: 1,
 };
+/** the chance-of-fire layer on screen, with its colour scale */
+let CH: Chance | null = null;
+/** 0..1 on the colour scale for a chance */
+const chT = (v: number) => (CH ? Math.min(1, Math.pow(v / CH.max, CH.pow)) : v);
+/** 2 km detail exists only for past hotspots and past odds of any fire */
+const fineFits = () => S.layer === "count" || (S.layer === "chance" && S.odds === "past" && S.fire === "any");
 const sx = (X: number) => V.W / 2 + (X - V.cx) * V.s,
   sy = (Y: number) => V.H / 2 - (Y - V.cy) * V.s;
 const ix = (x: number) => V.cx + (x - V.W / 2) / V.s,
@@ -44,6 +55,12 @@ export function mapSize() {
   V.dpr = dpr;
 }
 const inset = () => (V.W > 900 ? 388 : 0);
+/** map point (X, Y) is in the part of the map the card does not cover */
+export const onScreen = (X: number, Y: number) => {
+  const x = sx(X),
+    y = sy(Y);
+  return x > 0 && x < V.W - inset() && y > 0 && y < V.H;
+};
 export function fitView(b: Bounds): ViewTarget {
   const pad = 70,
     s = Math.min((V.W - inset() - 2 * pad) / (b.x1 - b.x0), (V.H - 216) / (b.y1 - b.y0));
@@ -130,16 +147,14 @@ export function mapValues() {
     i0 = (S.yFrom - Y0) * 12,
     i1 = (S.yTo - Y0 + 1) * 12;
   let max = 0;
-  if (S.layer === "chance") {
-    const [a, b] = riskYears(),
-      n = b - a + 1;
-    V.chN = n;
+  if (S.layer === "outlook") {
+    /* counties are filled from the outlook in mapDraw; the hexagons stay empty */
     max = 1;
-    for (let k = 0; k < hx.n; k++) {
-      let c = 0;
-      for (let y = a; y <= b; y++) if (hx.H[k * NM + (y - Y0) * 12 + S.rm] > 0) c++;
-      v[k] = c / n;
-    }
+  } else if (S.layer === "chance") {
+    CH = chanceNow(S.st!);
+    V.chN = CH.years ? CH.years[1] - CH.years[0] + 1 : 0;
+    max = 1;
+    v.set(CH.v);
   } else {
     for (let k = 0; k < hx.n; k++) {
       const b = k * NM;
@@ -168,11 +183,23 @@ export function mapValues() {
   V.max = Math.max(1, max);
   legend();
 }
+/** the chance at point t of the colour scale, for the legend */
+const chLabel = (t: number, top: boolean) => {
+  if (!CH) return Math.round(t * 100) + "%";
+  const v = CH.max * Math.pow(t, 1 / CH.pow),
+    s = v >= 0.02 ? Math.round(v * 100) + "%" : (v * 100).toFixed(1) + "%";
+  return s + (top && CH.max < 1 ? "+" : "");
+};
 function legend() {
+  if (S.layer === "outlook") {
+    olLegend();
+    return;
+  }
   const ch = S.layer === "chance",
     f = V.fineOn,
     sh = S.show,
-    [a, b] = riskYears(),
+    [a, b] = CH && CH.years ? CH.years : riskYears(),
+    big = S.fire === "large",
     lut = LUT(),
     mx = f ? hexState(S.st!).f.max : V.max;
   $("legTitle").textContent = f
@@ -180,7 +207,11 @@ function legend() {
       ? "How often each 2 km hexagon has burned since 2012"
       : "Hotspots per 2 km hexagon since 2012"
     : ch
-      ? `Chance of fire in ${MONL[S.rm]}: share of years ${a} to ${b} with a hotspot`
+      ? isFc()
+        ? `Forecast for ${monthWhen()}: chance of ${big ? "a large fire (1,000+ acres) starting and reaching the hexagon" : "at least one hotspot"}`
+        : big
+          ? `Large fires in ${MONL[S.rm]}: share of years ${a} to ${b} when one (1,000+ acres) started and reached the hexagon`
+          : `Chance of fire in ${MONL[S.rm]}: share of years ${a} to ${b} with a hotspot`
       : sh.t === "cmonth"
         ? `Average hotspots per hexagon in ${MONL[sh.m]}`
         : `Hotspots per hexagon, ${sh.t === "year" ? sh.y : sh.t === "ym" ? MON[sh.m] + " " + sh.y : S.yFrom + " to " + S.yTo}`;
@@ -193,12 +224,14 @@ function legend() {
       const an = (Math.PI / 180) * (30 + 60 * q);
       pts.push((x + r * Math.cos(an)).toFixed(1) + "," + (15 - r * Math.sin(an)).toFixed(1));
     }
-    g += `<polygon points="${pts.join(" ")}" fill="${colT(lut, t)}"/><text x="${x}" y="42" text-anchor="middle">${ch ? (i ? Math.round(t * 100) + "%" : "rare") : short(Math.max(1, Math.round(Math.expm1(t * Math.log1p(mx)))))}</text>`;
+    g += `<polygon points="${pts.join(" ")}" fill="${colT(lut, t)}"/><text x="${x}" y="42" text-anchor="middle">${ch ? (i ? chLabel(t, i === 4) : "rare") : short(Math.max(1, Math.round(Math.expm1(t * Math.log1p(mx)))))}</text>`;
   });
   $("legSw").innerHTML = `<svg viewBox="0 0 244 46" role="img" aria-label="Larger, stronger-coloured hexagons mean more fire">${g}</svg>`;
   $("legCap").textContent =
     (S.pal === "fire" ? "Bigger and redder" : "Bigger and brighter") +
-    (ch ? " means fire more often." : " means more fire.") +
+    (ch ? (big ? " means large fires more often." : " means fire more often.") : " means more fire.") +
+    (ch && isFc() ? " From fire history alone, not weather." : "") +
+    (ch && big ? " Fire perimeters: CAL FIRE." : "") +
     (V.early ? " 2 km detail starts in 2012." : "");
 }
 /* street map tiles: only load where the page is allowed to fetch them (not inside the Claude preview) */
@@ -366,7 +399,7 @@ export function mapDraw() {
   const R = hx.R * V.s,
     rr = R * (R > 5 ? 0.93 : 1),
     early = !ch && (sh.t === "year" || sh.t === "ym") && sh.y < 2012,
-    fineT = early ? 0 : Math.max(0, Math.min(1, (R - 20) / 16)),
+    fineT = early || !fineFits() ? 0 : Math.max(0, Math.min(1, (R - 20) / 16)),
     zf = Math.log2((360 * hx.K * V.s) / 256);
   const corners = (r: number) => {
     const ox: number[] = [],
@@ -394,7 +427,9 @@ export function mapDraw() {
   const tiles = TILES.ok && zf >= 8.8 ? drawTiles(c, hx, zf) : false;
   $("attrib").hidden = !tiles;
   if (R < 70) drawContext(c, hx, rr, ox, oy, (S.sel.type === "state" ? 1 : 0.6) * (tiles ? 0.35 : 1));
-  if (fineT < 1) {
+  /* once the outlook is in, its counties are the map; the empty hexagons only show while it loads or if it failed */
+  const olReady = S.layer === "outlook" && olRun(S.st)?.status === "ok";
+  if (fineT < 1 && !olReady) {
     const sc = V.selC,
       base = (1 - fineT) * (tiles ? 0.62 : 1);
     for (let k = 0; k < hx.n; k++) {
@@ -412,7 +447,7 @@ export function mapDraw() {
       hexPath(x, y, ox, oy, 1);
       c.fill();
       if (v > 0) {
-        const t = ch ? v : Math.log1p(v) / lmax;
+        const t = ch ? chT(v) : Math.log1p(v) / lmax;
         c.globalAlpha = a * base;
         c.fillStyle = colT(lut, t);
         hexPath(x, y, ox, oy, 0.46 + 0.54 * t);
@@ -447,6 +482,22 @@ export function mapDraw() {
       c.closePath();
     }
   };
+  if (S.layer === "outlook") {
+    /* the 14-day outlook: each county filled by its chance against the usual */
+    const ciOf = new Map(D.states[S.st].counties.map((cty, i) => [cty.fips, i])),
+      sl = S.sel,
+      on = sl.type === "county" ? sl.ci : sl.type === "hex" ? hx.c[sl.k] : -1;
+    for (const g of hx.geo) {
+      const ci = ciOf.get(g.f),
+        f = ci === undefined ? null : olFill(S.st, ci);
+      if (!f) continue;
+      c.globalAlpha = f.a * (tiles ? 0.55 : 1) * (on < 0 || on === ci ? 1 : 0.45);
+      c.fillStyle = f.c;
+      path(g.r);
+      c.fill();
+    }
+    c.globalAlpha = 1;
+  }
   c.strokeStyle = "rgba(255,255,255," + (V.s > V.fit * 1.6 ? 0.24 : 0.09) + ")";
   c.lineWidth = 1;
   for (const g of hx.geo) {
@@ -543,7 +594,27 @@ export function mapDraw() {
   c.fillStyle = "rgba(255,255,255,.42)";
   if (R < 40) for (const [n, la, lo] of NBR[S.st]) c.fillText(n.toUpperCase().split("").join("\u200a"), sx(lo * hx.K), sy(la));
   drawLabels(c, hx);
+  drawResponse(c, sx, sy, R);
 }
+/** what the chance layer says about hexagon k, for its tooltip */
+function chanceTip(k: number) {
+  const big = S.fire === "large",
+    past = (c: Chance) =>
+      c.years
+        ? `${big ? "a large fire started and reached here" : "fire detected here"} in ${Math.round(c.v[k] * (c.years[1] - c.years[0] + 1))} of ${c.years[1] - c.years[0] + 1} ${MONL[S.rm]}s, ${c.years[0]}–${c.years[1]}`
+        : "";
+  if (!CH) return "";
+  if (!isFc()) return `${past(CH).replace(/^./, c => c.toUpperCase())} (${pctP(CH.v[k], true)})`;
+  return (
+    `Forecast for ${monthWhen()}: ${pctP(CH.v[k])} chance of ${big ? "a large fire reaching here" : "at least one hotspot"}\n` +
+    `Past: ${past(chanceNow(S.st!, S.rm, "past", S.fire))}`
+  );
+}
+/** a line for hexagons whose hotspots are mostly not fire */
+const notFireTip = (k: number) => {
+  const n = k >= 0 ? notFireName(S.st!, k) : "";
+  return n ? `\nMost hotspots here are heat from ${n}, not fire; the chance of fire and the tools leave it out` : "";
+};
 const hexAt = (px: number, py: number) => {
   const hx = hexState(S.st!),
     k = hx.key.get(hexKey(ix(px), iy(py), hx.R));
@@ -620,16 +691,20 @@ export function mapEvents() {
       if (j >= 0)
         showTip(
           e,
-          `${county ? county + "\n" : ""}${fmt(f.c[j])} hotspots in this 2 km hexagon since 2012\nBurned in ${pop(f.ym[j])} of 14 years, last in ${2012 + 31 - Math.clz32(f.ym[j])}\nMonths with fire: ${MON.filter((_, m) => (f.mm[j] >> m) & 1).join(", ")}\nClick to zoom in`,
+          `${county ? county + "\n" : ""}${fmt(f.c[j])} hotspots in this 2 km hexagon since 2012\nBurned in ${pop(f.ym[j])} of 14 years, last in ${2012 + 31 - Math.clz32(f.ym[j])}\nMonths with fire: ${MON.filter((_, m) => (f.mm[j] >> m) & 1).join(", ")}${notFireTip(k)}${respTip(k) || "\nClick to zoom in"}`,
         );
-      else if (k >= 0) showTip(e, `${county}\nNo hotspots detected here since 2012`);
+      else if (k >= 0) showTip(e, `${county}\nNo hotspots detected here since 2012${respTip(k)}`);
       else hideTip();
     } else if (k >= 0)
       showTip(
         e,
-        (S.layer === "chance"
-          ? `${county}\nFire detected here in ${Math.round(V.vals![k] * V.chN)} of ${V.chN} ${MONL[S.rm]}s (${Math.round(V.vals![k] * 100)}%)`
-          : `${county}\n${fmt(V.vals![k])} hotspots in this hexagon\n${showLabel()}`) + "\nClick to zoom in",
+        (S.layer === "outlook"
+          ? `${county}\n${olTip(hx.c[k])}`
+          : S.layer === "chance"
+            ? `${county}\n${chanceTip(k)}`
+            : `${county}\n${fmt(V.vals![k])} hotspots in this hexagon\n${showLabel()}`) +
+          notFireTip(k) +
+          (respTip(k) || "\nClick to zoom in"),
       );
     else hideTip();
   };
@@ -655,6 +730,7 @@ export function mapEvents() {
     if (d.moved) return;
     const p = loc(e),
       k = hexAt(p[0], p[1]);
+    if (respClick(ix(p[0]) / hexState(S.st!).K, iy(p[1]), k)) return;
     if (k < 0) return;
     const hx = hexState(S.st!),
       ci = hx.c[k],

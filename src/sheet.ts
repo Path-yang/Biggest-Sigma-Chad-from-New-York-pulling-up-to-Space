@@ -3,12 +3,16 @@ import { D, LAND_KM2, MON, MONL, NAME, SLUG, STC, STS, VI0, Y0 } from "./data";
 import { S } from "./state";
 import { $, fmt, times } from "./util";
 import { div, paintRamp, seq } from "./color";
-import { analyseFor, countyRisk, harm, leadText, placeName, riskFor, verdict } from "./model";
+import { analyseFor, countyRisk, harm, leadText, notFireNote, placeName, riskFor, selMask, verdict } from "./model";
 import { hideTip } from "./tooltip";
 import { setCounty, showLabel } from "./map";
 import { bars, calendarInto, lines } from "./charts";
 import { stopPlay } from "./play";
 import { render } from "./render";
+import { renderStaff } from "./respui";
+import { countyRiskFc, forecastLine, renderForecastSheet } from "./fcui";
+import { olStart, renderOutlookSheet } from "./olui";
+import { fcOn, isFc, pctP } from "./forecast";
 
 export function renderArea(R: Analysis) {
   $("shTitle").textContent = placeName();
@@ -53,16 +57,41 @@ export function renderArea(R: Analysis) {
       (rk.k
         ? ` When it burns, typically ${fmt(rk.typical)} hotspots; the worst was ${fmt(rk.worst.h)} in ${rk.worst.y}. Most recent: ${rk.last}.`
         : "") +
-      " History, not a forecast."
+      " History, not a forecast." +
+      notFireNote(S.st!, selMask()) +
+      forecastLine(S.st!)
     : "";
-  const wl = countyRisk(S.st!, S.rm).slice(0, 8);
-  $("watchTitle").textContent = `Where to watch in ${mo}: ${NAME[S.st!]} counties`;
-  $("watch").innerHTML = wl
-    .map(
-      (w, i) =>
-        `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${Math.round(w.p * 100)}%</span><small>Fire in ${w.k} of ${w.n} ${mo}s · typically ${fmt(w.med)} hotspots</small></button>`,
-    )
-    .join("");
+  const share = (x: number) => (x >= 0.095 ? Math.round(x * 100) + "%" : x >= 0.001 ? (x * 100).toFixed(1) + "%" : x > 0 ? "<0.1%" : "0%"),
+    who = window.RESPONSE ? "Counties, and the stations that reach each place first by road," : "Counties";
+  if (isFc() && fcOn(S.st!)) {
+    const yr = S.odds as number;
+    $("watchTitle").textContent = `Where to watch in ${mo} ${yr}: forecast`;
+    $("watchNote").textContent =
+      `${who} ranked by their share of ${NAME[S.st!]}'s forecast fire risk for ${mo} ${yr}: each hexagon counts by its chance of at least one hotspot. ` +
+      `The forecast is built from fire history alone, not weather, and says nothing about how each station is staffed. Tap one to see it on the map.`;
+    $("watch").innerHTML = countyRiskFc(S.st!, S.rm, yr)
+      .slice(0, 8)
+      .map(
+        (w, i) =>
+          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn</small></button>`,
+      )
+      .join("");
+  } else {
+    const wl = countyRisk(S.st!, S.rm).slice(0, 8);
+    $("watchTitle").textContent = `Where to watch in ${mo}: past odds`;
+    $("watchNote").textContent =
+      `${who} ranked by how often fire comes to their hexagons in ${mo}, ${rk.a}–${rk.b}: each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire. ` +
+      `The percentage is their share of ${NAME[S.st!]}'s. This is the historical pattern, not a forecast for this year. Hotspots are what satellites saw burning, not calls or incidents, and this says nothing about how a station is staffed. Tap one to see it on the map.`;
+    $("watch").innerHTML = wl
+      .map(
+        (w, i) =>
+          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} · about ${fmt(w.mean)} hotspots</small></button>`,
+      )
+      .join("");
+  }
+  renderForecastSheet();
+  renderStaff();
+  renderOutlookSheet();
   $("watch")
     .querySelectorAll<HTMLButtonElement>(".w")
     .forEach(
@@ -310,6 +339,8 @@ export function openSheet(tab: SheetTab) {
   $("paneCmp").hidden = tab !== "compare";
   $("sheet").scrollTop = 0;
   render();
+  /* the full data lists the 14-day outlook: ask for the weather now, if it is not here yet */
+  if (tab === "area" && S.st) olStart(S.st);
   $("shClose").focus();
 }
 export function closeSheet(silent?: boolean) {

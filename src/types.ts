@@ -2,7 +2,7 @@
 
 export type StateCode = "NY" | "CA";
 export type Palette = "fire" | "inferno" | "cividis" | "viridis";
-export type Layer = "count" | "chance";
+export type Layer = "count" | "chance" | "outlook";
 export type CalendarMode = "count" | "anom";
 export type SheetTab = "area" | "compare";
 /** red, green, blue, each 0 to 255 */
@@ -126,7 +126,14 @@ export interface AppState {
   layer: Layer;
   /** calendar month for "chance of fire" */
   rm: number;
+  /** where the chance of fire comes from: past odds, or the forecast for one year */
+  odds: Odds;
+  /** any fire, or large fires only (California) */
+  fire: FireKind;
 }
+/** "past" is the historical share of years with fire; a year is the forecast for that year */
+export type Odds = "past" | 2026 | 2027;
+export type FireKind = "any" | "large";
 export interface Preset {
   name: string;
   lat: number;
@@ -362,4 +369,256 @@ export interface CountryIndexEntry {
   bytes: number;
   bbox: [number, number, number, number];
   total: number;
+}
+
+/* ---------- response.js: drive times from fire and EMS stations (OpenStreetMap roads) ---------- */
+export interface ResponseScore {
+  n: number;
+  med_abs_pct: number;
+  p90_abs_pct: number;
+  bias_pct: number;
+  mae_min: number;
+}
+/** a rule for estimating drive minutes between two points from their straight-line distance */
+export interface ResponseCal {
+  /** lower edges of the distance bands, km; the last band is open */
+  bands_km: number[];
+  /** effective straight-line speed per band, km/h */
+  kmh: number[];
+  kmh_raw: (number | null)[];
+  kmh_p10_p90: ([number, number] | null)[];
+  detour: (number | null)[];
+  detour_p10_p90: ([number, number] | null)[];
+  n_pairs: number[];
+  n_route_km: number[];
+  /** one speed for every distance: the baseline the bands were tested against */
+  one_kmh: number;
+  local_extra_min_p10_p50_p90: number[];
+  /** no estimate is faster than the straight line at this speed */
+  floor_kmh: number;
+  n_source_hexes: number;
+  test: Record<"one_speed" | "bands" | "bands_plus_local", ResponseScore> & {
+    by_band: { band: number; one_speed: number; bands: number; bands_plus_local: number; n: number }[];
+  };
+}
+export interface ResponseState {
+  n: number;
+  ns: number;
+  /** top[3k + j]: station index of the j-th fastest station to hexagon k; -1 for none */
+  top: number[];
+  /** drive minutes x10 for the same slots; -1 for none */
+  min10: number[];
+  /** road km x10 for the same slots; -1 for none */
+  km10: number[];
+  /** straight-line km x10 from each hexagon centre to the nearest station */
+  crow10: number[];
+  crow_s: number[];
+  /** metres from each hexagon centre to its road; over 10000 means no road and no times */
+  snap_m: number[];
+  s_snap_m: number[];
+  /** local extra minutes x10 for the calibration; -9999 when no station can reach the hexagon */
+  e10: number[];
+  /** per 2 km hexagon: fastest station and its minutes x10; -1 for none */
+  fine: { n: number; s: number[]; min10: number[] };
+  cal: ResponseCal;
+}
+export interface ResponseData {
+  v: number;
+  built: string;
+  method: string;
+  source: string;
+  credit: string;
+  speeds_kmh: Record<string, number>;
+  cap_kmh: number;
+  access_kmh: number;
+  snap_max_km: number;
+  fields: Record<string, string>;
+  osm: Record<StateCode, { file: string; md5: string; timestamp: string; graph: { vertices: number; edges: number } }>;
+  NY: ResponseState;
+  CA: ResponseState;
+}
+/** the fire response tool that is switched on in the state view */
+export type Tool = "near" | "gap" | "plan";
+/** what the reader has chosen in the fire response tools */
+export interface ResponseUi {
+  tool: Tool | null;
+  /** a spot clicked with "Closest stations" on: lon, lat and the hexagon it falls in */
+  pin: { lon: number; lat: number; k: number } | null;
+  /** the chance of fire a place needs in the chosen month to be flagged as a gap */
+  gapMin: number;
+  /** number of extra crews, and the drive-time limit in minutes */
+  planN: number;
+  planT: number;
+  /** a station picked from the staff-up list, shown with its first-due area; -1 for none */
+  focusStn: number;
+}
+
+/* ---------- forecast.js: fire chance for 2026 and 2027 (scripts/build_forecast.py) ---------- */
+/** one reliability bin: forecasts in [lo, hi), their average and how often fire happened */
+export interface RelBin {
+  bin: [number, number];
+  n: number;
+  mean_p: number | null;
+  observed: number | null;
+}
+export interface FcMetrics {
+  n: number;
+  events: number;
+  base_rate: number;
+  mean_p: number;
+  brier: number;
+  logloss: number;
+  auc: number | null;
+  reliability?: RelBin[];
+}
+export interface FcBacktest {
+  targets: [number, number];
+  settings_chosen_on: string;
+  model: FcMetrics;
+  history_alone: FcMetrics;
+  brier_skill_vs_history: number;
+  auc_gain_vs_history: number;
+  years_model_better_brier: string;
+  per_year: {
+    year: number;
+    events: number;
+    brier_model: number;
+    brier_history: number;
+    auc_model: number | null;
+    auc_history: number | null;
+  }[];
+  horizon2: { model: FcMetrics; history_alone: FcMetrics; brier_skill_vs_history: number };
+  final_settings_label: string;
+  text: string;
+}
+/** month-major permille arrays: unit u in month t is at [t * n + u], t = (year - 2026) * 12 + month */
+export interface FcLayer {
+  p: number[];
+  county: number[] | null;
+}
+/** the large-fire backtest, one horizon */
+export interface LargeMetrics {
+  brier: number;
+  log_loss: number;
+  auc: number;
+  share_of_events_in_top_risk: { top_1pct: number; top_5pct: number; top_10pct: number };
+  expected_vs_observed_by_year: Record<string, [number, number]>;
+}
+export interface LargeBacktest {
+  test_years: [number, number];
+  unit_months: number;
+  events: number;
+  model: LargeMetrics;
+  history_alone: LargeMetrics;
+  state_seasonal_average: LargeMetrics;
+  brier_skill_vs_history_alone: number;
+  brier_skill_vs_state_seasonal_average: number;
+  reliability_model: { pred_range: [number, number]; n: number; mean_pred: number; observed: number }[];
+  reliability_history_alone: { pred_range: [number, number]; n: number; mean_pred: number; observed: number }[];
+}
+export interface LargeLayer extends FcLayer {
+  event: string;
+  method: string;
+  is_forecast: string;
+  backtest: {
+    design: string;
+    hex: Record<"horizon_1y" | "horizon_2y", LargeBacktest>;
+    county: Record<"horizon_1y" | "horizon_2y", LargeBacktest>;
+  };
+  /** large-fire history from the fire perimeter maps */
+  past: { years: [number, number]; pairs: number[]; county_rows: number[] };
+  definition: string;
+  limits: string[];
+  large_fires: number;
+  hex_months: number;
+  hexagons_ever_marked: number;
+  firms_inside: { viirs: number; modis: number };
+  source: string;
+  source_url: string;
+  source_page: string;
+  credit: string;
+  retrieved: string;
+}
+export interface Forecast {
+  v: number;
+  years: [number, number];
+  event: string;
+  method: string;
+  backtest: Record<StateCode, { hex: FcBacktest; county: FcBacktest; county_below_its_likeliest_hex: string }>;
+  NY: { n_hex: number; n_county: number; any: FcLayer; large: null };
+  CA: { n_hex: number; n_county: number; any: FcLayer; large: LargeLayer | null };
+}
+
+/* ---------- outlook.js: the 14-day county outlook (scripts/build_outlook.py), computed live from Open-Meteo weather ---------- */
+export interface OutlookScore {
+  brier: number;
+  logloss: number;
+  auc: number;
+  /** Brier skill against the usual odds: 0.019 = 1.9% better */
+  bss: number;
+  bss_by_year: Record<string, number>;
+}
+export interface OutlookState {
+  /** same order as BURN_DATA.states[st].counties */
+  fips: string[];
+  names: string[];
+  /** [lat, lon] weather point per county */
+  pts: [number, number][];
+  /** usual chance x 10000, flat: base[ci * 365 + day of year] */
+  base: number[];
+  /** [intercept, clim, rain14, dry14, et14, rain30, def30] */
+  coef: number[];
+  /** [intercept, clim]: the model's chance with no weather input */
+  norm_coef: number[];
+  climatology: { years: [number, number]; half_width_days: number; pseudo_samples: number };
+  metrics: {
+    backtest: Record<string, OutlookScore>;
+    /** [mean chance given, share that happened, cases] */
+    reliability: [number, number, number][];
+    rows: number;
+    events: number;
+    years: number[];
+    truth_check: { hotspots: number; data_js_viirs: number; abs_month_diff: number; static_cells: number };
+  };
+}
+export interface OutlookExample {
+  st: StateCode;
+  ci: number;
+  name: string;
+  today: string;
+  time0: string;
+  precipitation_sum: (number | null)[];
+  et0_fao_evapotranspiration: (number | null)[];
+  expect: { doy: number; base: number; x: number[]; z: number; p: number; ratio: number; norm: number; wx_ratio: number };
+}
+export interface OutlookData {
+  v: number;
+  built: string;
+  event: string;
+  /** days ahead, starting today */
+  horizon: number;
+  /** past days of weather used */
+  prior: number;
+  /** a day with less rain than this (mm) is dry */
+  dry_mm: number;
+  api: { url: string; params: Record<string, string | number>; fallback_models: string };
+  features: { id: string; label: string }[];
+  method: string;
+  states: Record<StateCode, OutlookState>;
+  examples: OutlookExample[];
+}
+/** one county's outlook for the 14 days from today */
+export interface CountyOutlook {
+  /** chance of at least one hotspot, 0..1 */
+  p: number;
+  /** the usual chance for this county and these dates, 0..1 */
+  base: number;
+  /** p / base */
+  ratio: number;
+  /** the model's chance with no weather input */
+  norm: number;
+  /** p / norm: the weather's part of the change */
+  wx_ratio: number;
+  /** the county's local date the 14 days start on */
+  today: string;
 }

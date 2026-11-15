@@ -11,6 +11,8 @@ import { G, aimAt } from "./globe";
 import { closeCountry, countryMissing, openCountry } from "./country";
 import { loadIndex } from "./hf";
 import { WORLD, lonSpan, shapeOf, slugOf } from "./world";
+import { respReset } from "./respui";
+import { extrasReady, loadExtras } from "./extras";
 
 /* =====================================================================
    VIEWS AND WIRING
@@ -23,6 +25,10 @@ function openState(st: StateCode, fresh?: boolean) {
   S.sel = { type: "state" };
   S.show = { t: "all" };
   S.layer = "count";
+  /* the forecast and large-fire choices start fresh in each state, like the layer */
+  S.odds = "past";
+  S.fire = "any";
+  respReset();
   V.mask = null;
   V.fineOn = false;
   S.focus = PRESET[st].focus.slice();
@@ -30,6 +36,7 @@ function openState(st: StateCode, fresh?: boolean) {
   $("hero").hidden = true;
   G.stop && G.stop();
   $("app").hidden = false;
+  $("card").scrollTop = 0;
   scrollTo(0, 0);
   $("swap").textContent = "Switch to " + NAME[STS.find(k => k !== st)!];
   $("pal").value = S.pal;
@@ -43,6 +50,13 @@ function openState(st: StateCode, fresh?: boolean) {
   V.fit = f.s;
   Object.assign(V, f, { s: f.s * (fresh ? 0.55 : 1) });
   render();
+  /* the response tools, the forecast and the outlook arrive a moment later the first time */
+  if (!extrasReady())
+    loadExtras().then(() => {
+      if (S.st !== st) return;
+      respReset();
+      render();
+    });
   requestAnimationFrame(() => {
     $("app").classList.add("in");
     if (fresh) flyTo(f, 1100);
@@ -129,6 +143,7 @@ export function route() {
     if (location.hash === "#compare") openSheet("compare");
     return;
   }
+  loadExtras();
   if (G.pending === location.hash && G.ok && !$("hero").hidden) {
     G.pending = null;
     G.flyTo!({ ry: G.st![st].ry, rx: G.st![st].rx, z: 1.62 }, () => openState(st, true));

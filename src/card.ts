@@ -2,8 +2,10 @@ import type { Analysis } from "./types";
 import { D, MON, NAME, STS } from "./data";
 import { S } from "./state";
 import { $, fmt } from "./util";
-import { hexState, leadText, placeName, riskFor, stationsFor, verdict } from "./model";
+import { hexState, leadText, placeName, stationsFor, verdict } from "./model";
 import { setCounty, showLabel } from "./map";
+import { chanceCard } from "./fcui";
+import { olCard } from "./olui";
 
 /* =====================================================================
    CARD, SHEET, COMPARE
@@ -49,9 +51,10 @@ export function renderCard(R: Analysis) {
   const v = verdict(R);
   $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}`;
   $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : "Outside these years";
-  const rk = riskFor(R, S.rm);
-  $("c4q").textContent = `Chance of fire in ${MON[S.rm]}`;
-  $("c4").textContent = rk.n ? Math.round(rk.p * 100) + "%" : "n/a";
+  const cc = olCard() || chanceCard(R);
+  $("c4q").textContent = cc.q;
+  $("c4").textContent = cc.v;
+  $("c4").parentElement!.title = cc.title;
   $("openCmp").textContent = "Compare with " + NAME[STS.find(k => k !== S.st)!];
 }
 export function renderTimeline(R: Analysis) {

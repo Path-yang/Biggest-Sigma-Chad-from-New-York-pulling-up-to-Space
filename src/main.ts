@@ -6,13 +6,16 @@ import { hexState } from "./model";
 import { V, centerOn, fitView, mapDraw, mapEvents, mapSize, selBounds, setDraw, tileProbe, zoomSel } from "./map";
 import { closeSheet, openSheet } from "./sheet";
 import { stopPlay, togglePlay } from "./play";
-import { csvCal, csvHot } from "./downloads";
+import { csvCal, csvForecast, csvForecastCounty, csvHot } from "./downloads";
 import { render } from "./render";
 import { G, globeInit } from "./globe";
 import { go, goCountry, route } from "./views";
 import { countryEvents } from "./country";
 import { loadIndex } from "./hf";
 import { WORLD } from "./world";
+import { respEvents } from "./respui";
+import { oddsEvents } from "./fcui";
+import { olEvents, olStart } from "./olui";
 
 /** a place the hero's search can open: a country by its FIRMS name, or one of the two detailed states */
 type Findable = { name: string; k: string } | { name: string; st: StateCode };
@@ -164,8 +167,10 @@ function init() {
       (b.onclick = () => {
         stopPlay();
         S.layer = b.dataset.layer as Layer;
-        if (S.layer === "chance") S.show = { t: "all" };
+        if (S.layer !== "count") S.show = { t: "all" };
         render();
+        /* the outlook's weather is fetched when its layer is first picked (a failed one is tried again) */
+        if (S.layer === "outlook" && S.st) olStart(S.st);
       }),
   );
   $("town").onchange = e => {
@@ -279,7 +284,12 @@ function init() {
   countryEvents();
   $("dlCal").onclick = csvCal;
   $("dlHot").onclick = csvHot;
+  $("dlFc").onclick = csvForecast;
+  $("dlFcC").onclick = csvForecastCounty;
   mapEvents();
+  respEvents();
+  oddsEvents();
+  olEvents();
   let rt: number | undefined;
   addEventListener("resize", () => {
     clearTimeout(rt);

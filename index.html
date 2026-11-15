@@ -90,6 +90,7 @@ input[type=number]{width:84px}
 .ov.bl{left:16px;bottom:16px}
 .ov.zoom{left:16px;top:50%;transform:translateY(-50%);flex-direction:column}
 .ov.attr{right:16px;bottom:8px;font-size:11px;color:var(--muted)}
+@media (min-width:901px){.ov.attr{right:404px;bottom:1px}}
 .ov select{min-height:40px;border-radius:999px;padding:6px 12px;background:rgba(9,13,22,.86)}
 #bigYear{position:absolute;left:76px;top:70px;font:800 96px/1 var(--font-d);letter-spacing:-.04em;pointer-events:none;text-shadow:0 2px 18px #000}
 .legendBox{border-radius:14px;padding:12px 14px;font-size:13px;color:var(--ink2);display:flex;flex-direction:column;gap:7px;width:268px}
@@ -107,6 +108,7 @@ input[type=number]{width:84px}
 .find{display:flex;gap:8px}
 .find input{flex:1;min-width:0;min-height:40px;border-radius:999px;padding:6px 14px;background:var(--field);border:1px solid var(--line);font-size:14px}
 #card{position:absolute;right:16px;top:16px;width:368px;max-height:calc(100% - 32px);overflow:auto;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px}
+#card>*{flex-shrink:0}
 #card h2{font:800 34px/1 var(--font-d);letter-spacing:-.025em;margin:4px 0 0}
 .lead{font:500 19px/1.32 var(--font-d);margin:0;text-wrap:pretty}
 .mini{margin:0;display:flex;flex-direction:column;gap:1px;border-radius:10px;overflow:hidden}
@@ -114,6 +116,78 @@ input[type=number]{width:84px}
 .mini dt{color:var(--muted);font-size:13px}
 .mini dd{margin:0;font:700 16px var(--font-d);text-align:right}
 .hint{font-size:12.5px;color:var(--muted);margin:0}
+/* fire response tools, in the card */
+.resp{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.respHead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.respHead h3{font:700 20px/1.2 var(--font-d);margin:0}
+.tools{display:flex;gap:6px;flex-wrap:wrap}
+.tools .btn{min-height:36px;padding:6px 12px;font-size:13.5px}
+.respCtl{display:flex;flex-direction:column;gap:8px;font-size:13.5px;color:var(--ink2)}
+.rc{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.rc select{min-height:34px}
+.seg.sm button{padding:5px 10px;min-height:32px;font-size:13px}
+.rc input[type=range]{flex:1 1 120px;min-width:0;accent-color:var(--ember)}
+.rc output{font:700 18px var(--font-d);color:var(--ink);min-width:2ch;text-align:right}
+#respOut{display:flex;flex-direction:column;gap:8px}
+#respOut:empty{display:none}
+.rh{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-weight:600;font-size:14px;margin-top:2px}
+.nl{display:flex;flex-direction:column;gap:1px;border-radius:10px;overflow:hidden}
+.nr{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:1px 10px;align-items:center;width:100%;text-align:left;background:var(--panel);border:0;padding:8px 12px;cursor:pointer;font-size:14px}
+.nr:hover{background:rgba(255,255,255,.1)}
+.nr b{font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.nr .mn{font:700 16px var(--font-d);white-space:nowrap}
+.nr small{grid-column:2/4;font-size:12px;color:var(--muted);line-height:1.35}
+.bd{width:20px;height:20px;border-radius:50%;background:#7fd8ff;color:#04121c;font:600 11px/20px var(--font-m);text-align:center;grid-row:span 2;align-self:start;margin-top:1px}
+.bd.gap{background:transparent;border:2px solid #4fe3ff;color:#4fe3ff;line-height:16px}
+.bd.site{background:var(--ember);color:var(--ember-ink)}
+.big{margin:0;font-size:14px;color:var(--ink2)}
+.big b{font:800 30px/1 var(--font-d);color:var(--ink);margin-right:6px}
+.gk,.sk{display:inline-block;width:12px;height:12px;border:2px solid #4fe3ff;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.sk{border-color:#fff}
+.cov{display:flex;align-items:flex-end;gap:12px}
+.cov div{display:flex;flex-direction:column;font-size:12.5px;color:var(--muted)}
+.cov b{font:800 30px/1.05 var(--font-d);color:var(--ink)}
+.cov b.em{color:var(--ember)}
+.cov .arr{font-size:20px;color:var(--muted);padding-bottom:4px}
+.covBar{display:flex;height:8px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.covBar i{background:var(--ink2)}.covBar i.add{background:var(--ember)}
+.hint.test{color:var(--ink2)}
+.hint.test b{color:var(--ink);font-weight:600}
+.respHow{padding:8px 12px;font-size:13px;color:var(--ink2)}
+.respHow summary{font-size:13.5px}
+.respHow p{margin:0}
+ul.steps{margin:6px 0 0;padding-left:18px;color:var(--ink2);font-size:13.5px}
+ul.steps li{margin:4px 0}
+/* chance of fire: past odds or forecast, any fire or large fires */
+/* in the bottom bar, in place of the timeline while the chance layer is on */
+.oddsBar{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.oddsBar select{min-height:34px;padding:4px 10px;background:var(--field)}
+.oddsNote{flex-basis:100%;margin:0 2px 2px;font-size:12.5px;line-height:1.4;color:var(--ink2)}
+.oddsNote b{color:var(--ink);font-weight:600}
+@media (max-width:900px){.oddsNote .more{display:none}.oddsBar .seg.sm button{padding:5px 9px}}
+/* the 14-day outlook: in the bottom bar while its layer is on, and in the sheet */
+.olBar{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.olBar .oddsNote{flex:1 1 300px}
+.olBar .oddsNote a,#olHow a,#olSrc a{color:var(--ember)}
+.olKey{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.olKey i{display:block;width:96px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--cool),var(--mid) 50%,var(--hot))}
+.olH{font:700 17px var(--font-d);margin:6px 0 0}
+table.fcT.olT{min-width:0;width:100%}
+.olT th{white-space:normal;vertical-align:bottom}
+.olT td.u,.olT th:first-child{white-space:normal;text-align:left;min-width:150px}
+@media (max-width:900px){.olBar .oddsNote{flex-basis:100%}}
+@media (max-width:520px){.olT td.u,.olT th:first-child{min-width:96px}.olT th,.olT td{padding:4px 4px}}
+.srcLine{margin:0;font-size:12.5px;color:var(--ink2)}
+.srcLine b{color:var(--ink);font-weight:600}
+.fcVerdict{margin:0;font:600 18px/1.35 var(--font-d);max-width:70ch;text-wrap:pretty}
+.fcVerdict b{color:var(--ember)}
+table.fcT{min-width:640px}
+.fcT td.u{font-family:var(--font-b);font-size:13px;color:var(--ink)}
+.fcT td.em{color:var(--ember);font-weight:500}
+.fcT tr.grp td{color:var(--muted);padding-top:12px;font-family:var(--font-b);font-size:12.5px;text-align:left}
+.fcRel{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),620px));gap:18px}
+.fcRel h4{font:700 16px var(--font-d);margin:0 0 4px}
+.fcRel .key{font-size:12.5px;margin-bottom:4px}
 
 /* ---------- the data sheet ---------- */
 #sheetWrap{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:24px}
@@ -184,6 +258,8 @@ th{color:var(--muted);font-weight:400}
 .score .bar{height:6px;border-radius:3px;margin-top:6px;min-width:3px}
 .twoCal{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr));gap:22px}
 .watch{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:10px}
+.watch.one{grid-template-columns:minmax(0,1fr)}
+.w b{overflow-wrap:anywhere}
 .w{display:grid;grid-template-columns:26px 1fr auto;gap:2px 10px;align-items:center;text-align:left;background:rgba(255,255,255,.05);border:1px solid transparent;border-radius:10px;padding:10px 12px;cursor:pointer}
 .w:hover{border-color:var(--ember)}
 .w .rk{font:500 12px var(--font-m);color:var(--muted);grid-row:span 2}
@@ -308,8 +384,7 @@ th{color:var(--muted);font-weight:400}
     <div class="ov tl">
       <button class="btn" id="toGlobe" type="button">← Globe</button>
       <button class="btn" id="swap" type="button"></button>
-      <div class="seg" id="layerSeg" role="group" aria-label="Map layer"><button type="button" data-layer="count">Past hotspots</button><button type="button" data-layer="chance">Chance of fire</button></div>
-      <select id="rmMap" aria-label="Month for chance of fire" hidden></select>
+      <div class="seg" id="layerSeg" role="group" aria-label="Map layer"><button type="button" data-layer="count">Past hotspots</button><button type="button" data-layer="chance">Chance of fire</button><button type="button" data-layer="outlook" hidden>Next 14 days</button></div>
     </div>
     <div class="ov zoom">
       <button class="btn sq" id="zin" type="button" aria-label="Zoom in">+</button>
@@ -327,7 +402,18 @@ th{color:var(--muted);font-weight:400}
     <div class="ov attr" id="attrib" hidden>Street map © OpenStreetMap contributors</div>
     <div class="ov tlbar glass" id="tl">
       <button class="btn sq primary" id="playMap" type="button" aria-label="Play through the years">▶</button>
-      <div class="tlMain">
+      <div class="oddsBar" id="oddsBar" hidden>
+        <div class="seg sm" id="oddsSeg" role="group" aria-label="Where the chance of fire comes from"><button type="button" data-odds="past">Past odds</button><button type="button" data-odds="2026">Forecast 2026</button><button type="button" data-odds="2027">Forecast 2027</button></div>
+        <select id="rmMap" aria-label="Month for chance of fire"></select>
+        <div class="seg sm" id="fireSeg" role="group" aria-label="Which fires"><button type="button" data-fire="any">Any fire</button><button type="button" data-fire="large" title="Fires of 1,000 acres or more on CAL FIRE's fire perimeter maps">Large fires</button></div>
+        <p class="oddsNote" id="oddsNote"></p>
+      </div>
+      <div class="olBar" id="olBar" hidden>
+        <p class="oddsNote" id="olNote" role="status"></p>
+        <div class="olKey" id="olKey" aria-hidden="true"><span>weather lowers</span><i></i><span>raises</span></div>
+        <button class="btn primary" id="olRetry" type="button" hidden>Retry</button>
+      </div>
+      <div class="tlMain" id="tlMain">
         <div class="tlHead"><span id="tlLabel"></span><button class="link" id="showReset" type="button">Show all years</button></div>
         <div id="tlTrack" role="slider" tabindex="0" aria-label="Year shown on the map"></div>
       </div>
@@ -347,6 +433,27 @@ th{color:var(--muted);font-weight:400}
     <button class="btn big" id="openCmp" type="button"></button>
     <div class="find"><input id="town" list="townList" placeholder="Find a town or city…" aria-label="Find a town or city"><datalist id="townList"></datalist><button class="btn" id="drawBtn" type="button" aria-pressed="false">Draw an area</button></div>
     <p class="hint" id="hint">Click a county, then a hexagon, to zoom in. Scroll to zoom, drag to move.</p>
+    <section class="resp" id="resp" aria-labelledby="respH" hidden>
+      <div class="respHead"><h3 id="respH">Fire response</h3><p class="eyebrow">Drive times on OSM roads</p></div>
+      <div class="tools" id="toolSeg" role="group" aria-label="Fire response tools">
+        <button type="button" class="btn" data-tool="near" aria-pressed="false">Closest stations</button>
+        <button type="button" class="btn" data-tool="gap" aria-pressed="false">15 km gaps</button>
+        <button type="button" class="btn" data-tool="plan" aria-pressed="false">Add crews</button>
+      </div>
+      <div class="respCtl" id="respCtl" hidden>
+        <label class="rc">Month <select id="rmResp" aria-label="Month for the fire response tools"></select></label>
+        <div class="rc"><span>Fire risk from</span><div class="seg sm" id="oddsResp" role="group" aria-label="Fire risk from past odds or the forecast"><button type="button" data-odds="past">Past odds</button><button type="button" data-odds="2026">Forecast 2026</button><button type="button" data-odds="2027">Forecast 2027</button></div></div>
+        <div class="rc" id="gapCtl"><span>Fire in at least</span>
+          <div class="seg sm" id="gapSeg" role="group" aria-label="How often a place must burn to be flagged"><button type="button" data-thr="0.1">1 year in 10</button><button type="button" data-thr="0.25">1 in 4</button><button type="button" data-thr="0.5">1 in 2</button></div></div>
+        <div id="planCtl" class="respCtl">
+          <label class="rc">Extra crews <input type="range" id="planN" min="1" max="20" step="1" value="5"><output id="planNv" for="planN">5</output></label>
+          <div class="rc"><span>Reach within</span><div class="seg sm" id="planT" role="group" aria-label="Drive-time limit in minutes"><button type="button" data-t="10">10</button><button type="button" data-t="15">15</button><button type="button" data-t="20">20</button><button type="button" data-t="30">30</button></div><span>min</span></div>
+        </div>
+      </div>
+      <div id="respOut" aria-live="polite"></div>
+      <details class="respHow"><summary>How this works</summary><p id="respHowTxt"></p><p class="hint" style="margin-top:6px">More detail, with the error test, is in the full data under “Far from a station”.</p></details>
+      <p class="hint" id="respCredit"></p>
+    </section>
   </aside>
 </section>
 
@@ -371,22 +478,48 @@ th{color:var(--muted);font-weight:400}
           <div class="a"><span class="q">Was <select id="fM" aria-label="Month"></select> <select id="fY" aria-label="Year"></select> unusual?</span><span class="v" id="a3"></span><span class="d" id="a3n"></span></div>
           <div class="a"><span class="q">What are the odds of fire in <select id="rmSheet" aria-label="Month"></select>?</span><span class="v" id="a4"></span><span class="d" id="a4n"></span></div>
         </div></section>
-      <section class="sec s12"><span class="num">02</span><h3 id="watchTitle"></h3>
-        <p class="note">Counties ranked by how much fire they usually see in this month. The percentage is the share of recent years with at least one hotspot. This is the historical pattern, not a forecast for today. Tap a county to open it on the map.</p>
-        <div class="watch" id="watch"></div></section>
-      <section class="sec s6"><span class="num">03</span><h3>When it burns</h3>
+      <section class="sec s12"><span class="num">02</span><div class="row between"><h3 id="watchTitle"></h3><div class="seg sm" id="oddsSheet" role="group" aria-label="Rank by past odds or the forecast"><button type="button" data-odds="past">Past odds</button><button type="button" data-odds="2026">Forecast 2026</button><button type="button" data-odds="2027">Forecast 2027</button></div></div>
+        <p class="note" id="watchNote"></p>
+        <div class="twoCal">
+          <div><h4>Counties to watch</h4><div class="watch one" id="watch"></div></div>
+          <div id="staffBox"><h4>Stations first to the most fire</h4><div class="watch one" id="staff"></div><p class="note small" id="staffNote" style="margin-top:8px"></p></div>
+        </div></section>
+      <section class="sec s12" id="olSec" hidden><span class="num">03</span><div class="row between"><h3 id="olTitle">Counties to watch in the next 14 days</h3><div class="seg sm" id="olSort" role="group" aria-label="Rank counties by"><button type="button" data-sort="p">Highest chance</button><button type="button" data-sort="ratio">Weather raises most</button></div></div>
+        <p class="note" id="olNoteS" role="status"></p>
+        <div class="row"><button class="btn primary" id="olRetryS" type="button" hidden>Retry</button></div>
+        <div class="watch" id="olList"></div>
+        <div class="row"><button class="link" id="olMore" type="button"></button><button class="btn" id="olCsv" type="button">Outlook CSV</button></div>
+        <p class="note small" id="olMsg" role="status"></p>
+        <h4 class="olH">How it was built</h4>
+        <p class="note" id="olHow"></p>
+        <div class="scroll"><table class="fcT olT" id="olTable"></table></div>
+        <p class="note small" id="olKeyS"></p>
+        <p class="note small cSrc" id="olSrc"></p></section>
+      <section class="sec s12" id="gapSec"><span class="num">04</span><h3 id="gapTitle"></h3>
+        <p class="note" id="gapNote"></p>
+        <div class="watch" id="gapList"></div>
+        <details><summary>How the fire response tools work</summary><div class="note" id="respMethod"></div></details></section>
+      <section class="sec s12" id="fcSec"><span class="num">05</span><h3 id="fcTitle">Forecast 2026–2027: is it better than past odds?</h3>
+        <p class="fcVerdict" id="fcVerdict"></p>
+        <p class="note" id="fcNote"></p>
+        <div class="scroll"><table class="fcT" id="fcTable"></table></div>
+        <p class="note small" id="fcKey"></p>
+        <div class="fcRel" id="fcRel"></div>
+        <ul class="steps" id="fcLimits"></ul>
+        <details><summary>How the forecast and the large-fire layer are made</summary><div class="note" id="fcMethod"></div></details></section>
+      <section class="sec s6"><span class="num">06</span><h3>When it burns</h3>
         <p class="note">A typical year, month by month. The thin line on each bar shows how much it varies. Tap a bar to put that month on the map.</p>
         <div id="chMonths"></div></section>
-      <section class="sec s6"><span class="num">04</span><div class="row between"><h3>Year by year</h3><button class="btn" id="play" type="button">▶ Play on the map</button></div>
+      <section class="sec s6"><span class="num">07</span><div class="row between"><h3>Year by year</h3><button class="btn" id="play" type="button">▶ Play on the map</button></div>
         <p class="note">Tap a bar to put that year on the map. The dashed line is the average year.</p>
         <div class="key"><span><i style="background:var(--ember)"></i>Seen by VIIRS</span><span><i style="background:repeating-linear-gradient(45deg,var(--ember) 0 2px,transparent 2px 4px)"></i>Converted from MODIS, with likely range</span></div>
         <div id="chYears"></div></section>
-      <section class="sec s12"><span class="num">05</span><div class="row between"><h3>The full calendar</h3>
+      <section class="sec s12"><span class="num">08</span><div class="row between"><h3>The full calendar</h3>
           <div class="seg" id="modeSeg" role="group" aria-label="Calendar values"><button type="button" data-mode="count">Hotspots</button><button type="button" data-mode="anom">Versus normal</button></div></div>
         <p class="note" id="calNote"></p>
         <div class="scroll"><div class="cal" id="cal" style="min-width:640px"></div></div>
         <div class="rampRow"><span id="calLo"></span><canvas id="calRamp" width="200" height="10"></canvas><span id="calHi"></span></div></section>
-      <section class="sec s7"><span class="num">06</span><h3>Can you trust the early years?</h3>
+      <section class="sec s7"><span class="num">09</span><h3>Can you trust the early years?</h3>
         <p class="note">Before 2012 only the older MODIS sensor was flying, and it sees fewer hotspots than VIIRS for the same fire. Joined as they are, the two records make 2012 look like a fire explosion. We convert MODIS into VIIRS terms so that false step disappears.</p>
         <div class="key"><span><i style="background:var(--ember);height:3px"></i>Our harmonized record</span><span><i style="background:var(--cool);height:3px"></i>Raw counts joined as they are</span></div>
         <div id="chSeam"></div>
@@ -403,9 +536,11 @@ th{color:var(--muted);font-weight:400}
           <div class="scroll" style="margin:8px 0"><table id="rates"></table></div>
           <p class="note small">Limits. The record ends in December 2025. Converted months are estimates and small areas are noisy: MODIS misses many small fires, so a converted zero can hide real burning. Satellite outages and cloud are not corrected. A hotspot is one satellite pixel that looked like fire, not a fire count or burned area.</p>
         </details></section>
-      <section class="sec s5"><span class="num">07</span><h3>Take the data</h3>
-        <p class="note">Both files cover the area and years chosen above.</p>
+      <section class="sec s5"><span class="num">10</span><h3>Take the data</h3>
+        <p class="note">These two files cover the area and years chosen above.</p>
         <div class="row"><button class="btn primary" id="dlCal" type="button">Calendar CSV</button><button class="btn" id="dlHot" type="button">Hexagon hotspots CSV</button></div>
+        <div id="dlFcBox"><p class="note" style="margin-top:6px" id="dlFcNote">The forecast for every month of 2026 and 2027, for the area chosen above, with past odds alongside. Chances run from 0 to 1; 0 means under 0.0005.</p>
+        <div class="row" style="margin-top:8px"><button class="btn" id="dlFc" type="button">Forecast CSV, by hexagon</button><button class="btn" id="dlFcC" type="button">Forecast CSV, by county</button></div></div>
         <p class="note small" id="dlMsg" role="status"></p>
         <h3 style="margin-top:8px">Look at one place</h3>
         <p class="note">Enter a latitude, a longitude and a radius, or draw a box on the map.</p>
@@ -435,6 +570,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=2"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

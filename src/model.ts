@@ -234,7 +234,17 @@ export function verdict(R: SeriesAnalysis, focus: number[] = S.focus): Verdict |
       cls = "lo";
     }
   }
-  return { f, fm, fy, label, cls, rank, n, med, mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots") };
+  return {
+    f,
+    fm,
+    fy,
+    label,
+    cls,
+    rank,
+    n,
+    med,
+    mult: med > 0 ? times(f.h / med) + " a normal " + MON[fm] : fmt(f.h) + (fmt(f.h) === "1" ? " hotspot" : " hotspots"),
+  };
 }
 /* how often has it burned in a given calendar month? Uses the VIIRS years, which see small fires too */
 export const riskYears = () => {
@@ -257,13 +267,27 @@ export function riskFor(R: Analysis, m: number) {
     b,
   };
 }
+/** counties ranked by how often fire comes to them in calendar month m over the chance-of-fire years: the sum of their
+ * hexagons' shares of years with a hotspot, which is the number of their hexagons that burn in an average year. Unlike a
+ * hotspot count, one huge fire in one year cannot put a county first. Also their average hotspots and fire years. */
 export function countyRisk(st: StateCode, m: number) {
   const s = D.states[st],
     [a, b] = riskYears(),
     ny = b - a + 1,
     nc = s.counties.length,
     M = new Float64Array(nc * ny),
+    hx = hexState(st),
+    nf = notFire(st),
+    fire = new Float64Array(nc),
     rows = s.county_rows;
+  let fireAll = 0;
+  for (let k = 0; k < hx.n; k++) {
+    if (nf[k]) continue;
+    let c = 0;
+    for (let y = a; y <= b; y++) if (hx.H[k * NM + (y - Y0) * 12 + m] > 0) c++;
+    fire[hx.c[k]] += c / ny;
+    fireAll += c / ny;
+  }
   for (let p = 0; p < rows.length; p += 5) {
     const i = rows[p + 1];
     if (i % 12 !== m) continue;
@@ -271,13 +295,26 @@ export function countyRisk(st: StateCode, m: number) {
     if (y < a || y > b) continue;
     M[rows[p] * ny + (y - a)] += harm(st, i, rows[p + 2], rows[p + 3], rows[p + 4]).h;
   }
+  let all = 0;
+  for (let q = 0; q < M.length; q++) all += M[q];
   return s.counties
     .map((c, ci) => {
-      const v = Array.from(M.subarray(ci * ny, (ci + 1) * ny)).sort((x, y) => x - y),
-        k = v.filter(x => x > 0).length;
-      return { ci, name: c.name, k, n: ny, p: k / ny, med: (v[Math.floor((ny - 1) / 2)] + v[Math.ceil((ny - 1) / 2)]) / 2 };
+      const v = Array.from(M.subarray(ci * ny, (ci + 1) * ny)),
+        k = v.filter(x => x > 0).length,
+        sum = v.reduce((x, y) => x + y, 0);
+      return {
+        ci,
+        name: c.name,
+        k,
+        n: ny,
+        p: k / ny,
+        mean: sum / ny,
+        hotShare: all ? sum / all : 0,
+        e: fire[ci],
+        share: fireAll ? fire[ci] / fireAll : 0,
+      };
     })
-    .sort((x, y) => y.med - x.med || y.p - x.p);
+    .sort((x, y) => y.e - x.e || y.p - x.p);
 }
 export const leadText = (R: SeriesAnalysis) =>
   R.total === 0
@@ -297,6 +334,74 @@ function nearestTown(st: StateCode, lon: number, lat: number) {
   }
   return best;
 }
+/** the name of the town nearest the centre of hexagon k */
+export function hexTown(st: StateCode, k: number) {
+  const hx = hexState(st);
+  return nearestTown(st, hx.X[k] / hx.K, hx.Y[k])!.n;
+}
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+/** where hexagon k is, for lists: "Near Antwerp" when its centre is close to the town, else "8 km NE of Antwerp" */
+export function hexPlace(st: StateCode, k: number) {
+  const hx = hexState(st),
+    lon = hx.X[k] / hx.K,
+    lat = hx.Y[k],
+    t = nearestTown(st, lon, lat)!,
+    d = kmBetween(lon, lat, t.lon, t.lat);
+  if (d < 3) return "Near " + t.n;
+  const dx = (lon - t.lon) * Math.cos((lat * Math.PI) / 180),
+    dy = lat - t.lat,
+    dir = COMPASS[Math.round(((Math.atan2(dx, dy) * 180) / Math.PI + 360) / 45) % 8];
+  return `${Math.round(d)} km ${dir} of ${t.n}`;
+}
+/** the hexagon holding point (lon, lat); -1 outside the state's hexagons */
+export function hexAtLonLat(st: StateCode, lon: number, lat: number) {
+  const hx = hexState(st),
+    k = hx.key.get(hexKey(lon * hx.K, lat, hx.R));
+  return k === undefined ? -1 : k;
+}
+/** Heat sources that are not fire and that the industrial mask in data.js misses (it drops 500 m spots seen in 5 or
+ * more years mostly at night; these are seen by day). Their hexagons count as having no fire in the chance of fire,
+ * the response tools and the forecast (NOT_FIRE in scripts/build_forecast.py; keep the two in step). The past
+ * hotspot counts still include them. */
+export const NOT_FIRE: Record<StateCode, { name: string; pts: [number, number][] }[]> = {
+  NY: [],
+  CA: [
+    {
+      /* the three solar towers, [lat, lon]; VIIRS flags them by day in most months since late 2013 */
+      name: "the Ivanpah solar power plant",
+      pts: [
+        [35.534, -115.452],
+        [35.557, -115.47],
+        [35.575, -115.484],
+      ],
+    },
+  ],
+};
+const notFireCache: Partial<Record<StateCode, Uint8Array>> = {};
+/** 1 for a hexagon whose hotspots are not fire (see NOT_FIRE) */
+export function notFire(st: StateCode): Uint8Array {
+  let m = notFireCache[st];
+  if (!m) {
+    m = new Uint8Array(hexState(st).n);
+    for (const src of NOT_FIRE[st])
+      for (const [lat, lon] of src.pts) {
+        const k = hexAtLonLat(st, lon, lat);
+        if (k >= 0) m[k] = 1;
+      }
+    notFireCache[st] = m;
+  }
+  return m;
+}
+/** a sentence for an area that holds a NOT_FIRE hexagon, whose hotspots the area's own counts still include */
+export function notFireNote(st: StateCode, mask: Uint8Array) {
+  const nf = notFire(st),
+    names = new Set<string>();
+  for (let k = 0; k < nf.length; k++) if (nf[k] && mask[k]) names.add(notFireName(st, k));
+  return names.size ? ` These counts include heat from ${[...names].join(" and ")}, which is not fire.` : "";
+}
+/** what makes hexagon k's hotspots, when it is not fire */
+export const notFireName = (st: StateCode, k: number) =>
+  notFire(st)[k] ? NOT_FIRE[st].find(src => src.pts.some(([lat, lon]) => hexAtLonLat(st, lon, lat) === k))?.name || "" : "";
 export function stationsFor(st: StateCode, sel: Sel) {
   const hx = hexState(st),
     sn = hx.stn;
