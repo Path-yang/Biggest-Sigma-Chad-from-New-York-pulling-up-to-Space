@@ -7,8 +7,7 @@ const MAPLIBRE_CSS = "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/
 const D3 = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
 /* Plot's UMD build reads the d3 global, so it must come after d3 */
 const PLOT = "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/dist/plot.umd.min.js";
-const FONTS =
-  "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&family=Public+Sans:ital,wght@0,400..700;1,400&display=swap";
+const FONTS = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&display=swap";
 
 function script(src: string): Promise<void> {
   return new Promise((ok, fail) => {
@@ -52,5 +51,5 @@ export function loadPlotLib(): Promise<void> {
   }
   return plotP;
 }
-/** the page's two typefaces; the page reads fine in the fallbacks until they arrive */
+/** the page's serif; the sans (Instrument Sans) is already loaded by the globe. The page reads fine in the fallbacks until they arrive */
 export const loadFonts = () => style(FONTS);

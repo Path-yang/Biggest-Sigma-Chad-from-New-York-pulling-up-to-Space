@@ -6,8 +6,8 @@ import { save } from "./downloads";
 import { HF_DATASET, HF_PAGE, fileUrl, loadSummary, summaryPath } from "./hf";
 import { nameOf } from "./world";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
-import { FIRE, classColours, destroyMap, mapData, showMap } from "./cmap";
-import { annual, calendar, cumulative, seam, seasonal, sensorLines } from "./cplot";
+import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
+import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
 
 /* =====================================================================
    COUNTRY VIEW: one country's summary, fetched from Hugging Face when the reader opens it, laid out as a
@@ -30,10 +30,11 @@ const CV: CountryView = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, foc
 /** first year each sensor's record covers in the dataset; Aqua's comes from the file */
 const SENSOR_FROM = { T: 2000, V: 2012, N20: 2018 };
 const SENSORS: { s: keyof SensorSeries; name: string; c: string; dash?: string }[] = [
+  /* MODIS in greys, VIIRS in blues; red is kept for the year being tested */
   { s: "T", name: "Terra", c: "#1b1b1b" },
-  { s: "A", name: "Aqua", c: "#8a8478" },
-  { s: "V", name: "Suomi NPP", c: "#bd0026" },
-  { s: "N20", name: "NOAA-20", c: "#f16913", dash: "5,4" },
+  { s: "A", name: "Aqua", c: "#8a8478", dash: "5,4" },
+  { s: "V", name: "Suomi NPP", c: "#2166ac" },
+  { s: "N20", name: "NOAA-20", c: "#4393c3", dash: "5,4" },
 ];
 const esc = (t: string) => t.replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 const pc = (x: number | null) => (x == null ? "n/a" : Math.round(x * 100) + "%");
@@ -56,13 +57,35 @@ function the(name: string) {
     : name;
 }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/** "2005" or "2001–2025" */
+const yrs = () => (CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}–${CV.yTo}`);
+/** "2026-10-10" as "10 October 2026" */
+const longDate = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
+};
+/** places where most hotspots are lava, not burning vegetation; the satellites cannot tell them apart */
+const VOLCANIC = new Set(["Iceland"]);
+const coarse = () => matchMedia("(pointer: coarse)").matches;
+/** a stepped legend: one swatch per class, the class edges written under the joins */
+function stepped(title: string, cols: string[], breaks: number[], max: number) {
+  if (!breaks.length)
+    return `<b>${title}</b><div class="cpKey"><div class="cpStep"><i style="background:${cols[0]}"></i><span>${short(max)}</span></div></div>`;
+  return (
+    `<b>${title}</b><div class="cpKey">` +
+    cols
+      .map((c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? "" : short(breaks[i - 1])}</span></div>`)
+      .join("") +
+    `<div class="cpStep" style="flex:0 0 1px"><i style="background:none"></i><span>${short(max)}</span></div></div>`
+  );
+}
 /** a run of months as a range when they are next to each other: "Jul–Sep", else "Aug, Jul, Sep" */
 function monthRun(ms: number[]) {
   const s = ms.slice().sort((a, b) => a - b);
   if (s.length > 1 && s.every((m, i) => i === 0 || m === s[i - 1] + 1)) return `${MON[s[0]]}–${MON[s[s.length - 1]]}`;
   /* December to February counts as a run too */
   if (s.length === 3 && s[0] === 0 && s[2] === 11 && (s[1] === 1 || s[1] === 10)) return s[1] === 1 ? `Dec–${MON[1]}` : `${MON[10]}–Jan`;
-  return ms.map(m => MON[m]).join(", ");
+  return s.map(m => MON[m]).join(", ");
 }
 
 export const countryOpen = () => CV.k !== null;
@@ -178,11 +201,11 @@ function renderCountry() {
       harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v),
     });
   CV.R = R;
-  $("cCrumb").textContent = `Fire, month by month · ${CV.yFrom}–${CV.yTo}`;
+  $("cCrumb").textContent = `Fire, month by month · ${yrs()}`;
   $("cLead").textContent = lead(d, R);
   $("cDate").textContent =
-    `NASA FIRMS fire hotspots. MODIS ${d.y0}–${viirsYear(d) - 1} converted to VIIRS terms, VIIRS from ${MON[d.viirs_from[1] - 1]} ${viirsYear(d)}. ` +
-    `FIRMS data as of ${d.source.firms_updated.slice(0, 10)}.`;
+    `Fire detections from NASA satellites, ${d.y0}–${d.y1}. Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. ` +
+    `Data as of ${longDate(d.source.firms_updated)}.`;
   answers(R);
   const key = `${d.country}|${CV.yFrom}|${CV.yTo}`;
   if (key !== CV.mapKey) {
@@ -198,14 +221,14 @@ function renderCountry() {
 /* ---------- words ---------- */
 function lead(d: CountrySummary, R: SeriesAnalysis) {
   const name = the(d.name);
-  if (R.total === 0)
-    return `No vegetation fire hotspots were counted in ${name} in ${CV.yFrom === CV.yTo ? CV.yFrom : `${CV.yFrom}–${CV.yTo}`}.`;
+  if (R.total === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
   const peak = R.order[0].m,
     w = R.ranked[0],
     span = CV.yTo - CV.yFrom + 1;
   let t = `${cap(name)} burns most in ${MONL[peak]}.`;
   if (span > 2 && R.mean > 0)
     t += ` ${w.y} was its worst year ${span === d.y1 - d.y0 + 1 ? "on record" : `between ${CV.yFrom} and ${CV.yTo}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+  if (VOLCANIC.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
   if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
     t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.`;
   return t;
@@ -229,10 +252,13 @@ function answers(R: SeriesAnalysis) {
       (quiet.length > 1
         ? ` ${quiet.length} months had none in these years.`
         : ` ${MONL[R.order[11].m]} is the quietest${quiet.length ? ", with none" : ""}.`);
+    const vy = viirsYear(CV.d!),
+      est = worst.some(y => y.y < vy);
     $("ca2").textContent = worst.map(y => y.y).join(", ");
-    $("ca2n").textContent =
-      worst.map(y => `${y.y}: ${fmt(y.h)}${y.y < viirsYear(CV.d!) ? " (converted)" : ""}`).join("; ") +
-      `. An average year has ${fmt(R.mean)}.`;
+    $("ca2n").innerHTML =
+      worst.map(y => `<span class="cpRow">${y.y} · ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") +
+      `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` +
+      (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
   }
   const v = verdict(R, CV.focus),
     vi0 = epochs(CV.d!).vi0;
@@ -264,10 +290,17 @@ function calendarText(d: CountrySummary, R: SeriesAnalysis) {
       n++;
     }
   }
-  const pm = peaks.indexOf(Math.max(...peaks));
+  const pm = peaks.indexOf(Math.max(...peaks)),
+    most = R.total > 0 ? R.order[0].m : pm;
   $("cCalTitle").textContent =
-    n > 2 ? `${MONL[pm]} was the busiest month in ${peaks[pm]} of ${n} years` : `Every month from ${CV.yFrom} to ${CV.yTo}`;
-  $("cCalSub").textContent = `Showing ${CV.yFrom} to ${CV.yTo}, newest at the top.`;
+    n <= 2
+      ? CV.yFrom === CV.yTo
+        ? `Every month of ${CV.yFrom}`
+        : `Every month from ${CV.yFrom} to ${CV.yTo}`
+      : pm === most || peaks[pm] > n / 2
+        ? `${MONL[pm]} was the busiest month in ${peaks[pm]} of ${n} years`
+        : `${MONL[most]} has the most fire in total, but the busiest month moves from year to year`;
+  $("cCalSub").textContent = CV.yFrom === CV.yTo ? `${CV.yFrom}, by month.` : `${CV.yFrom} to ${CV.yTo}, newest at the top.`;
   document
     .querySelectorAll<HTMLButtonElement>("#cModeSeg button")
     .forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
@@ -276,15 +309,14 @@ function calendarText(d: CountrySummary, R: SeriesAnalysis) {
   $("cCalBotH").textContent = CV.yFrom < vy ? `Converted from MODIS, ${CV.yFrom}–${Math.min(vy - 1, CV.yTo)}` : "";
   $("cCalNote").textContent =
     CV.mode === "count"
-      ? `Darker means more hotspots, on a log scale; grey months had none. The outlined month is the one tested at the top. Click any month to test it instead.`
-      : `Each month against the median of the same month across ${CV.yFrom}–${CV.yTo}. Red ran hotter than normal, blue quieter. Click any month to test it.`;
-  /* the legend, labelled at its ends */
-  const pos = R.ser.filter(r => r.h > 0).map(r => r.h);
+      ? `The outlined month is the one tested at the top; click any month to test it instead.`
+      : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`;
+  /* the legend: the same stepped classes the calendar is drawn with */
+  const cc = calendarClasses(R);
   $("cCalLegend").innerHTML =
     CV.mode === "count"
-      ? pos.length
-        ? `<div class="cpRamp"><span>${short(Math.max(0.1, Math.min(...pos)))}</span><i style="background:linear-gradient(90deg,${FIRE.join(",")})"></i><span>${short(Math.max(...pos))} hotspots in a month</span></div>` +
-          `<span><i style="display:inline-block;width:14px;height:12px;background:#ebe8e1;vertical-align:-2px;margin-right:6px"></i>none</span>`
+      ? cc.max > 0
+        ? `<div>${stepped("Hotspots in a month", cc.colours, cc.breaks, cc.max)}</div>` + `<span class="cpNone"><i></i>none</span>`
         : ""
       : `<div class="cpRamp"><span>¼ of normal</span><i style="background:linear-gradient(90deg,#2166ac,#67a9cf,#d1e5f0,#f7f7f7,#fddbc7,#ef8a62,#b2182b)"></i><span>4× normal</span></div><span>white: a normal month</span>`;
 }
@@ -295,17 +327,20 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
     pk = meds.indexOf(Math.max(...meds)),
     lo = meds.indexOf(Math.min(...meds)),
     fy = CV.focus[0],
-    span = `${CV.yFrom}–${CV.yTo}`;
+    span = yrs(),
+    top = R.order.slice(0, 3).filter(o => o.sum > 0),
+    topShare = R.total > 0 ? top.reduce((a, o) => a + o.sum, 0) / R.total : 0;
   $("cMonthsT").textContent =
     R.total === 0
       ? "No month stands out"
-      : meds[lo] > 0 && meds[pk] / meds[lo] >= 1.5
+      : meds[lo] >= 10 && meds[pk] / meds[lo] >= 1.5
         ? `A typical ${MONL[pk]} has ${times(meds[pk] / meds[lo])} the hotspots of a typical ${MONL[lo]}`
-        : meds[pk] > 0
-          ? `A typical ${MONL[pk]} brings ${fmt(meds[pk])} hotspots; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}`
-          : `Most months pass with no hotspots at all`;
-  $("cMonthsS").textContent =
-    `Hotspots per month, ${span}. Red line: the median year. Orange: the middle half of years; pale: the full range. Black: ${fy}.`;
+        : topShare >= 0.5 && top.length > 1
+          ? `${topShare >= 0.8 ? "Almost all" : "Most"} of the fire in ${the(d.name)} comes in ${monthRun(top.map(o => o.m))}; a typical ${MONL[lo]} has ${meds[lo] === 0 ? "none" : nHot(meds[lo])}`
+          : meds[pk] > 0
+            ? `A typical ${MONL[pk]} brings ${nHot(meds[pk])}; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}`
+            : `Most months pass with no hotspots at all`;
+  $("cMonthsS").textContent = `Hotspots per month, ${span}, with ${fy} in red. Click a month to test it.`;
   const w = R.ranked[0];
   $("cYearsT").textContent =
     R.total === 0
@@ -314,7 +349,7 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
         ? `${w.y} was the worst year, at ${times(w.h / R.mean)} the average`
         : `${fmt(w.h)} hotspots in ${w.y}`;
   $("cYearsS").textContent =
-    `Hotspots per year. Pale bars are converted from MODIS, with a line for the likely range; the outlined bar is ${fy}.`;
+    `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.`;
   const fyRow = R.years.find(y => y.y === fy),
     rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0;
   $("cCumT").textContent =
@@ -325,8 +360,7 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
         : rank === R.years.length
           ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years`
           : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
-  $("cCumS").textContent =
-    `Running total of hotspots from January, one grey line per year. Red: ${fy}${w && w.y !== fy ? `; black: ${w.y}, the worst year` : ""}.`;
+  $("cCumS").textContent = `Running total of hotspots from January, one line per year.`;
   const ys = R.years,
     avg = (a: number, b: number, k: "naive" | "h") => {
       const r = ys.filter(y => y.y >= a && y.y <= b);
@@ -345,7 +379,11 @@ function chartText(d: CountrySummary, R: SeriesAnalysis) {
     : n0 === 0 || h0 === 0
       ? "MODIS counted no hotspots here in 2007–2011, so the step at 2012 cannot be measured."
       : "The dashed line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step.";
-  void d;
+  /* nothing to chart for a place with no hotspots in these years */
+  const none = R.total === 0;
+  $("cCharts").hidden = $("cRawFig").hidden = none;
+  $("cNoFire").hidden = !none;
+  $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span}, so there is nothing to chart.` : "";
 }
 
 /* ---------- charts, once Plot has loaded ---------- */
@@ -384,7 +422,8 @@ function drawCharts() {
       (r.med > 0 || r.h > 0 ? ` (${times(r.ratio)} normal)` : "") +
       `\n${r.src}` +
       (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") +
-      `\nRaw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)`,
+      `\nRaw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)` +
+      `\nClick to test this month`,
     click: r => pick(r.y, r.m),
   });
   seasonal($("cMonths"), R, CV.focus[0], m => pick(CV.focus[0], m));
@@ -394,7 +433,8 @@ function drawCharts() {
     tip: (y: YearRow) =>
       `${y.y}: ${nHot(y.h)}` +
       (R.mean > 0 ? `\n${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") +
-      (y.y < vy ? `\nConverted from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS"),
+      (y.y < vy ? `\nEstimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") +
+      `\nClick to test ${MONL[CV.focus[1]]} ${y.y}`,
     click: y => pick(y, CV.focus[1]),
   });
   cumulative($("cCum"), R, CV.focus[0]);
@@ -425,16 +465,8 @@ function drawMap(d: CountrySummary) {
   const data = mapData(d, CV.yFrom, CV.yTo),
     k = d.country;
   /* the legend: one step per class, numbers on the edges between them */
-  const cols = classColours(data.breaks);
   $("cMapLegend").innerHTML = data.n
-    ? `<b>Hotspots per square</b><div class="cpKey">` +
-      cols
-        .map(
-          (c, i) =>
-            `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? short(Math.min(1, data.max)) : short(data.breaks[i - 1])}</span></div>`,
-        )
-        .join("") +
-      `<div class="cpStep" style="min-width:0"><i style="background:none"></i><span>${short(data.max)}</span></div></div>`
+    ? `<div>${stepped("Hotspots per square", classColours(data.breaks), data.breaks, data.max)}</div>`
     : "";
   /* how concentrated the burning is: the share of burning squares that hold half the hotspots */
   const vals = data.cells.features.map(f => f.properties.n).sort((a, b) => b - a),
@@ -451,14 +483,23 @@ function drawMap(d: CountrySummary) {
     tot > 0 && vals.length >= 10
       ? `Half of all hotspots fell in ${share < 1 ? "under 1" : Math.round(share)}% of the squares that burned`
       : "Where it burns";
-  $("cMapSub").textContent =
-    `Hotspots counted in each ${d.cell}° square (about ${Math.round(d.cell * 111)} km across), ${CV.yFrom}–${CV.yTo}, in VIIRS terms.`;
-  $("cMapNote").textContent = data.n
-    ? "Hover or tap a square for its numbers. Use the buttons, or Ctrl/⌘ and scroll, to zoom."
-    : `No hotspots were counted anywhere in ${d.name} in these years, so the map has no squares.`;
+  $("cMapSub").textContent = `Hotspots counted in each ${d.cell}° square (about ${Math.round(d.cell * 111)} km across), ${yrs()}.`;
+  const name = the(d.name);
+  $("cMapNote").innerHTML = data.n
+    ? (coarse()
+        ? "Tap a square for its numbers. Use two fingers to move and zoom."
+        : "Hover over a square for its numbers. Use the buttons, or Ctrl/⌘ and scroll, to zoom.") +
+      (data.cropped ? ` <button class="cpText cpSmall" id="cMapAll" type="button">Show all of ${esc(name)}</button>` : "") +
+      `<span id="cMapBase"></span>`
+    : `No hotspots were counted anywhere in ${esc(name)} in these years, so the map has no squares.<span id="cMapBase"></span>`;
+  const all = document.getElementById("cMapAll");
+  if (all) all.onclick = fitAll;
   const go = () => {
     if (CV.k !== k || !CV.d) return;
-    showMap($("cMap"), d, data, CV.yFrom, CV.yTo, mapMsg);
+    showMap($("cMap"), d, data, CV.yFrom, CV.yTo, mapMsg, () => {
+      const b = document.getElementById("cMapBase");
+      if (b && CV.k === k) b.textContent = " The background map did not load, so only the squares and the outline are shown.";
+    });
   };
   if (window.maplibregl) go();
   else {
@@ -539,6 +580,8 @@ export function countryEvents() {
     }
     CV.yFrom = a;
     CV.yTo = b;
+    /* keep the tested month inside the chosen years */
+    CV.focus = [Math.min(b, Math.max(a, CV.focus[0])), CV.focus[1]];
     $("cFrom").value = String(a);
     $("cTo").value = String(b);
     renderCountry();

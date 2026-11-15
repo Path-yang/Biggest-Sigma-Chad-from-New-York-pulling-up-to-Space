@@ -1,19 +1,44 @@
 import type { CalendarMode, SeriesAnalysis, SeriesRow, YearRow } from "./types";
 import { MON, MONL } from "./data";
 import { fmt, short } from "./util";
-import { FIRE } from "./cmap";
+import { classBreaks, classColours } from "./cmap";
 
 /* =====================================================================
    COUNTRY CHARTS, drawn with Observable Plot: the calendar heatmap and the four charts under it.
-   One quiet style for all of them: Public Sans, horizontal gridlines only, labels on the lines instead of legends.
+   One quiet style for all of them: Instrument Sans, horizontal gridlines only, labels on the lines instead of legends.
    ===================================================================== */
+/* One colour rule on every chart: red is the year being tested (the outlined month at the top), black is the worst
+   year, a dashed grey line is the typical year, and pale grey is everything else. */
 export const INK = "#1b1b1b";
 const INK2 = "#55524c";
 const GRID = "#e4e0d7";
 const ZERO = "#ebe8e1";
 export const RED = "#bd0026";
+const TYPICAL = "#6b665c";
+const CONTEXT = "#d8d4cb";
+const BAR_SEEN = "#b8b2a7";
+const BAR_CONV = "#dcd7cd";
+const PAPER = "#faf9f6";
+/** the calendar's ramp: ColorBrewer YlOrRd from its pale end, so quiet months read as cream and not orange */
+export const CAL = ["#ffeda0", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#b10026"];
+/** y domain top: at least 5, so a country with a handful of hotspots gets whole-number ticks */
+const yTop = (v: number) => Math.max(5, niceMax(v));
+const yAxis = (ymax: number) => ({
+  domain: [0, ymax],
+  grid: GRID,
+  tickFormat: (v: number) => (Number.isInteger(v) ? short(v) : ""),
+  label: null,
+  tickSize: 0,
+  ticks: 4,
+});
+/** year ticks: whole years only, at most n of them, always including the last */
+function yearTicks(xs: number[], n: number) {
+  if (xs.length === 1) return xs;
+  const step = Math.max(1, Math.ceil((xs.length - 1) / (n - 1)));
+  return xs.filter((_, i) => (xs.length - 1 - i) % step === 0);
+}
 const STYLE = {
-  fontFamily: '"Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+  fontFamily: '"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
   fontSize: "13px",
   fontVariantNumeric: "tabular-nums lining-nums",
   background: "transparent",
@@ -81,13 +106,17 @@ export interface CalendarOptions {
   click: (r: SeriesRow) => void;
 }
 /** the colour scale of the calendar, shared by both blocks and by the legend */
+export function calendarClasses(R: SeriesAnalysis) {
+  const c = classBreaks(R.ser.map(r => r.h));
+  return { ...c, colours: classColours(c.breaks, CAL) };
+}
 export function calendarScale(R: SeriesAnalysis, mode: CalendarMode) {
   if (mode === "anom") return { type: "diverging-log", scheme: "RdBu", reverse: true, pivot: 1, domain: [0.25, 4], clamp: true };
-  const pos = R.ser.filter(r => r.h > 0).map(r => r.h),
-    lo = Math.max(0.1, Math.min(...pos, Infinity)),
-    hi = Math.max(lo * 1.01, ...pos);
-  return { type: "log", domain: [lo, hi], interpolate: window.d3.interpolateRgbBasis(FIRE), clamp: true };
+  const c = calendarClasses(R);
+  return c.breaks.length ? { type: "threshold", domain: c.breaks, range: c.colours } : { type: "ordinal", range: c.colours };
 }
+/** a year's total as the calendar's last column shows it: whole hotspots, and "<1" for a converted fraction */
+const total = (v: number) => (v === 0 ? "0" : v < 1 ? "<1" : short(Math.round(v)));
 export function calendar(top: HTMLElement, bottom: HTMLElement, R: SeriesAnalysis, o: CalendarOptions) {
   const Plot = Pl(),
     W = top.clientWidth || 640,
@@ -119,7 +148,7 @@ export function calendar(top: HTMLElement, bottom: HTMLElement, R: SeriesAnalysi
       f ? Plot.cell([f], { x: "m", y: "y", fill: "none", stroke: INK, strokeWidth: 2, inset: 0 }) : null,
       Plot.text(years, {
         y: (d: number) => d,
-        text: (d: number) => short(totals.get(d) ?? 0),
+        text: (d: number) => total(totals.get(d) ?? 0),
         frameAnchor: "right",
         dx: 10,
         textAnchor: "start",
@@ -187,14 +216,56 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
       return { m, ...s, min: Math.min(...v), max: Math.max(...v) };
     }),
     yr = R.ser.filter(r => r.y === year),
-    ymax = niceMax(Math.max(1e-9, ...st.map(s => s.max))),
+    ymax = yTop(Math.max(1e-9, ...st.map(s => s.max))),
     labs = spread(
-      [{ v: st[11].med, text: "Median", fill: RED }, ...(yr.length ? [{ v: yr[11].h, text: String(year), fill: INK }] : [])],
+      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...(yr.length ? [{ v: yr[11].h, text: String(year), fill: RED }] : [])],
       ymax,
       H,
       mT,
       mB,
-    );
+    ),
+    /* name the two bands where they are thick enough to hold a label and no line runs through it */
+    px = (v: number) => (v / ymax) * (H - mT - mB),
+    at = (f: (m: number) => number, k: number) => {
+      const a = Math.floor(k),
+        b = Math.min(11, a + 1);
+      return f(a) + (f(b) - f(a)) * (k - a);
+    },
+    lines = (k: number) => [at(m => st[m].med, k), ...(yr.length ? [at(m => yr[m].h, k)] : [])],
+    monthPx = (W - 44 - 64) / 11,
+    /* the spot inside a band, over the label's width, furthest from the band's edges and from both lines */
+    place = (lo: (m: number) => number, hi: (m: number) => number, t: string) => {
+      const half = (t.length * 3.3) / monthPx;
+      let best: { m: number; v: number; t: string } | null = null,
+        score = 0;
+      for (let m = 0; m <= 11; m += 0.25) {
+        if (m - half < 0.2 || m + half > 10.8) continue;
+        const near = [-1, -0.5, 0, 0.5, 1].map(f => m + f * half),
+          bot = px(Math.max(...near.map(k => at(lo, k)))),
+          top = px(Math.min(...near.map(k => at(hi, k)))),
+          ls = near.flatMap(k => lines(k).map(px));
+        for (let y = bot + 8; y <= top - 8; y += 2) {
+          const clear = Math.min(y - bot, top - y, ...ls.map(l => Math.abs(l - y)));
+          if (clear >= 10 && clear > score) {
+            score = clear;
+            best = { m, v: (y / (H - mT - mB)) * ymax, t };
+          }
+        }
+      }
+      return best ? [best] : [];
+    },
+    bandLabels = [
+      ...place(
+        m => st[m].q1,
+        m => st[m].q3,
+        "Middle half of years",
+      ),
+      ...place(
+        m => st[m].q3,
+        m => st[m].max,
+        "Full range",
+      ),
+    ];
   const fig = Plot.plot(
     base(W, H, {
       marginTop: mT,
@@ -208,13 +279,23 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
         label: null,
         tickSize: 0,
       },
-      y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+      y: yAxis(ymax),
       marks: [
-        Plot.areaY(st, { x: "m", y1: "min", y2: "max", fill: "#f4e7cf" }),
-        Plot.areaY(st, { x: "m", y1: "q1", y2: "q3", fill: "#fdd49e" }),
-        Plot.lineY(st, { x: "m", y: "med", stroke: RED, strokeWidth: 2.2 }),
-        yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: INK, strokeWidth: 1.5 }) : null,
-        yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: INK, r: 2.2 }) : null,
+        Plot.areaY(st, { x: "m", y1: "min", y2: "max", fill: "#efebe3" }),
+        Plot.areaY(st, { x: "m", y1: "q1", y2: "q3", fill: "#e0dace" }),
+        Plot.text(bandLabels, {
+          x: "m",
+          y: "v",
+          text: "t",
+          fill: INK2,
+          fontSize: 12,
+          stroke: (d: { t: string }) => (d.t === "Full range" ? "#efebe3" : "#e0dace"),
+          strokeWidth: 3,
+          paintOrder: "stroke",
+        }),
+        Plot.lineY(st, { x: "m", y: "med", stroke: TYPICAL, strokeWidth: 2, strokeDasharray: "4,3" }),
+        yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: RED, strokeWidth: 2.5 }) : null,
+        yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: RED, r: 2.6 }) : null,
         ...endLabels(Plot, labs, 11),
         Plot.ruleX(st, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
         Plot.tip(
@@ -224,8 +305,9 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
             y: "med",
             ...TIP,
             title: (s: (typeof st)[number]) =>
-              `${MONL[s.m]}\nMedian: ${fmt(s.med)} hotspots\nMiddle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}\nRange: ${fmt(s.min)} to ${fmt(s.max)}` +
-              (yr.length ? `\n${year}: ${fmt(yr[s.m].h)}` : ""),
+              `${MONL[s.m]}\nTypical (median): ${fmt(s.med)} hotspots\nMiddle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}\nRange: ${fmt(s.min)} to ${fmt(s.max)}` +
+              (yr.length ? `\n${year}: ${fmt(yr[s.m].h)}` : "") +
+              `\nClick to test ${MONL[s.m]} ${year} at the top`,
           }),
         ),
       ],
@@ -233,6 +315,20 @@ export function seasonal(el: HTMLElement, R: SeriesAnalysis, year: number, click
   );
   fig.setAttribute("aria-label", "Hotspots by calendar month: median, middle half and range of years");
   mount<{ m: number }>(el, fig, v => click(v.m));
+  /* a band too steep to hold its name gets a swatch above the chart instead */
+  const missing = [
+    ["#e0dace", "Middle half of years"],
+    ["#efebe3", "Full range"],
+  ].filter(([, t]) => !bandLabels.some(b => b.t === t));
+  /* it goes in the subhead's row, so the chart still lines up with its neighbour */
+  const sub = el.previousElementSibling;
+  sub?.querySelector(".cpMiniKey")?.remove();
+  if (missing.length && sub) {
+    const key = document.createElement("span");
+    key.className = "cpMiniKey";
+    key.innerHTML = missing.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
+    sub.append(key);
+  }
 }
 
 /* ---------- hotspots per year ---------- */
@@ -247,11 +343,10 @@ export function annual(
     H = ph ? 240 : 280,
     ys = R.years,
     conv = ys.filter(y => y.y < o.viirsYear),
-    seen = ys.filter(y => y.y >= o.viirsYear),
     worst = R.ranked[0],
-    focus = ys.find(y => y.y === o.focusYear),
-    ymax = niceMax(Math.max(1e-9, ...ys.map(y => Math.max(y.h, y.hi))) * 1.06),
-    every = ys.length > 14 ? (ph ? 6 : 4) : ys.length > 7 ? 2 : 1;
+    ymax = yTop(Math.max(1e-9, ...ys.map(y => Math.max(y.h, y.hi))) * 1.06),
+    xs = ys.map(y => y.y),
+    fill = (y: YearRow) => (y.y === o.focusYear ? RED : worst && y.y === worst.y ? INK : y.y < o.viirsYear ? BAR_CONV : BAR_SEEN);
   const fig = Plot.plot(
     base(W, H, {
       marginTop: 18,
@@ -259,19 +354,17 @@ export function annual(
       marginLeft: 44,
       marginRight: 62,
       x: {
-        domain: ys.map(y => y.y),
-        ticks: ys.map(y => y.y).filter(y => (ys[ys.length - 1].y - y) % every === 0),
+        domain: xs,
+        ticks: yearTicks(xs, ph ? 4 : 7),
         tickFormat: (y: number) => String(y),
         label: null,
         tickSize: 0,
         padding: 0.18,
       },
-      y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+      y: yAxis(ymax),
       marks: [
-        Plot.barY(conv, { x: "y", y: "h", fill: "#fdae6b" }),
-        Plot.barY(seen, { x: "y", y: "h", fill: "#e34a33" }),
-        Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK, strokeOpacity: 0.55 }),
-        focus ? Plot.barY([focus], { x: "y", y: "h", fill: "none", stroke: INK, strokeWidth: 1.5 }) : null,
+        Plot.barY(ys, { x: "y", y: "h", fill }),
+        Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK, strokeOpacity: 0.45 }),
         R.mean > 0 ? Plot.ruleY([R.mean], { stroke: INK, strokeDasharray: "3,3", strokeOpacity: 0.8 }) : null,
         R.mean > 0
           ? Plot.text([R.mean], {
@@ -292,7 +385,7 @@ export function annual(
               dy: -9,
               fontWeight: 600,
               fill: INK,
-              stroke: "#faf9f6",
+              stroke: PAPER,
               strokeWidth: 4,
               paintOrder: "stroke",
             })
@@ -319,11 +412,12 @@ export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number) {
     for (const r of R.ser.filter(r => r.y === yr.y)) rows.push({ y: yr.y, m: r.m, c: (c += r.h) });
   }
   const worst = R.ranked[0]?.y,
-    ymax = niceMax(Math.max(1e-9, ...rows.map(r => r.c))),
+    has = rows.some(r => r.y === year),
+    ymax = yTop(Math.max(1e-9, ...rows.map(r => r.c))),
     endOf = (y: number) => rows.find(r => r.y === y && r.m === 11)?.c ?? 0,
     labs = spread(
       [
-        { v: endOf(year), text: String(year), fill: RED },
+        ...(has ? [{ v: endOf(year), text: String(year), fill: RED }] : []),
         ...(worst !== undefined && worst !== year ? [{ v: endOf(worst), text: String(worst), fill: INK }] : []),
       ],
       ymax,
@@ -344,11 +438,11 @@ export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number) {
         label: null,
         tickSize: 0,
       },
-      y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+      y: yAxis(ymax),
       marks: [
         Plot.lineY(
           rows.filter(r => r.y !== year && r.y !== worst),
-          { x: "m", y: "c", z: "y", stroke: "#cdc7bb", strokeWidth: 1 },
+          { x: "m", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 },
         ),
         worst !== undefined && worst !== year
           ? Plot.lineY(
@@ -358,7 +452,7 @@ export function cumulative(el: HTMLElement, R: SeriesAnalysis, year: number) {
           : null,
         Plot.lineY(
           rows.filter(r => r.y === year),
-          { x: "m", y: "c", stroke: RED, strokeWidth: 2.4 },
+          { x: "m", y: "c", stroke: RED, strokeWidth: 2.5 },
         ),
         ...endLabels(Plot, labs, 11),
         Plot.tip(
@@ -388,11 +482,11 @@ export function seam(el: HTMLElement, R: SeriesAnalysis, viirsYear: number) {
     ys = R.years,
     last = ys[ys.length - 1],
     band = ys.filter(y => y.y <= viirsYear),
-    ymax = niceMax(Math.max(1e-9, ...ys.map(y => Math.max(y.h, y.naive)), ...band.map(y => y.hi))),
+    ymax = yTop(Math.max(1e-9, ...ys.map(y => Math.max(y.h, y.naive)), ...band.map(y => y.hi))),
     labs = spread(
       [
-        { v: last.h, text: "Harmonized", fill: RED },
-        { v: last.naive, text: "Raw", fill: INK2 },
+        { v: last.h, text: "Harmonized", fill: INK },
+        { v: last.naive, text: "Raw", fill: TYPICAL },
       ],
       ymax,
       H,
@@ -412,11 +506,24 @@ export function seam(el: HTMLElement, R: SeriesAnalysis, viirsYear: number) {
         tickFormat: "d",
         label: null,
         tickSize: 0,
-        ticks: ph ? 4 : 7,
+        ticks: yearTicks(xs, ph ? 4 : 7),
       },
-      y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+      y: yAxis(ymax),
       marks: [
-        band.length > 1 ? Plot.areaY(band, { x: "y", y1: "lo", y2: "hi", fill: "#fcbba1", fillOpacity: 0.6 }) : null,
+        band.length > 1 ? Plot.areaY(band, { x: "y", y1: "lo", y2: "hi", fill: "#e6e1d6" }) : null,
+        band.length > 2
+          ? Plot.text([band[Math.floor(band.length / 2)]], {
+              x: "y",
+              y: "hi",
+              text: () => "90% range",
+              dy: -8,
+              fill: INK2,
+              fontSize: 12,
+              stroke: PAPER,
+              strokeWidth: 3,
+              paintOrder: "stroke",
+            })
+          : null,
         xs[0] < viirsYear && xs[xs.length - 1] >= viirsYear
           ? [
               Plot.ruleX([viirsYear], { stroke: INK, strokeOpacity: 0.45 }),
@@ -431,9 +538,10 @@ export function seam(el: HTMLElement, R: SeriesAnalysis, viirsYear: number) {
               }),
             ]
           : null,
-        Plot.lineY(ys, { x: "y", y: "naive", stroke: INK2, strokeWidth: 1.5, strokeDasharray: "4,3" }),
-        Plot.lineY(ys, { x: "y", y: "h", stroke: RED, strokeWidth: 2.2 }),
-        one ? Plot.dot(ys, { x: "y", y: "h", fill: RED }) : null,
+        Plot.lineY(ys, { x: "y", y: "naive", stroke: TYPICAL, strokeWidth: 1.6, strokeDasharray: "4,3" }),
+        Plot.lineY(ys, { x: "y", y: "h", stroke: INK, strokeWidth: 2 }),
+        one ? Plot.dot(ys, { x: "y", y: "naive", fill: TYPICAL }) : null,
+        one ? Plot.dot(ys, { x: "y", y: "h", fill: INK }) : null,
         ...endLabels(Plot, labs, last.y),
         Plot.ruleX(ys, Plot.pointerX({ x: "y", stroke: "#b9b3a6" })),
         Plot.tip(
@@ -470,7 +578,7 @@ export function sensorLines(el: HTMLElement, xs: number[], per: SensorLine[]) {
     mT = 16,
     mB = 30,
     rows = per.flatMap(s => xs.map((x, i) => ({ s: s.name, x, v: s.v[i] }))),
-    ymax = niceMax(Math.max(1e-9, ...rows.map(r => r.v).filter(Number.isFinite))),
+    ymax = yTop(Math.max(1e-9, ...rows.map(r => r.v).filter(Number.isFinite))),
     n = xs.length - 1,
     labs = spread(
       per.filter(s => Number.isFinite(s.v[n])).map(s => ({ v: s.v[n], text: s.name, fill: s.c })),
@@ -485,8 +593,14 @@ export function sensorLines(el: HTMLElement, xs: number[], per: SensorLine[]) {
       marginBottom: mB,
       marginLeft: 44,
       marginRight: 92,
-      x: { domain: xs.length > 1 ? [xs[0], xs[n]] : [xs[0] - 1, xs[0] + 1], tickFormat: "d", label: null, tickSize: 0, ticks: ph ? 4 : 7 },
-      y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+      x: {
+        domain: xs.length > 1 ? [xs[0], xs[n]] : [xs[0] - 1, xs[0] + 1],
+        tickFormat: "d",
+        label: null,
+        tickSize: 0,
+        ticks: yearTicks(xs, ph ? 4 : 7),
+      },
+      y: yAxis(ymax),
       marks: [
         ...per.map(s =>
           Plot.lineY(
@@ -494,6 +608,7 @@ export function sensorLines(el: HTMLElement, xs: number[], per: SensorLine[]) {
             { x: "x", y: "v", stroke: s.c, strokeWidth: 1.8, strokeDasharray: s.dash },
           ),
         ),
+        ...(xs.length === 1 ? per.map(s => Plot.dot([{ x: xs[0], v: s.v[0] }], { x: "x", y: "v", fill: s.c })) : []),
         ...endLabels(Plot, labs, xs[n]),
         Plot.ruleX(xs, Plot.pointerX({ x: (d: number) => d, stroke: "#b9b3a6" })),
         Plot.tip(

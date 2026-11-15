@@ -224,8 +224,8 @@
       const rr = ser.filter((r) => r.y === y), sum = (k) => rr.reduce((a, r) => a + r[k], 0);
       years.push({ y, h: sum("h"), lo: sum("lo"), hi: sum("hi"), naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0) });
     }
-    const total = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
-    return { ser, stats, years, total, mean: total / years.length, order, ranked };
+    const total2 = stats.reduce((a, z) => a + z.sum, 0), order = stats.map((z, m) => ({ m, sum: z.sum })).sort((a, b) => b.sum - a.sum), ranked = years.slice().sort((a, b) => b.h - a.h);
+    return { ser, stats, years, total: total2, mean: total2 / years.length, order, ranked };
   }
   function verdict(R, focus = S.focus) {
     const [fy, fm] = focus, f = R.ser.find((r) => r.y === fy && r.m === fm);
@@ -885,7 +885,7 @@ Raw counts: ${fmt(ys[i].naive)}`
   }
   var inset = () => V.W > 900 ? 388 : 0;
   function fitView(b) {
-    const pad = 70, s = Math.min((V.W - inset() - 2 * pad) / (b.x1 - b.x0), (V.H - 216) / (b.y1 - b.y0));
+    const pad2 = 70, s = Math.min((V.W - inset() - 2 * pad2) / (b.x1 - b.x0), (V.H - 216) / (b.y1 - b.y0));
     return { cx: (b.x0 + b.x1) / 2 + inset() / 2 / s, cy: (b.y0 + b.y1) / 2 - 30 / s, s };
   }
   function flyTo(t, ms) {
@@ -1095,7 +1095,7 @@ Raw counts: ${fmt(ys[i].naive)}`
     }
   }
   function drawLabels(c, hx) {
-    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad = Math.max(5, 15 - 2.5 * zr), cap2 = Math.round(12 + 5 * zr), boxes = [];
+    const zr = V.s / V.fit, K = Math.min(hx.towns.length, Math.round(80 * Math.pow(zr, 1.6))), pad2 = Math.max(5, 15 - 2.5 * zr), cap2 = Math.round(12 + 5 * zr), boxes = [];
     c.textAlign = "left";
     c.textBaseline = "middle";
     c.lineJoin = "round";
@@ -1103,9 +1103,9 @@ Raw counts: ${fmt(ys[i].naive)}`
       const t = hx.towns[i], x = sx(t.X), y = sy(t.Y);
       if (x < 4 || y < 12 || x > V.W - 30 || y > V.H - 12) continue;
       const big = t.pop >= 1e5, w = (big ? 7.6 : 6.6) * t.n.length, hit = (b2) => boxes.some((o) => b2[0] < o[2] && b2[2] > o[0] && b2[1] < o[3] && b2[3] > o[1]);
-      let b = [x - 6 - pad, y - 9 - pad, x + 9 + w + pad, y + 9 + pad], left = false;
+      let b = [x - 6 - pad2, y - 9 - pad2, x + 9 + w + pad2, y + 9 + pad2], left = false;
       if (hit(b)) {
-        b = [x - 9 - w - pad, y - 9 - pad, x + 6 + pad, y + 9 + pad];
+        b = [x - 9 - w - pad2, y - 9 - pad2, x + 6 + pad2, y + 9 + pad2];
         left = true;
         if (hit(b) || b[0] < 4) continue;
       }
@@ -1528,7 +1528,7 @@ ${showLabel()}`) + "\nClick to zoom in"
   async function fetchText(url, onProgress) {
     const res = await fetchOnce(url);
     if (!res.ok) throw new Error(res.status === 429 ? "Hugging Face is busy (too many requests)" : `Hugging Face answered ${res.status}`);
-    const total = Number(res.headers.get("content-length")) || null;
+    const total2 = Number(res.headers.get("content-length")) || null;
     if (!res.body) return res.text();
     const reader = res.body.getReader(), parts = [];
     let got = 0;
@@ -1537,7 +1537,7 @@ ${showLabel()}`) + "\nClick to zoom in"
       if (done) break;
       parts.push(value);
       got += value.length;
-      onProgress()?.(got, total);
+      onProgress()?.(got, total2);
     }
     const all = new Uint8Array(got);
     let at = 0;
@@ -1664,9 +1664,9 @@ ${showLabel()}`) + "\nClick to zoom in"
   }
   var quantile = (s, q) => s[Math.min(s.length - 1, Math.max(0, Math.round(q * (s.length - 1))))];
   function buildFireLayer(index2, width = 2048) {
-    const total = new Map(index2.map((e) => [e.country, e.total])), raw = [];
+    const total2 = new Map(index2.map((e) => [e.country, e.total])), raw = [];
     for (const c of WORLD) {
-      const tot = total.get(c.k), area = areaKm2(c);
+      const tot = total2.get(c.k), area = areaKm2(c);
       if (!tot || !(tot > 0) || !(area > 0)) continue;
       const perYear = tot / FIRE_YEARS;
       raw.push({ c, area, perYear, density: perYear / area * 1e3 });
@@ -1707,7 +1707,7 @@ ${showLabel()}`) + "\nClick to zoom in"
   var MAPLIBRE_CSS = "https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.24.0/maplibre-gl.css";
   var D3 = "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js";
   var PLOT = "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/dist/plot.umd.min.js";
-  var FONTS = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&family=Public+Sans:ital,wght@0,400..700;1,400&display=swap";
+  var FONTS = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&display=swap";
   function script(src) {
     return new Promise((ok, fail) => {
       const s = document.createElement("script");
@@ -1752,6 +1752,11 @@ ${showLabel()}`) + "\nClick to zoom in"
   // src/cmap.ts
   var STYLE = "https://tiles.openfreemap.org/styles/positron";
   var FIRE = ["#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"];
+  function classColours(breaks, ramp = FIRE) {
+    if (!breaks.length) return [ramp[3]];
+    const cols = breaks.length + 1;
+    return Array.from({ length: cols }, (_, i) => ramp[Math.round(i * (ramp.length - 1) / (cols - 1))]);
+  }
   var INK = "#1b1b1b";
   function cellIndexes(d) {
     const n = d.cells.length / 2, la = new Int32Array(n), lo = new Int32Array(n), lim = 180 / d.cell + 1;
@@ -1768,18 +1773,22 @@ ${showLabel()}`) + "\nClick to zoom in"
   function nice(v) {
     if (v < 1) return Math.round(v * 10) / 10 || 0.1;
     const p = Math.pow(10, Math.floor(Math.log10(v))), f = v / p;
-    return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+    return (f < 1.5 ? 1 : f < 2.5 ? 2 : f < 4 ? 3 : f < 7.5 ? 5 : 10) * p;
   }
+  var PROBS = [0.25, 0.45, 0.62, 0.76, 0.87, 0.95];
   function classBreaks(vals) {
-    const pos = vals.filter((v) => v > 0);
-    if (!pos.length) return { breaks: [], max: 0 };
-    const max = Math.max(...pos), lo = Math.max(1, Math.min(...pos)), out = [];
-    if (max <= lo) return { breaks: [], max };
-    for (let i = 1; i < 7; i++) {
-      const b = nice(Math.exp(Math.log(lo) + (Math.log(max) - Math.log(lo)) * i / 7));
-      if (b > (out[out.length - 1] ?? 0) && b < max) out.push(b);
+    const pos = vals.filter((v) => v > 0).sort((a, b) => a - b);
+    if (!pos.length) return { breaks: [], max: 0, min: 0 };
+    const max = pos[pos.length - 1], min = pos[0], out = [];
+    for (const q of PROBS) {
+      const b = nice(pos[Math.floor(q * (pos.length - 1))]);
+      if (b > (out.length ? out[out.length - 1] : min) && b < max) out.push(b);
     }
-    return { breaks: out, max };
+    return { breaks: out, max, min };
+  }
+  function pad(b) {
+    const px = Math.max(0, 0.5 - (b[2] - b[0])) / 2, py = Math.max(0, 0.5 - (b[3] - b[1])) / 2;
+    return [b[0] - px, Math.max(-85, b[1] - py), b[2] + px, Math.min(85, b[3] + py)];
   }
   function mapData(d, yFrom, yTo) {
     const shape = shapeOf(d.country), cell = d.cell, nc = d.cells.length / 2, { la, lo } = cellIndexes(d), tot = new Float64Array(nc), modis = new Float64Array(nc), viirs = new Float64Array(nc);
@@ -1850,35 +1859,51 @@ ${showLabel()}`) + "\nClick to zoom in"
       grow(near(d.bbox[0], lon0), d.bbox[1]);
       grow(near(d.bbox[2], lon0), d.bbox[3]);
     }
-    const padX = Math.max(0, 0.5 - (x1 - x0)) / 2, padY = Math.max(0, 0.5 - (y1 - y0)) / 2;
-    const { breaks, max } = classBreaks(cells.map((f) => f.properties.n));
+    const all = pad([x0, y0, x1, y1]);
+    let bounds = all;
+    if (cells.length) {
+      const wt = cells.map((f) => Math.max(f.properties.n, 0.01)), sum = wt.reduce((a, b) => a + b, 0), at = (key, q) => {
+        const idx = cells.map((_, i) => i).sort((a, b) => key(a) - key(b));
+        let acc = 0;
+        for (const i of idx) {
+          acc += wt[i];
+          if (acc >= q * sum) return key(i);
+        }
+        return key(idx[idx.length - 1]);
+      }, edge = (i, k) => cells[i].geometry.coordinates[0][k * 2], w = at((i) => edge(i, 0)[0], 0.01), s0 = at((i) => edge(i, 0)[1], 0.01), e = at((i) => edge(i, 1)[0], 0.99), n = at((i) => edge(i, 1)[1], 0.99), dx = (e - w) * 0.06, dy = (n - s0) * 0.06;
+      bounds = pad([w - dx, s0 - dy, e + dx, n + dy]);
+    }
+    const dw = all[2] - all[0], dh = all[3] - all[1], keep = (i, d2) => Math.abs(all[i] - bounds[i]) < 0.15 * d2 ? all[i] : bounds[i];
+    bounds = [keep(0, dw), keep(1, dh), keep(2, dw), keep(3, dh)];
+    const cropped = bounds.some((b, i) => b !== all[i]);
+    const { breaks, max, min } = classBreaks(cells.map((f) => f.properties.n));
     return {
       cells: { type: "FeatureCollection", features: cells },
       outline: {
         type: "FeatureCollection",
         features: [{ type: "Feature", properties: {}, geometry: { type: "MultiLineString", coordinates: lines2 } }]
       },
-      bounds: [x0 - padX, Math.max(-85, y0 - padY), x1 + padX, Math.min(85, y1 + padY)],
+      bounds,
+      all,
+      cropped,
+      min,
       breaks,
       max,
       n: cells.length
     };
   }
   function fillExpr(breaks) {
-    if (!breaks.length) return FIRE[3];
-    const cols = breaks.length + 1, pick = (i) => FIRE[Math.round(i * (FIRE.length - 1) / Math.max(1, cols - 1))], e = ["step", ["get", "n"], pick(0)];
-    breaks.forEach((b, i) => e.push(b, pick(i + 1)));
+    const c = classColours(breaks);
+    if (!breaks.length) return c[0];
+    const e = ["step", ["get", "n"], c[0]];
+    breaks.forEach((b, i) => e.push(b, c[i + 1]));
     return e;
   }
-  var classColours = (breaks) => {
-    const cols = breaks.length + 1;
-    return Array.from({ length: cols }, (_, i) => FIRE[Math.round(i * (FIRE.length - 1) / Math.max(1, cols - 1))]);
-  };
   var L = null;
   function destroyMap() {
     if (!L) return;
     try {
-      L.map.remove();
+      L.map?.remove();
     } catch {
     }
     L = null;
@@ -1886,114 +1911,68 @@ ${showLabel()}`) + "\nClick to zoom in"
   var deg = (v, p, n) => `${Math.abs(v).toFixed(2)}\xB0${v < 0 ? n : p}`;
   function popupHtml(p, cell, yFrom, yTo) {
     const n = p.n;
-    return `<b>${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}</b> <span>in ${yFrom}\u2013${yTo}, in VIIRS terms</span><span>Raw: ${fmt(p.mo)} MODIS, ${fmt(p.vi)} Suomi NPP</span><span class="pos">${deg(p.s, "N", "S")}\u2013${deg(p.s + cell, "N", "S")}, ${deg(p.w, "E", "W")}\u2013${deg(p.w + cell, "E", "W")}</span>`;
+    return `<b>${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}</b> <span>in ${yFrom === yTo ? yFrom : `${yFrom}\u2013${yTo}`}, adjusted</span><span>Raw: ${fmt(p.mo)} MODIS, ${fmt(p.vi)} Suomi NPP</span><span class="pos">${deg(p.s, "N", "S")}\u2013${deg(p.s + cell, "N", "S")}, ${deg(p.w, "E", "W")}\u2013${deg(p.w + cell, "E", "W")}</span>`;
   }
-  function showMap(host, d, data, yFrom, yTo, onFail) {
+  var PAPER = "#f5f4f0";
+  var WATER = "#dde5ea";
+  var FALLBACK = { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#eeebe4" } }] };
+  var DROP = /^(highway-name|highway-shield|road_shield|airport|waterway_line_label)/;
+  var LATIN = ["coalesce", ["get", "name:latin"], ["get", "name_en"], ["get", "name"]];
+  function tidyStyle(st) {
+    st.layers = st.layers.filter((l) => !DROP.test(l.id)).map((l) => {
+      if (l.id === "background") l.paint = { ...l.paint, "background-color": PAPER };
+      if (l.id === "water") l.paint = { ...l.paint, "fill-color": WATER };
+      if (l.id === "waterway") l.paint = { ...l.paint, "line-color": WATER };
+      if (l.layout && l.layout["text-field"] && /name/.test(JSON.stringify(l.layout["text-field"])))
+        l.layout = { ...l.layout, "text-field": LATIN };
+      return l;
+    });
+    return st;
+  }
+  var styleP = null;
+  function getStyle() {
+    if (!styleP)
+      styleP = Promise.race([
+        fetch(STYLE).then((r) => {
+          if (!r.ok) throw new Error(String(r.status));
+          return r.json();
+        }),
+        new Promise((_, no) => setTimeout(() => no(new Error("timeout")), 8e3))
+      ]).then(tidyStyle, () => {
+        styleP = null;
+        return FALLBACK;
+      });
+    return styleP;
+  }
+  function showMap(host, d, data, yFrom, yTo, onFail, onBasemap) {
     const ml = window.maplibregl;
     if (!ml) return onFail("The map library did not load.");
     const fresh = !L || L.k !== d.country;
     if (fresh) {
       destroyMap();
-      host.innerHTML = "";
-      let map;
-      try {
-        map = new ml.Map({
-          container: host,
-          style: STYLE,
-          bounds: [data.bounds.slice(0, 2), data.bounds.slice(2)],
-          fitBoundsOptions: { padding: 28 },
-          maxZoom: 11,
-          dragRotate: false,
-          pitchWithRotate: false,
-          touchPitch: false,
-          cooperativeGestures: true,
-          attributionControl: { compact: true },
-          renderWorldCopies: true,
-          fadeDuration: 0
-        });
-      } catch (e) {
-        return onFail("This browser could not start the map (WebGL is off or unavailable).");
-      }
-      map.touchZoomRotate.disableRotation();
-      map.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
-      map.addControl(new ml.ScaleControl({ maxWidth: 110, unit: "metric" }), "bottom-left");
+      const k = d.country;
       const live2 = L = {
-        map,
-        popup: new ml.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px", className: "cpPop", offset: 8 }),
-        k: d.country,
+        map: null,
+        popup: null,
+        k,
         ready: false,
         next: data,
         hover: null,
         yFrom,
-        yTo
+        yTo,
+        all: data.all
       };
-      map.on("error", (e) => {
-        if (!live2.ready && L === live2) onFail(`The basemap could not load${e.error?.message ? ` (${e.error.message})` : ""}.`);
-      });
-      map.on("load", () => {
+      getStyle().then((style2) => {
         if (L !== live2) return;
-        const under = map.getLayer("boundary_3") ? "boundary_3" : void 0, labels = map.getLayer("waterway_line_label") ? "waterway_line_label" : void 0;
-        map.addSource("cells", { type: "geojson", data: live2.next.cells, tolerance: 0, buffer: 2, generateId: true });
-        map.addSource("outline", { type: "geojson", data: live2.next.outline });
-        map.addLayer(
-          {
-            id: "cells",
-            type: "fill",
-            source: "cells",
-            paint: { "fill-color": fillExpr(live2.next.breaks), "fill-opacity": 0.88, "fill-antialias": false }
-          },
-          under
-        );
-        map.addLayer(
-          {
-            id: "cells-hover",
-            type: "line",
-            source: "cells",
-            paint: { "line-color": INK, "line-width": 1.5, "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0] }
-          },
-          labels
-        );
-        map.addLayer(
-          { id: "outline", type: "line", source: "outline", paint: { "line-color": INK, "line-width": 1.1, "line-opacity": 0.75 } },
-          labels
-        );
-        live2.ready = true;
-        live2.next = null;
-        host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
-        const clear = () => {
-          if (live2.hover != null) map.setFeatureState({ source: "cells", id: live2.hover }, { hover: false });
-          live2.hover = null;
-        };
-        const show = (e) => {
-          const f = e.features && e.features[0];
-          if (!f) return;
-          if (live2.hover !== f.id) {
-            clear();
-            live2.hover = f.id;
-            map.setFeatureState({ source: "cells", id: f.id }, { hover: true });
-          }
-          map.getCanvas().style.cursor = "default";
-          live2.popup.setLngLat(e.lngLat).setHTML(popupHtml(f.properties, d.cell, live2.yFrom, live2.yTo)).addTo(map);
-        };
-        map.on("mousemove", "cells", show);
-        map.on("click", "cells", show);
-        map.on("mouseleave", "cells", () => {
-          clear();
-          live2.popup.remove();
-          map.getCanvas().style.cursor = "";
-        });
-        map.on("click", (e) => {
-          if (!map.queryRenderedFeatures(e.point, { layers: ["cells"] }).length) {
-            clear();
-            live2.popup.remove();
-          }
-        });
+        if (style2 === FALLBACK) onBasemap();
+        start(host, d, live2, style2, onFail, onBasemap);
       });
       return;
     }
     const live = L;
     live.yFrom = yFrom;
     live.yTo = yTo;
+    live.all = data.all;
     if (!live.ready) {
       live.next = data;
       return;
@@ -2001,7 +1980,133 @@ ${showLabel()}`) + "\nClick to zoom in"
     live.popup.remove();
     live.hover = null;
     live.map.getSource("cells").setData(data.cells);
-    live.map.setPaintProperty("cells", "fill-color", fillExpr(data.breaks));
+    for (const id of ["cells", "cells-edge"])
+      if (live.map.getLayer(id)) live.map.setPaintProperty(id, id === "cells" ? "fill-color" : "line-color", fillExpr(data.breaks));
+  }
+  function fitAll() {
+    if (!L || !L.map) return;
+    const b = L.all;
+    L.map.fitBounds([b.slice(0, 2), b.slice(2)], { padding: 24, duration: 600 });
+  }
+  function start(host, d, live, style2, onFail, onBasemap) {
+    const ml = window.maplibregl, data = live.next;
+    host.innerHTML = "";
+    let map;
+    try {
+      map = new ml.Map({
+        container: host,
+        style: style2,
+        bounds: [data.bounds.slice(0, 2), data.bounds.slice(2)],
+        fitBoundsOptions: { padding: host.clientWidth < 560 ? 12 : 28 },
+        maxZoom: 11,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+        cooperativeGestures: true,
+        attributionControl: { compact: true },
+        renderWorldCopies: true,
+        fadeDuration: 0
+      });
+    } catch (e) {
+      L = null;
+      return onFail("This browser could not start the map (WebGL is off or unavailable).");
+    }
+    live.map = map;
+    host._map = map;
+    live.popup = new ml.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px", className: "cpPop", offset: 8 });
+    map.touchZoomRotate.disableRotation();
+    map.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
+    map.addControl(new ml.ScaleControl({ maxWidth: 110, unit: "metric" }), "bottom-left");
+    let swapped = style2 === FALLBACK;
+    const swap = () => {
+      if (swapped || live.ready || L !== live) return;
+      swapped = true;
+      onBasemap();
+      map.setStyle(FALLBACK);
+    };
+    map.on("error", (e) => {
+      if (e.sourceId && e.sourceId !== "cells" && e.sourceId !== "outline" && !e.tile) onBasemap();
+      setTimeout(swap, 4e3);
+    });
+    map.on("style.load", () => {
+      if (L !== live || live.ready) return;
+      addLayers(map, d, live);
+    });
+  }
+  function addLayers(map, d, live) {
+    const data = live.next;
+    const under = map.getLayer("boundary_3") ? "boundary_3" : void 0, labels = map.getLayer("water_name_point_label") ? "water_name_point_label" : void 0;
+    map.addSource("cells", { type: "geojson", data: data.cells, tolerance: 0, buffer: 2, generateId: true });
+    map.addSource("outline", { type: "geojson", data: data.outline });
+    map.addLayer(
+      {
+        id: "cells",
+        type: "fill",
+        source: "cells",
+        paint: { "fill-color": fillExpr(data.breaks), "fill-opacity": 0.9, "fill-antialias": false }
+      },
+      under
+    );
+    if (data.n < 400)
+      map.addLayer(
+        {
+          id: "cells-edge",
+          type: "line",
+          source: "cells",
+          paint: {
+            "line-color": fillExpr(data.breaks),
+            "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 7, 1.5, 9, 0]
+          }
+        },
+        under
+      );
+    map.addLayer(
+      {
+        id: "cells-hover",
+        type: "line",
+        source: "cells",
+        paint: { "line-color": INK, "line-width": 1.5, "line-opacity": ["case", ["boolean", ["feature-state", "hover"], false], 1, 0] }
+      },
+      labels
+    );
+    map.addLayer(
+      { id: "outline", type: "line", source: "outline", paint: { "line-color": INK, "line-width": 1.1, "line-opacity": 0.75 } },
+      labels
+    );
+    live.ready = true;
+    live.next = null;
+    const host = map.getContainer();
+    const fold2 = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+    fold2();
+    map.once("idle", fold2);
+    const clear = () => {
+      if (live.hover != null) map.setFeatureState({ source: "cells", id: live.hover }, { hover: false });
+      live.hover = null;
+    };
+    const show = (e) => {
+      const f = e.features && e.features[0];
+      if (!f) return;
+      if (live.hover !== f.id) {
+        clear();
+        live.hover = f.id;
+        map.setFeatureState({ source: "cells", id: f.id }, { hover: true });
+      }
+      map.getCanvas().style.cursor = "default";
+      live.popup.setLngLat(e.lngLat).setHTML(popupHtml(f.properties, d.cell, live.yFrom, live.yTo)).addTo(map);
+    };
+    map.on("mousemove", "cells", show);
+    map.on("click", "cells", show);
+    map.on("mouseleave", "cells", () => {
+      clear();
+      live.popup.remove();
+      map.getCanvas().style.cursor = "";
+    });
+    map.on("click", (e) => {
+      if (!map.queryRenderedFeatures(e.point, { layers: ["cells"] }).length) {
+        clear();
+        live.popup.remove();
+      }
+    });
   }
 
   // src/cplot.ts
@@ -2010,8 +2115,28 @@ ${showLabel()}`) + "\nClick to zoom in"
   var GRID = "#e4e0d7";
   var ZERO = "#ebe8e1";
   var RED = "#bd0026";
+  var TYPICAL = "#6b665c";
+  var CONTEXT = "#d8d4cb";
+  var BAR_SEEN = "#b8b2a7";
+  var BAR_CONV = "#dcd7cd";
+  var PAPER2 = "#faf9f6";
+  var CAL = ["#ffeda0", "#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#b10026"];
+  var yTop = (v) => Math.max(5, niceMax2(v));
+  var yAxis = (ymax) => ({
+    domain: [0, ymax],
+    grid: GRID,
+    tickFormat: (v) => Number.isInteger(v) ? short(v) : "",
+    label: null,
+    tickSize: 0,
+    ticks: 4
+  });
+  function yearTicks(xs, n) {
+    if (xs.length === 1) return xs;
+    const step = Math.max(1, Math.ceil((xs.length - 1) / (n - 1)));
+    return xs.filter((_, i) => (xs.length - 1 - i) % step === 0);
+  }
   var STYLE2 = {
-    fontFamily: '"Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+    fontFamily: '"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
     fontSize: "13px",
     fontVariantNumeric: "tabular-nums lining-nums",
     background: "transparent",
@@ -2057,11 +2182,16 @@ ${showLabel()}`) + "\nClick to zoom in"
   }
   var phone = (W) => W < 560;
   var base = (W, H, o) => ({ width: W, height: H, style: STYLE2, ...o });
+  function calendarClasses(R) {
+    const c = classBreaks(R.ser.map((r) => r.h));
+    return { ...c, colours: classColours(c.breaks, CAL) };
+  }
   function calendarScale(R, mode) {
     if (mode === "anom") return { type: "diverging-log", scheme: "RdBu", reverse: true, pivot: 1, domain: [0.25, 4], clamp: true };
-    const pos = R.ser.filter((r) => r.h > 0).map((r) => r.h), lo = Math.max(0.1, Math.min(...pos, Infinity)), hi = Math.max(lo * 1.01, ...pos);
-    return { type: "log", domain: [lo, hi], interpolate: window.d3.interpolateRgbBasis(FIRE), clamp: true };
+    const c = calendarClasses(R);
+    return c.breaks.length ? { type: "threshold", domain: c.breaks, range: c.colours } : { type: "ordinal", range: c.colours };
   }
+  var total = (v) => v === 0 ? "0" : v < 1 ? "<1" : short(Math.round(v));
   function calendar(top, bottom, R, o) {
     const Plot = Pl(), W = top.clientWidth || 640, ph = phone(W), rowH = ph ? 17 : 20, mL = ph ? 38 : 44, mR = ph ? 44 : 64, color = calendarScale(R, o.mode), totals = new Map(R.years.map((y) => [y.y, y.h]));
     const part = (el, rows, head) => {
@@ -2081,7 +2211,7 @@ ${showLabel()}`) + "\nClick to zoom in"
         f ? Plot.cell([f], { x: "m", y: "y", fill: "none", stroke: INK2, strokeWidth: 2, inset: 0 }) : null,
         Plot.text(years, {
           y: (d) => d,
-          text: (d) => short(totals.get(d) ?? 0),
+          text: (d) => total(totals.get(d) ?? 0),
           frameAnchor: "right",
           dx: 10,
           textAnchor: "start",
@@ -2135,13 +2265,42 @@ ${showLabel()}`) + "\nClick to zoom in"
     const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, st = R.stats.map((s, m) => {
       const v = R.ser.filter((r) => r.m === m).map((r) => r.h);
       return { m, ...s, min: Math.min(...v), max: Math.max(...v) };
-    }), yr = R.ser.filter((r) => r.y === year), ymax = niceMax2(Math.max(1e-9, ...st.map((s) => s.max))), labs = spread(
-      [{ v: st[11].med, text: "Median", fill: RED }, ...yr.length ? [{ v: yr[11].h, text: String(year), fill: INK2 }] : []],
+    }), yr = R.ser.filter((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...st.map((s) => s.max))), labs = spread(
+      [{ v: st[11].med, text: "Typical", fill: TYPICAL }, ...yr.length ? [{ v: yr[11].h, text: String(year), fill: RED }] : []],
       ymax,
       H,
       mT,
       mB
-    );
+    ), px = (v) => v / ymax * (H - mT - mB), at = (f, k) => {
+      const a = Math.floor(k), b = Math.min(11, a + 1);
+      return f(a) + (f(b) - f(a)) * (k - a);
+    }, lines2 = (k) => [at((m) => st[m].med, k), ...yr.length ? [at((m) => yr[m].h, k)] : []], monthPx = (W - 44 - 64) / 11, place = (lo, hi, t) => {
+      const half = t.length * 3.3 / monthPx;
+      let best = null, score = 0;
+      for (let m = 0; m <= 11; m += 0.25) {
+        if (m - half < 0.2 || m + half > 10.8) continue;
+        const near2 = [-1, -0.5, 0, 0.5, 1].map((f) => m + f * half), bot = px(Math.max(...near2.map((k) => at(lo, k)))), top = px(Math.min(...near2.map((k) => at(hi, k)))), ls = near2.flatMap((k) => lines2(k).map(px));
+        for (let y = bot + 8; y <= top - 8; y += 2) {
+          const clear = Math.min(y - bot, top - y, ...ls.map((l) => Math.abs(l - y)));
+          if (clear >= 10 && clear > score) {
+            score = clear;
+            best = { m, v: y / (H - mT - mB) * ymax, t };
+          }
+        }
+      }
+      return best ? [best] : [];
+    }, bandLabels = [
+      ...place(
+        (m) => st[m].q1,
+        (m) => st[m].q3,
+        "Middle half of years"
+      ),
+      ...place(
+        (m) => st[m].q3,
+        (m) => st[m].max,
+        "Full range"
+      )
+    ];
     const fig = Plot.plot(
       base(W, H, {
         marginTop: mT,
@@ -2155,13 +2314,23 @@ ${showLabel()}`) + "\nClick to zoom in"
           label: null,
           tickSize: 0
         },
-        y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+        y: yAxis(ymax),
         marks: [
-          Plot.areaY(st, { x: "m", y1: "min", y2: "max", fill: "#f4e7cf" }),
-          Plot.areaY(st, { x: "m", y1: "q1", y2: "q3", fill: "#fdd49e" }),
-          Plot.lineY(st, { x: "m", y: "med", stroke: RED, strokeWidth: 2.2 }),
-          yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: INK2, strokeWidth: 1.5 }) : null,
-          yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: INK2, r: 2.2 }) : null,
+          Plot.areaY(st, { x: "m", y1: "min", y2: "max", fill: "#efebe3" }),
+          Plot.areaY(st, { x: "m", y1: "q1", y2: "q3", fill: "#e0dace" }),
+          Plot.text(bandLabels, {
+            x: "m",
+            y: "v",
+            text: "t",
+            fill: INK22,
+            fontSize: 12,
+            stroke: (d) => d.t === "Full range" ? "#efebe3" : "#e0dace",
+            strokeWidth: 3,
+            paintOrder: "stroke"
+          }),
+          Plot.lineY(st, { x: "m", y: "med", stroke: TYPICAL, strokeWidth: 2, strokeDasharray: "4,3" }),
+          yr.length ? Plot.lineY(yr, { x: "m", y: "h", stroke: RED, strokeWidth: 2.5 }) : null,
+          yr.length ? Plot.dot(yr, { x: "m", y: "h", fill: RED, r: 2.6 }) : null,
           ...endLabels(Plot, labs, 11),
           Plot.ruleX(st, Plot.pointerX({ x: "m", stroke: "#b9b3a6" })),
           Plot.tip(
@@ -2171,10 +2340,11 @@ ${showLabel()}`) + "\nClick to zoom in"
               y: "med",
               ...TIP,
               title: (s) => `${MONL[s.m]}
-Median: ${fmt(s.med)} hotspots
+Typical (median): ${fmt(s.med)} hotspots
 Middle half of years: ${fmt(s.q1)} to ${fmt(s.q3)}
 Range: ${fmt(s.min)} to ${fmt(s.max)}` + (yr.length ? `
-${year}: ${fmt(yr[s.m].h)}` : "")
+${year}: ${fmt(yr[s.m].h)}` : "") + `
+Click to test ${MONL[s.m]} ${year} at the top`
             })
           )
         ]
@@ -2182,9 +2352,21 @@ ${year}: ${fmt(yr[s.m].h)}` : "")
     );
     fig.setAttribute("aria-label", "Hotspots by calendar month: median, middle half and range of years");
     mount(el, fig, (v) => click(v.m));
+    const missing = [
+      ["#e0dace", "Middle half of years"],
+      ["#efebe3", "Full range"]
+    ].filter(([, t]) => !bandLabels.some((b) => b.t === t));
+    const sub = el.previousElementSibling;
+    sub?.querySelector(".cpMiniKey")?.remove();
+    if (missing.length && sub) {
+      const key = document.createElement("span");
+      key.className = "cpMiniKey";
+      key.innerHTML = missing.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("");
+      sub.append(key);
+    }
   }
   function annual(el, R, o) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, ys = R.years, conv = ys.filter((y) => y.y < o.viirsYear), seen = ys.filter((y) => y.y >= o.viirsYear), worst = R.ranked[0], focus = ys.find((y) => y.y === o.focusYear), ymax = niceMax2(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.hi))) * 1.06), every = ys.length > 14 ? ph ? 6 : 4 : ys.length > 7 ? 2 : 1;
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, ys = R.years, conv = ys.filter((y) => y.y < o.viirsYear), worst = R.ranked[0], ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.hi))) * 1.06), xs = ys.map((y) => y.y), fill = (y) => y.y === o.focusYear ? RED : worst && y.y === worst.y ? INK2 : y.y < o.viirsYear ? BAR_CONV : BAR_SEEN;
     const fig = Plot.plot(
       base(W, H, {
         marginTop: 18,
@@ -2192,19 +2374,17 @@ ${year}: ${fmt(yr[s.m].h)}` : "")
         marginLeft: 44,
         marginRight: 62,
         x: {
-          domain: ys.map((y) => y.y),
-          ticks: ys.map((y) => y.y).filter((y) => (ys[ys.length - 1].y - y) % every === 0),
+          domain: xs,
+          ticks: yearTicks(xs, ph ? 4 : 7),
           tickFormat: (y) => String(y),
           label: null,
           tickSize: 0,
           padding: 0.18
         },
-        y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+        y: yAxis(ymax),
         marks: [
-          Plot.barY(conv, { x: "y", y: "h", fill: "#fdae6b" }),
-          Plot.barY(seen, { x: "y", y: "h", fill: "#e34a33" }),
-          Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK2, strokeOpacity: 0.55 }),
-          focus ? Plot.barY([focus], { x: "y", y: "h", fill: "none", stroke: INK2, strokeWidth: 1.5 }) : null,
+          Plot.barY(ys, { x: "y", y: "h", fill }),
+          Plot.ruleX(conv, { x: "y", y1: "lo", y2: "hi", stroke: INK2, strokeOpacity: 0.45 }),
           R.mean > 0 ? Plot.ruleY([R.mean], { stroke: INK2, strokeDasharray: "3,3", strokeOpacity: 0.8 }) : null,
           R.mean > 0 ? Plot.text([R.mean], {
             y: (d) => d,
@@ -2223,7 +2403,7 @@ ${short(R.mean)}`,
             dy: -9,
             fontWeight: 600,
             fill: INK2,
-            stroke: "#faf9f6",
+            stroke: PAPER2,
             strokeWidth: 4,
             paintOrder: "stroke"
           }) : null,
@@ -2240,9 +2420,9 @@ ${short(R.mean)}`,
       let c = 0;
       for (const r of R.ser.filter((r2) => r2.y === yr.y)) rows.push({ y: yr.y, m: r.m, c: c += r.h });
     }
-    const worst = R.ranked[0]?.y, ymax = niceMax2(Math.max(1e-9, ...rows.map((r) => r.c))), endOf = (y) => rows.find((r) => r.y === y && r.m === 11)?.c ?? 0, labs = spread(
+    const worst = R.ranked[0]?.y, has = rows.some((r) => r.y === year), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.c))), endOf = (y) => rows.find((r) => r.y === y && r.m === 11)?.c ?? 0, labs = spread(
       [
-        { v: endOf(year), text: String(year), fill: RED },
+        ...has ? [{ v: endOf(year), text: String(year), fill: RED }] : [],
         ...worst !== void 0 && worst !== year ? [{ v: endOf(worst), text: String(worst), fill: INK2 }] : []
       ],
       ymax,
@@ -2263,11 +2443,11 @@ ${short(R.mean)}`,
           label: null,
           tickSize: 0
         },
-        y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+        y: yAxis(ymax),
         marks: [
           Plot.lineY(
             rows.filter((r) => r.y !== year && r.y !== worst),
-            { x: "m", y: "c", z: "y", stroke: "#cdc7bb", strokeWidth: 1 }
+            { x: "m", y: "c", z: "y", stroke: CONTEXT, strokeWidth: 1 }
           ),
           worst !== void 0 && worst !== year ? Plot.lineY(
             rows.filter((r) => r.y === worst),
@@ -2275,7 +2455,7 @@ ${short(R.mean)}`,
           ) : null,
           Plot.lineY(
             rows.filter((r) => r.y === year),
-            { x: "m", y: "c", stroke: RED, strokeWidth: 2.4 }
+            { x: "m", y: "c", stroke: RED, strokeWidth: 2.5 }
           ),
           ...endLabels(Plot, labs, 11),
           Plot.tip(
@@ -2295,10 +2475,10 @@ ${fmt(r.c)} hotspots so far`
     mount(el, fig);
   }
   function seam(el, R, viirsYear2) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 22, mB = 30, ys = R.years, last = ys[ys.length - 1], band = ys.filter((y) => y.y <= viirsYear2), ymax = niceMax2(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.naive)), ...band.map((y) => y.hi))), labs = spread(
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 22, mB = 30, ys = R.years, last = ys[ys.length - 1], band = ys.filter((y) => y.y <= viirsYear2), ymax = yTop(Math.max(1e-9, ...ys.map((y) => Math.max(y.h, y.naive)), ...band.map((y) => y.hi))), labs = spread(
       [
-        { v: last.h, text: "Harmonized", fill: RED },
-        { v: last.naive, text: "Raw", fill: INK22 }
+        { v: last.h, text: "Harmonized", fill: INK2 },
+        { v: last.naive, text: "Raw", fill: TYPICAL }
       ],
       ymax,
       H,
@@ -2317,11 +2497,22 @@ ${fmt(r.c)} hotspots so far`
           tickFormat: "d",
           label: null,
           tickSize: 0,
-          ticks: ph ? 4 : 7
+          ticks: yearTicks(xs, ph ? 4 : 7)
         },
-        y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+        y: yAxis(ymax),
         marks: [
-          band.length > 1 ? Plot.areaY(band, { x: "y", y1: "lo", y2: "hi", fill: "#fcbba1", fillOpacity: 0.6 }) : null,
+          band.length > 1 ? Plot.areaY(band, { x: "y", y1: "lo", y2: "hi", fill: "#e6e1d6" }) : null,
+          band.length > 2 ? Plot.text([band[Math.floor(band.length / 2)]], {
+            x: "y",
+            y: "hi",
+            text: () => "90% range",
+            dy: -8,
+            fill: INK22,
+            fontSize: 12,
+            stroke: PAPER2,
+            strokeWidth: 3,
+            paintOrder: "stroke"
+          }) : null,
           xs[0] < viirsYear2 && xs[xs.length - 1] >= viirsYear2 ? [
             Plot.ruleX([viirsYear2], { stroke: INK2, strokeOpacity: 0.45 }),
             Plot.text([viirsYear2], {
@@ -2334,9 +2525,10 @@ ${fmt(r.c)} hotspots so far`
               fill: INK22
             })
           ] : null,
-          Plot.lineY(ys, { x: "y", y: "naive", stroke: INK22, strokeWidth: 1.5, strokeDasharray: "4,3" }),
-          Plot.lineY(ys, { x: "y", y: "h", stroke: RED, strokeWidth: 2.2 }),
-          one ? Plot.dot(ys, { x: "y", y: "h", fill: RED }) : null,
+          Plot.lineY(ys, { x: "y", y: "naive", stroke: TYPICAL, strokeWidth: 1.6, strokeDasharray: "4,3" }),
+          Plot.lineY(ys, { x: "y", y: "h", stroke: INK2, strokeWidth: 2 }),
+          one ? Plot.dot(ys, { x: "y", y: "naive", fill: TYPICAL }) : null,
+          one ? Plot.dot(ys, { x: "y", y: "h", fill: INK2 }) : null,
           ...endLabels(Plot, labs, last.y),
           Plot.ruleX(ys, Plot.pointerX({ x: "y", stroke: "#b9b3a6" })),
           Plot.tip(
@@ -2357,7 +2549,7 @@ Raw counts: ${fmt(y.naive)}`
     mount(el, fig);
   }
   function sensorLines(el, xs, per) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 270, mT = 16, mB = 30, rows = per.flatMap((s) => xs.map((x, i) => ({ s: s.name, x, v: s.v[i] }))), ymax = niceMax2(Math.max(1e-9, ...rows.map((r) => r.v).filter(Number.isFinite))), n = xs.length - 1, labs = spread(
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 270, mT = 16, mB = 30, rows = per.flatMap((s) => xs.map((x, i) => ({ s: s.name, x, v: s.v[i] }))), ymax = yTop(Math.max(1e-9, ...rows.map((r) => r.v).filter(Number.isFinite))), n = xs.length - 1, labs = spread(
       per.filter((s) => Number.isFinite(s.v[n])).map((s) => ({ v: s.v[n], text: s.name, fill: s.c })),
       ymax,
       H,
@@ -2370,8 +2562,14 @@ Raw counts: ${fmt(y.naive)}`
         marginBottom: mB,
         marginLeft: 44,
         marginRight: 92,
-        x: { domain: xs.length > 1 ? [xs[0], xs[n]] : [xs[0] - 1, xs[0] + 1], tickFormat: "d", label: null, tickSize: 0, ticks: ph ? 4 : 7 },
-        y: { domain: [0, ymax], grid: GRID, tickFormat: short, label: null, tickSize: 0, ticks: 4 },
+        x: {
+          domain: xs.length > 1 ? [xs[0], xs[n]] : [xs[0] - 1, xs[0] + 1],
+          tickFormat: "d",
+          label: null,
+          tickSize: 0,
+          ticks: yearTicks(xs, ph ? 4 : 7)
+        },
+        y: yAxis(ymax),
         marks: [
           ...per.map(
             (s) => Plot.lineY(
@@ -2379,6 +2577,7 @@ Raw counts: ${fmt(y.naive)}`
               { x: "x", y: "v", stroke: s.c, strokeWidth: 1.8, strokeDasharray: s.dash }
             )
           ),
+          ...xs.length === 1 ? per.map((s) => Plot.dot([{ x: xs[0], v: s.v[0] }], { x: "x", y: "v", fill: s.c })) : [],
           ...endLabels(Plot, labs, xs[n]),
           Plot.ruleX(xs, Plot.pointerX({ x: (d) => d, stroke: "#b9b3a6" })),
           Plot.tip(
@@ -2405,10 +2604,11 @@ Raw counts: ${fmt(y.naive)}`
   var CV = { k: null, d: null, R: null, yFrom: 2001, yTo: 2025, focus: [2025, 0], mode: "count", mapKey: "" };
   var SENSOR_FROM = { T: 2e3, V: 2012, N20: 2018 };
   var SENSORS = [
+    /* MODIS in greys, VIIRS in blues; red is kept for the year being tested */
     { s: "T", name: "Terra", c: "#1b1b1b" },
-    { s: "A", name: "Aqua", c: "#8a8478" },
-    { s: "V", name: "Suomi NPP", c: "#bd0026" },
-    { s: "N20", name: "NOAA-20", c: "#f16913", dash: "5,4" }
+    { s: "A", name: "Aqua", c: "#8a8478", dash: "5,4" },
+    { s: "V", name: "Suomi NPP", c: "#2166ac" },
+    { s: "N20", name: "NOAA-20", c: "#4393c3", dash: "5,4" }
   ];
   var esc = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var pc = (x) => x == null ? "n/a" : Math.round(x * 100) + "%";
@@ -2426,11 +2626,23 @@ Raw counts: ${fmt(y.naive)}`
     ) ? "the " + name : name;
   }
   var cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  var yrs = () => CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}\u2013${CV.yTo}`;
+  var longDate = (iso) => {
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
+  };
+  var VOLCANIC = /* @__PURE__ */ new Set(["Iceland"]);
+  var coarse = () => matchMedia("(pointer: coarse)").matches;
+  function stepped(title, cols, breaks, max) {
+    if (!breaks.length)
+      return `<b>${title}</b><div class="cpKey"><div class="cpStep"><i style="background:${cols[0]}"></i><span>${short(max)}</span></div></div>`;
+    return `<b>${title}</b><div class="cpKey">` + cols.map((c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? "" : short(breaks[i - 1])}</span></div>`).join("") + `<div class="cpStep" style="flex:0 0 1px"><i style="background:none"></i><span>${short(max)}</span></div></div>`;
+  }
   function monthRun(ms) {
     const s = ms.slice().sort((a, b) => a - b);
     if (s.length > 1 && s.every((m, i) => i === 0 || m === s[i - 1] + 1)) return `${MON[s[0]]}\u2013${MON[s[s.length - 1]]}`;
     if (s.length === 3 && s[0] === 0 && s[2] === 11 && (s[1] === 1 || s[1] === 10)) return s[1] === 1 ? `Dec\u2013${MON[1]}` : `${MON[10]}\u2013Jan`;
-    return ms.map((m) => MON[m]).join(", ");
+    return s.map((m) => MON[m]).join(", ");
   }
   function openCountry(k) {
     if (CV.k === k && CV.d) return;
@@ -2480,17 +2692,17 @@ Raw counts: ${fmt(y.naive)}`
     $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026`;
     loadMapLib().catch(() => void 0);
     loadPlotLib().catch(() => void 0);
-    loadSummary(k, (got, total) => {
+    loadSummary(k, (got, total2) => {
       if (CV.k !== k) return;
       const mb = (n) => (n / 1e6).toFixed(n < 1e5 ? 2 : 1) + " MB";
-      if (total && got <= total) {
-        $("cBar").style.width = got / total * 100 + "%";
-        $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026 ${mb(got)} of ${mb(total)}`;
+      if (total2 && got <= total2) {
+        $("cBar").style.width = got / total2 * 100 + "%";
+        $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026 ${mb(got)} of ${mb(total2)}`;
       } else $("cMsg").textContent = `Fetching ${name}'s record from Hugging Face\u2026 ${mb(got)}`;
     }).then((d) => {
       if (CV.k !== k) return;
       CV.d = d;
-      start(d);
+      start2(d);
     }).catch((e) => {
       if (CV.k !== k) return;
       $("cBar").parentElement.hidden = true;
@@ -2498,7 +2710,7 @@ Raw counts: ${fmt(y.naive)}`
       $("cRetry").hidden = false;
     });
   }
-  function start(d) {
+  function start2(d) {
     const yo = [];
     for (let y = d.y0; y <= d.y1; y++) yo.push(`<option>${y}</option>`);
     $("cFrom").innerHTML = $("cTo").innerHTML = $("cfY").innerHTML = yo.join("");
@@ -2534,9 +2746,9 @@ Raw counts: ${fmt(y.naive)}`
       harm: (i, t, a, v) => harmWith(d, ep, i, t, a, v)
     });
     CV.R = R;
-    $("cCrumb").textContent = `Fire, month by month \xB7 ${CV.yFrom}\u2013${CV.yTo}`;
+    $("cCrumb").textContent = `Fire, month by month \xB7 ${yrs()}`;
     $("cLead").textContent = lead(d, R);
-    $("cDate").textContent = `NASA FIRMS fire hotspots. MODIS ${d.y0}\u2013${viirsYear(d) - 1} converted to VIIRS terms, VIIRS from ${MON[d.viirs_from[1] - 1]} ${viirsYear(d)}. FIRMS data as of ${d.source.firms_updated.slice(0, 10)}.`;
+    $("cDate").textContent = `Fire detections from NASA satellites, ${d.y0}\u2013${d.y1}. Years before ${viirsYear(d)} come from an older satellite and are adjusted to match. Data as of ${longDate(d.source.firms_updated)}.`;
     answers(R);
     const key = `${d.country}|${CV.yFrom}|${CV.yTo}`;
     if (key !== CV.mapKey) {
@@ -2550,12 +2762,12 @@ Raw counts: ${fmt(y.naive)}`
   }
   function lead(d, R) {
     const name = the(d.name);
-    if (R.total === 0)
-      return `No vegetation fire hotspots were counted in ${name} in ${CV.yFrom === CV.yTo ? CV.yFrom : `${CV.yFrom}\u2013${CV.yTo}`}.`;
+    if (R.total === 0) return `No vegetation fire hotspots were counted in ${name} in ${yrs()}.`;
     const peak = R.order[0].m, w = R.ranked[0], span = CV.yTo - CV.yFrom + 1;
     let t = `${cap(name)} burns most in ${MONL[peak]}.`;
     if (span > 2 && R.mean > 0)
       t += ` ${w.y} was its worst year ${span === d.y1 - d.y0 + 1 ? "on record" : `between ${CV.yFrom} and ${CV.yTo}`}, with ${times(w.h / R.mean)} the hotspots of an average year.`;
+    if (VOLCANIC.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
     if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
       t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc(d.val.monthly_wape)} on average.`;
     return t;
@@ -2568,8 +2780,9 @@ Raw counts: ${fmt(y.naive)}`
       const top = R.order.slice(0, 3).filter((o) => o.sum > 0), worst = R.ranked.slice(0, 3).filter((y) => y.h > 0), quiet = R.order.filter((o) => o.sum === 0), share = Math.round(top.reduce((a, o) => a + o.sum, 0) / R.total * 100);
       $("ca1").textContent = monthRun(top.map((o) => o.m));
       $("ca1n").textContent = (top.length === 1 ? `Every hotspot fell in ${MONL[top[0].m]}.` : `${top.length === 2 ? "These two months" : "These three months"} hold ${share}% of all hotspots.`) + (quiet.length > 1 ? ` ${quiet.length} months had none in these years.` : ` ${MONL[R.order[11].m]} is the quietest${quiet.length ? ", with none" : ""}.`);
+      const vy = viirsYear(CV.d), est = worst.some((y) => y.y < vy);
       $("ca2").textContent = worst.map((y) => y.y).join(", ");
-      $("ca2n").textContent = worst.map((y) => `${y.y}: ${fmt(y.h)}${y.y < viirsYear(CV.d) ? " (converted)" : ""}`).join("; ") + `. An average year has ${fmt(R.mean)}.`;
+      $("ca2n").innerHTML = worst.map((y) => `<span class="cpRow">${y.y} \xB7 ${fmt(y.h)}${y.y < vy ? "*" : ""}</span>`).join("") + `<span class="cpRow">An average year: ${fmt(R.mean)}</span>` + (est ? `<span class="cpRow cpFn">* estimated from the older satellite</span>` : "");
     }
     const v = verdict(R, CV.focus), vi0 = epochs(CV.d).vi0;
     $("cfM").value = String(CV.focus[1]);
@@ -2596,27 +2809,27 @@ Raw counts: ${fmt(y.naive)}`
         n++;
       }
     }
-    const pm = peaks.indexOf(Math.max(...peaks));
-    $("cCalTitle").textContent = n > 2 ? `${MONL[pm]} was the busiest month in ${peaks[pm]} of ${n} years` : `Every month from ${CV.yFrom} to ${CV.yTo}`;
-    $("cCalSub").textContent = `Showing ${CV.yFrom} to ${CV.yTo}, newest at the top.`;
+    const pm = peaks.indexOf(Math.max(...peaks)), most = R.total > 0 ? R.order[0].m : pm;
+    $("cCalTitle").textContent = n <= 2 ? CV.yFrom === CV.yTo ? `Every month of ${CV.yFrom}` : `Every month from ${CV.yFrom} to ${CV.yTo}` : pm === most || peaks[pm] > n / 2 ? `${MONL[pm]} was the busiest month in ${peaks[pm]} of ${n} years` : `${MONL[most]} has the most fire in total, but the busiest month moves from year to year`;
+    $("cCalSub").textContent = CV.yFrom === CV.yTo ? `${CV.yFrom}, by month.` : `${CV.yFrom} to ${CV.yTo}, newest at the top.`;
     document.querySelectorAll("#cModeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === CV.mode)));
     const vy = viirsYear(d);
     $("cCalTopH").textContent = CV.yTo >= vy ? `Seen by VIIRS, ${Math.max(vy, CV.yFrom)}\u2013${CV.yTo}` : "";
     $("cCalBotH").textContent = CV.yFrom < vy ? `Converted from MODIS, ${CV.yFrom}\u2013${Math.min(vy - 1, CV.yTo)}` : "";
-    $("cCalNote").textContent = CV.mode === "count" ? `Darker means more hotspots, on a log scale; grey months had none. The outlined month is the one tested at the top. Click any month to test it instead.` : `Each month against the median of the same month across ${CV.yFrom}\u2013${CV.yTo}. Red ran hotter than normal, blue quieter. Click any month to test it.`;
-    const pos = R.ser.filter((r) => r.h > 0).map((r) => r.h);
-    $("cCalLegend").innerHTML = CV.mode === "count" ? pos.length ? `<div class="cpRamp"><span>${short(Math.max(0.1, Math.min(...pos)))}</span><i style="background:linear-gradient(90deg,${FIRE.join(",")})"></i><span>${short(Math.max(...pos))} hotspots in a month</span></div><span><i style="display:inline-block;width:14px;height:12px;background:#ebe8e1;vertical-align:-2px;margin-right:6px"></i>none</span>` : "" : `<div class="cpRamp"><span>\xBC of normal</span><i style="background:linear-gradient(90deg,#2166ac,#67a9cf,#d1e5f0,#f7f7f7,#fddbc7,#ef8a62,#b2182b)"></i><span>4\xD7 normal</span></div><span>white: a normal month</span>`;
+    $("cCalNote").textContent = CV.mode === "count" ? `The outlined month is the one tested at the top; click any month to test it instead.` : `Each month against the median of the same month in ${yrs()}. Click any month to test it.`;
+    const cc = calendarClasses(R);
+    $("cCalLegend").innerHTML = CV.mode === "count" ? cc.max > 0 ? `<div>${stepped("Hotspots in a month", cc.colours, cc.breaks, cc.max)}</div><span class="cpNone"><i></i>none</span>` : "" : `<div class="cpRamp"><span>\xBC of normal</span><i style="background:linear-gradient(90deg,#2166ac,#67a9cf,#d1e5f0,#f7f7f7,#fddbc7,#ef8a62,#b2182b)"></i><span>4\xD7 normal</span></div><span>white: a normal month</span>`;
   }
   function chartText(d, R) {
-    const st = R.stats, meds = st.map((s) => s.med), pk = meds.indexOf(Math.max(...meds)), lo = meds.indexOf(Math.min(...meds)), fy = CV.focus[0], span = `${CV.yFrom}\u2013${CV.yTo}`;
-    $("cMonthsT").textContent = R.total === 0 ? "No month stands out" : meds[lo] > 0 && meds[pk] / meds[lo] >= 1.5 ? `A typical ${MONL[pk]} has ${times(meds[pk] / meds[lo])} the hotspots of a typical ${MONL[lo]}` : meds[pk] > 0 ? `A typical ${MONL[pk]} brings ${fmt(meds[pk])} hotspots; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}` : `Most months pass with no hotspots at all`;
-    $("cMonthsS").textContent = `Hotspots per month, ${span}. Red line: the median year. Orange: the middle half of years; pale: the full range. Black: ${fy}.`;
+    const st = R.stats, meds = st.map((s) => s.med), pk = meds.indexOf(Math.max(...meds)), lo = meds.indexOf(Math.min(...meds)), fy = CV.focus[0], span = yrs(), top = R.order.slice(0, 3).filter((o) => o.sum > 0), topShare = R.total > 0 ? top.reduce((a, o) => a + o.sum, 0) / R.total : 0;
+    $("cMonthsT").textContent = R.total === 0 ? "No month stands out" : meds[lo] >= 10 && meds[pk] / meds[lo] >= 1.5 ? `A typical ${MONL[pk]} has ${times(meds[pk] / meds[lo])} the hotspots of a typical ${MONL[lo]}` : topShare >= 0.5 && top.length > 1 ? `${topShare >= 0.8 ? "Almost all" : "Most"} of the fire in ${the(d.name)} comes in ${monthRun(top.map((o) => o.m))}; a typical ${MONL[lo]} has ${meds[lo] === 0 ? "none" : nHot(meds[lo])}` : meds[pk] > 0 ? `A typical ${MONL[pk]} brings ${nHot(meds[pk])}; ${meds[lo] === 0 ? `a typical ${MONL[lo]}, none` : "the other months are close behind"}` : `Most months pass with no hotspots at all`;
+    $("cMonthsS").textContent = `Hotspots per month, ${span}, with ${fy} in red. Click a month to test it.`;
     const w = R.ranked[0];
     $("cYearsT").textContent = R.total === 0 ? "No year stands out" : R.years.length > 1 && R.mean > 0 ? `${w.y} was the worst year, at ${times(w.h / R.mean)} the average` : `${fmt(w.h)} hotspots in ${w.y}`;
-    $("cYearsS").textContent = `Hotspots per year. Pale bars are converted from MODIS, with a line for the likely range; the outlined bar is ${fy}.`;
+    $("cYearsS").textContent = `Hotspots per year, with ${fy} in red. Paler bars are estimated from the older satellite, with a line for the likely range.`;
     const fyRow = R.years.find((y) => y.y === fy), rank = fyRow ? R.ranked.indexOf(fyRow) + 1 : 0;
     $("cCumT").textContent = !fyRow || R.total === 0 ? "How each year adds up" : rank === 1 ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the most of any year` : rank === R.years.length ? `${fy} ended with ${fmt(fyRow.h)} hotspots, the fewest of ${R.years.length} years` : `${fy} ended with ${fmt(fyRow.h)} hotspots, the ${ordinal(rank)} most of ${R.years.length} years`;
-    $("cCumS").textContent = `Running total of hotspots from January, one grey line per year. Red: ${fy}${w && w.y !== fy ? `; black: ${w.y}, the worst year` : ""}.`;
+    $("cCumS").textContent = `Running total of hotspots from January, one line per year.`;
     const ys = R.years, avg = (a, b, k) => {
       const r = ys.filter((y) => y.y >= a && y.y <= b);
       return r.length === b - a + 1 ? r.reduce((z, y) => z + y[k], 0) / r.length : null;
@@ -2625,7 +2838,10 @@ Raw counts: ${fmt(y.naive)}`
     const can = n0 != null && h0 != null && n1 != null && h1 != null && n0 > 0 && h0 > 0;
     $("cSeamT").textContent = can ? `Joined raw, 2012 looks like a ${(n1 / n0).toFixed(1)}\xD7 jump. Harmonized, it is ${(h1 / h0).toFixed(1)}\xD7` : "Raw counts against the harmonized record";
     $("cSeamNote").textContent = can ? `Average hotspots a year, 2012\u20132016 against 2007\u20132011. The jump in the raw line is the change of satellite, not more fire.` : n0 === 0 || h0 === 0 ? "MODIS counted no hotspots here in 2007\u20132011, so the step at 2012 cannot be measured." : "The dashed line jumps in 2012 only because the sensor changed. Choose years from 2007 to 2016 or wider to measure the step.";
-    void d;
+    const none = R.total === 0;
+    $("cCharts").hidden = $("cRawFig").hidden = none;
+    $("cNoFire").hidden = !none;
+    $("cNoFire").textContent = none ? `No fire was detected in ${the(d.name)} in ${span}, so there is nothing to chart.` : "";
   }
   function chartsFailed() {
     const msg = `<p class="cpMapMsg" style="position:static">The charts did not load (cdnjs or jsdelivr did not answer). The numbers above are unaffected; reload to try again.</p>`;
@@ -2657,7 +2873,8 @@ Raw counts: ${fmt(y.naive)}`
       tip: (r) => `${MONL[r.m]} ${r.y}: ${nHot(r.h)}
 Normal for ${MONL[r.m]}: ${fmt(r.med)}` + (r.med > 0 || r.h > 0 ? ` (${times(r.ratio)} normal)` : "") + `
 ${r.src}` + (r.i < epochs(d).vi0 ? `, likely ${fmt(r.lo)} to ${fmt(r.hi)}` : "") + `
-Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)`,
+Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N20[r.i])} (not used)
+Click to test this month`,
       click: (r) => pick(r.y, r.m)
     });
     seasonal($("cMonths"), R, CV.focus[0], (m) => pick(CV.focus[0], m));
@@ -2666,7 +2883,8 @@ Raw: Terra ${fmt(r.T)}, Aqua ${fmt(r.A)}, Suomi NPP ${fmt(r.V)}, NOAA-20 ${fmt(N
       focusYear: CV.focus[0],
       tip: (y) => `${y.y}: ${nHot(y.h)}` + (R.mean > 0 ? `
 ${y.h >= R.mean ? "+" : ""}${Math.round((y.h / R.mean - 1) * 100)}% against the average year` : "") + (y.y < vy ? `
-Converted from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS"),
+Estimated from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS") + `
+Click to test ${MONL[CV.focus[1]]} ${y.y}`,
       click: (y) => pick(y, CV.focus[1])
     });
     cumulative($("cCum"), R, CV.focus[0]);
@@ -2692,10 +2910,7 @@ Converted from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS"),
   }
   function drawMap(d) {
     const data = mapData(d, CV.yFrom, CV.yTo), k = d.country;
-    const cols = classColours(data.breaks);
-    $("cMapLegend").innerHTML = data.n ? `<b>Hotspots per square</b><div class="cpKey">` + cols.map(
-      (c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? short(Math.min(1, data.max)) : short(data.breaks[i - 1])}</span></div>`
-    ).join("") + `<div class="cpStep" style="min-width:0"><i style="background:none"></i><span>${short(data.max)}</span></div></div>` : "";
+    $("cMapLegend").innerHTML = data.n ? `<div>${stepped("Hotspots per square", classColours(data.breaks), data.breaks, data.max)}</div>` : "";
     const vals = data.cells.features.map((f) => f.properties.n).sort((a, b) => b - a), tot = vals.reduce((a, b) => a + b, 0);
     let acc = 0, k50 = 0;
     for (const v of vals) {
@@ -2705,11 +2920,17 @@ Converted from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS"),
     }
     const share = vals.length ? k50 / vals.length * 100 : 0;
     $("cMapTitle").textContent = tot > 0 && vals.length >= 10 ? `Half of all hotspots fell in ${share < 1 ? "under 1" : Math.round(share)}% of the squares that burned` : "Where it burns";
-    $("cMapSub").textContent = `Hotspots counted in each ${d.cell}\xB0 square (about ${Math.round(d.cell * 111)} km across), ${CV.yFrom}\u2013${CV.yTo}, in VIIRS terms.`;
-    $("cMapNote").textContent = data.n ? "Hover or tap a square for its numbers. Use the buttons, or Ctrl/\u2318 and scroll, to zoom." : `No hotspots were counted anywhere in ${d.name} in these years, so the map has no squares.`;
+    $("cMapSub").textContent = `Hotspots counted in each ${d.cell}\xB0 square (about ${Math.round(d.cell * 111)} km across), ${yrs()}.`;
+    const name = the(d.name);
+    $("cMapNote").innerHTML = data.n ? (coarse() ? "Tap a square for its numbers. Use two fingers to move and zoom." : "Hover over a square for its numbers. Use the buttons, or Ctrl/\u2318 and scroll, to zoom.") + (data.cropped ? ` <button class="cpText cpSmall" id="cMapAll" type="button">Show all of ${esc(name)}</button>` : "") + `<span id="cMapBase"></span>` : `No hotspots were counted anywhere in ${esc(name)} in these years, so the map has no squares.<span id="cMapBase"></span>`;
+    const all = document.getElementById("cMapAll");
+    if (all) all.onclick = fitAll;
     const go2 = () => {
       if (CV.k !== k || !CV.d) return;
-      showMap($("cMap"), d, data, CV.yFrom, CV.yTo, mapMsg);
+      showMap($("cMap"), d, data, CV.yFrom, CV.yTo, mapMsg, () => {
+        const b = document.getElementById("cMapBase");
+        if (b && CV.k === k) b.textContent = " The background map did not load, so only the squares and the outline are shown.";
+      });
     };
     if (window.maplibregl) go2();
     else {
@@ -2763,6 +2984,7 @@ Converted from MODIS, likely ${fmt(y.lo)} to ${fmt(y.hi)}` : "\nSeen by VIIRS"),
       }
       CV.yFrom = a;
       CV.yTo = b;
+      CV.focus = [Math.min(b, Math.max(a, CV.focus[0])), CV.focus[1]];
       $("cFrom").value = String(a);
       $("cTo").value = String(b);
       renderCountry();
