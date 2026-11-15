@@ -186,16 +186,14 @@ export async function globeInit() {
   }
   $("heroRetry").onclick = loadFire;
   loadFire();
-  /* the two states with their own pages: raised plates in slate, kept off the fire colours so they read as places
-     to click rather than as the hottest spots on the map; they brighten on hover */
+  /* the two states with their own pages: flat shapes on the surface that are only drawn while hovered, so the
+     globe is coloured by fire everywhere, these two included; hidden shapes still catch the pointer */
   const tops: Three.Mesh[] = [],
-    RT = 1.05,
-    PLATE = 0x7d8cab,
-    PLATE_HOVER = 0xe8eef8;
+    RT = 1.003;
   G.st = {};
   for (const st of STS) {
-    const topM = new T.MeshBasicMaterial({ color: PLATE, side: T.DoubleSide }),
-      wallM = new T.MeshBasicMaterial({ color: 0x34405a, side: T.DoubleSide });
+    const topM = new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
+    topM.visible = false;
     let sum = new T.Vector3(),
       cnt = 0;
     for (const r of D.globe.plate[st]) {
@@ -213,21 +211,10 @@ export async function globeInit() {
       top.userData.st = st;
       grp.add(top);
       tops.push(top);
-      const w: number[] = [];
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i],
-          b = pts[(i + 1) % pts.length],
-          a0 = v3(a.x, a.y, 1),
-          b0 = v3(b.x, b.y, 1),
-          a1 = v3(a.x, a.y, RT),
-          b1 = v3(b.x, b.y, RT);
-        w.push(a0.x, a0.y, a0.z, b0.x, b0.y, b0.z, b1.x, b1.y, b1.z, a0.x, a0.y, a0.z, b1.x, b1.y, b1.z, a1.x, a1.y, a1.z);
-        sum.add(a1);
+      for (const p of pts) {
+        sum.add(v3(p.x, p.y, RT));
         cnt++;
       }
-      const wg = new T.BufferGeometry();
-      wg.setAttribute("position", new T.Float32BufferAttribute(w, 3));
-      grp.add(new T.Mesh(wg, wallM));
     }
     const cen = sum.divideScalar(cnt).normalize(),
       lat = 90 - (Math.acos(cen.y) * 180) / Math.PI,
@@ -485,7 +472,7 @@ export async function globeInit() {
     }
     for (const k in G.st!) {
       const s = G.st![k];
-      s.topM.color.setHex(s.hover ? PLATE_HOVER : PLATE);
+      s.topM.visible = s.hover;
       const tag = $("tag" + k);
       tmp.copy(s.cen);
       grp.localToWorld(tmp);

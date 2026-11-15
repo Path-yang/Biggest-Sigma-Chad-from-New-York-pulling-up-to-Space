@@ -2397,10 +2397,11 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
     }
     $("heroRetry").onclick = loadFire;
     loadFire();
-    const tops = [], RT = 1.05, PLATE = 8228011, PLATE_HOVER = 15265528;
+    const tops = [], RT = 1.003;
     G.st = {};
     for (const st of STS) {
-      const topM = new T.MeshBasicMaterial({ color: PLATE, side: T.DoubleSide }), wallM = new T.MeshBasicMaterial({ color: 3424346, side: T.DoubleSide });
+      const topM = new T.MeshBasicMaterial({ color: 16777215, side: T.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
+      topM.visible = false;
       let sum = new T.Vector3(), cnt = 0;
       for (const r of D.globe.plate[st]) {
         const pts = [];
@@ -2416,16 +2417,10 @@ Raw: ${fmt(f.modis[hit])} MODIS (Terra+Aqua), ${fmt(f.viirs[hit])} Suomi NPP`
         top.userData.st = st;
         grp.add(top);
         tops.push(top);
-        const w = [];
-        for (let i = 0; i < pts.length; i++) {
-          const a = pts[i], b = pts[(i + 1) % pts.length], a0 = v3(a.x, a.y, 1), b0 = v3(b.x, b.y, 1), a1 = v3(a.x, a.y, RT), b1 = v3(b.x, b.y, RT);
-          w.push(a0.x, a0.y, a0.z, b0.x, b0.y, b0.z, b1.x, b1.y, b1.z, a0.x, a0.y, a0.z, b1.x, b1.y, b1.z, a1.x, a1.y, a1.z);
-          sum.add(a1);
+        for (const p of pts) {
+          sum.add(v3(p.x, p.y, RT));
           cnt++;
         }
-        const wg = new T.BufferGeometry();
-        wg.setAttribute("position", new T.Float32BufferAttribute(w, 3));
-        grp.add(new T.Mesh(wg, wallM));
       }
       const cen = sum.divideScalar(cnt).normalize(), lat = 90 - Math.acos(cen.y) * 180 / Math.PI, lon = Math.atan2(cen.z, -cen.x) * 180 / Math.PI - 180;
       G.st[st] = {
@@ -2636,7 +2631,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       }
       for (const k in G.st) {
         const s = G.st[k];
-        s.topM.color.setHex(s.hover ? PLATE_HOVER : PLATE);
+        s.topM.visible = s.hover;
         const tag = $("tag" + k);
         tmp.copy(s.cen);
         grp.localToWorld(tmp);
