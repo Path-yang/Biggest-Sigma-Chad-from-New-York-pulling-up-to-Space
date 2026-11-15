@@ -67,7 +67,7 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=20`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. It loads `world_outlook.js?v=2` when a country page first opens; that number is in `src/wol.ts`. Raise the number when a file changes (for the last four, in `src/extras.ts` or `src/wol.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=25`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. It loads `world_outlook.js?v=2` when a country page first opens; that number is in `src/wol.ts`. Raise the number when a file changes (for the last four, in `src/extras.ts` or `src/wol.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
 
 ## Method
 

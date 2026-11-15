@@ -100,7 +100,8 @@ function leaveForCountry() {
 /** a country address: find the country by its slug (in world.js, else in the dataset's index), then fly or open */
 async function routeCountry(hash: string) {
   /* any spelling that folds to the same slug opens the country: "#c/United_States", "#c/cote-d'ivoire" */
-  let raw = hash.slice(3);
+  /* "#c/brazil/area=..." : the country is the first part; the area tools read the rest */
+  let raw = hash.slice(3).split("/")[0];
   try {
     raw = decodeURIComponent(raw);
   } catch {

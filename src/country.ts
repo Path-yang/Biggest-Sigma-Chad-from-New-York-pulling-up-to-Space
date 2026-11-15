@@ -9,6 +9,7 @@ import { olClose, olEventsWorld, olOpen } from "./wolui";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
 import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
+import { areasReset, areasStart } from "./areas";
 import { fcClose, fcEvents, fcOpen, fcResize, fcStart } from "./cfore";
 import { stClose, stEvents, stOpen, stStart } from "./cstn";
 
@@ -154,6 +155,7 @@ export const countryOpen = () => CV.k !== null;
 export const countryKey = () => CV.k || null;
 export function openCountry(k: string) {
   if (CV.k === k && CV.d) return;
+  areasReset();
   CV.k = k;
   CV.d = CV.R = null;
   CV.mapKey = "";
@@ -173,6 +175,7 @@ export function closeCountry() {
   if (CV.k === null) return;
   CV.k = null;
   CV.mapKey = "";
+  areasReset();
   olClose();
   fcClose();
   stClose();
@@ -185,6 +188,7 @@ export function closeCountry() {
 export function countryMissing(slug: string, at = "#c/") {
   CV.k = "";
   CV.d = CV.R = null;
+  areasReset();
   olClose();
   fcClose();
   stClose();
@@ -251,6 +255,7 @@ function start(d: CountrySummary) {
   $("cBody").hidden = $("cCtl").hidden = false;
   $("cName").textContent = d.name;
   renderCountry();
+  areasStart(d);
   /* the forecast and the fire stations are fetched only now, so they never compete with the summary */
   fcStart(d);
   stStart(d);

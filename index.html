@@ -41,6 +41,8 @@ input[type=number]{width:84px}
 #hero.noglobe #globe,#hero.noglobe .tag{display:none}
 .tag{position:absolute;transform:translate(-50%,-135%);border:0;background:none;cursor:pointer;font:500 12px var(--font-m);letter-spacing:.16em;color:#fff;text-transform:uppercase;white-space:nowrap;text-shadow:0 1px 8px #000,0 0 2px #000;padding:6px 8px}
 #tagC{white-space:pre-line;line-height:1.5}
+/* New York and California get no standing label: like every other place, their name shows only while pointed at */
+#tagNY:not(.hover),#tagCA:not(.hover){opacity:0;pointer-events:none}
 .tag::after{content:"";display:block;width:1px;height:20px;background:var(--ember);margin:4px auto 0}
 .heroBar{position:absolute;left:0;right:0;bottom:28px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:0 16px}
 #hero.noglobe .heroBar{bottom:auto;top:46%}
@@ -533,6 +535,118 @@ body[data-ask-view="glance"] #gCard{max-height:calc(100% - 104px)}
   body[data-ask-view="glance"] .askLaunch{bottom:calc(var(--gSheet,0px) + 12px)}
 }
 @media (prefers-reduced-motion:reduce){#glance{transition:none}}
+
+/* ---------- area tools on the country map: toolbar, map with a panel beside it, the panel under the map on narrow or short screens ---------- */
+.aBar:empty{display:none}
+#cMapTitle{scroll-margin-top:72px}
+#cMap{scroll-margin-top:60px}
+.aTools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;margin:14px 0 10px}
+.aGroup{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.aLbl{font:600 14px/1.2 var(--sans);color:var(--cink2);margin-right:4px}
+.aBtn{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:5px 11px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;color:var(--cink);font:600 14px/1.2 var(--sans);cursor:pointer;white-space:nowrap}
+.aBtn:hover{border-color:var(--cink)}
+.aBtn[aria-pressed="true"],.aBtn[aria-expanded="true"]{background:var(--cink);border-color:var(--cink);color:var(--paper)}
+.aBtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.aSmallText{font-size:14px}
+.aCoords,.aTime{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;margin:0 0 10px;padding:10px 12px;background:var(--tint);border:1px solid var(--hair)}
+.aCoords[hidden],.aTime[hidden]{display:none}
+.aFields{display:flex;flex-wrap:wrap;gap:8px 12px}
+.aFields[hidden]{display:none}
+.aField{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--cink2)}
+#country .aField input{width:92px;min-height:32px;padding:4px 7px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;color:var(--cink);font:15px var(--sans);font-variant-numeric:tabular-nums}
+#country .aField select{min-height:32px}
+.aMsg{font-size:14px;color:var(--cink2);margin:0}
+.aMsg:empty{display:none}
+.aTime{align-items:center}
+.aTime select{font-size:15px}
+.aTKey{flex:1 1 260px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--cink2);min-width:0}
+.aTSteps{max-width:320px}
+.aTWhen{font-weight:600;color:var(--cink)}
+.aHint{margin:0 0 8px;font-size:14px;color:var(--cink)}
+.aHint:empty{display:none}
+.aWork.on{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0;border:1px solid var(--hair)}
+.aWork.on .cpMap{height:max(420px,min(660px,calc(100vh - 200px)));border:0}
+.aPanel{background:var(--paper);min-width:0}
+.aWork.on .aPanel{height:max(420px,min(660px,calc(100vh - 200px)));overflow-y:auto;overscroll-behavior:contain;border-left:1px solid var(--hair);padding:14px 16px 24px}
+.aDrawing,.aDrawing canvas{cursor:crosshair!important;touch-action:none}
+/* no square popup over a drawing in progress */
+.aDrawing~.maplibregl-popup{display:none}
+.aHead{display:flex;align-items:flex-start;gap:10px}
+.aHeadT{flex:1;min-width:0}
+.aHead .cpPart{margin:0 0 2px}
+.aName{margin:0;font:600 20px/1.25 var(--serif);font-optical-sizing:auto;overflow-wrap:anywhere;text-wrap:balance}
+.aX{flex:none;width:34px;height:34px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;font:400 22px/1 var(--sans);color:var(--cink);cursor:pointer}
+.aX:hover{border-color:var(--cink)}
+.aNote{margin:6px 0 0;font-size:14px;line-height:1.45;color:var(--cink2)}
+.aActs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 6px;margin:12px 0 0}
+.aActs .aBtn{min-height:32px;padding:4px 10px}
+.aPanel>.aMsg{margin-top:8px}
+.aLink{width:100%;margin-top:4px;padding:4px 6px;border:1px solid var(--hair);font:13px var(--sans);background:#fffefa;color:var(--cink)}
+.aState{margin:18px 0 0;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.aState[hidden]{display:none}
+.aState p{margin:0;font:400 17px/1.45 var(--serif)}
+.aKpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:16px 0 0;border-top:1px solid var(--cink)}
+.aKpis div{padding:10px 12px 12px 0;border-bottom:1px solid var(--hair);min-width:0}
+.aKpis div:nth-child(2n){padding-left:12px;padding-right:0;border-left:1px solid var(--hair)}
+.aKpis dt{font:600 13px/1.3 var(--sans);color:var(--cink)}
+.aKpis dd{margin:3px 0 0;font-size:13px;line-height:1.4;color:var(--cink2)}
+.aKpis .aFig{margin:4px 0 4px;font:600 22px/1.1 var(--serif);font-optical-sizing:auto;color:var(--cink);overflow-wrap:anywhere}
+.aFig .hi{color:var(--cred)}.aFig .lo{color:var(--cblue)}
+.aFig small{display:block;font:400 14px/1.3 var(--serif);color:var(--cink2);margin-top:2px}
+.aNone{margin:16px 0 0;font:400 17px/1.45 var(--serif)}
+.aBlock{margin:22px 0 0;padding-top:12px;border-top:1px solid var(--hair)}
+.aBlock[hidden]{display:none}
+.aBH{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
+.aBH h4{margin:0;font:600 17px/1.3 var(--serif);font-optical-sizing:auto}
+.aBH.aSub{margin-top:12px;font-size:14px;font-weight:600}
+.aSeg{gap:12px}
+.aSeg button{font-size:13px;padding:2px 0}
+.aKey{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 12px;margin:10px 0 4px;font-size:12px;color:var(--cink2)}
+.aKey:empty{display:none}
+.aKey>div{flex:1 1 220px;min-width:0}
+.aKey b{display:block;margin-bottom:4px;font-weight:600;color:var(--cink)}
+.aKey .cpStep span{font-size:12px}
+.aKey .cpNone{padding-bottom:12px}
+.aKey .cpRamp{grid-template-columns:auto minmax(80px,1fr) auto;flex:1 1 auto}
+.aCap{margin:8px 0 0;font-size:13px;line-height:1.45;color:var(--cink2)}
+.aBlock .cpPlot{margin-top:8px}
+.aCmpT{width:100%;table-layout:fixed;font-size:13px!important}
+#country .aCmpT th,#country .aCmpT td{padding:4px 5px;font-size:13px;white-space:normal;vertical-align:top}
+#country .aCmpT th{font-weight:600;line-height:1.25}
+.aCmpT th:first-child,.aCmpT td:first-child{width:18%}
+.aCmpT th:nth-child(2){width:26%}
+#country .aCmpT tr.aCmpA td{padding:8px 0 0;border-bottom:0;text-align:left}
+.aCmpH{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.aCmpL{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aCmpT small{display:block;color:var(--cink2);font-weight:400}
+.aCmpN{color:var(--cink2)}
+.aSw{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle;background:var(--c)}
+.aChk{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--cink2);cursor:pointer}
+.aWList{list-style:none;margin:10px 0 0;padding:0;border-top:1px solid var(--cink)}
+.aWList li{border-bottom:1px solid var(--hair)}
+.aWList button{display:grid;grid-template-columns:22px minmax(0,1fr) auto 52px;gap:2px 10px;align-items:baseline;width:100%;padding:7px 0;border:0;background:none;text-align:left;cursor:pointer;font:14px/1.35 var(--sans);color:var(--cink)}
+.aWList button:hover{background:var(--tint)}
+.aWRank{font-weight:600}
+.aWPlace small,.aWN small{display:block;font-size:12px;color:var(--cink2)}
+.aWN{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.aWLv{justify-self:end;font-size:12px;font-weight:600;color:var(--cink2)}
+.aWLv.high{color:var(--cred)}
+.aMark{display:flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:2px;font:600 12px/1 var(--sans);color:#fff;background:var(--cred);box-shadow:0 0 0 1.5px #fffefa;pointer-events:none}
+.aMarkP{background:var(--c);transform-origin:bottom left}
+/* narrow or short screens: the map full width, the panel under it in the page */
+@media (max-width:900px),(max-height:560px){
+  .aWork.on{display:block;border:0}
+  .aWork.on .cpMap{height:max(300px,min(62vh,calc(100vh - 120px)));border:1px solid var(--hair)}
+  .aWork.on .aPanel{height:auto;overflow:visible;border:0;border-top:1px solid var(--cink);margin-top:14px;padding:12px 0 0}
+}
+@media (max-width:760px){
+  .aTools{gap:8px 12px}
+  .aGroup{gap:6px}
+  .aLbl{flex:1 1 100%}
+  .aBtn{min-height:40px}
+  .aKpis .aFig{font-size:20px}
+  .aCoords .aGo{flex:1 1 100%}
+}
 /* ---------- the fire copilot: a launcher and a chat window, dark glass over the maps, paper on country pages ---------- */
 .askLaunch,.ask{
   --a-bg:rgba(10,14,23,.94); --a-ink:var(--ink); --a-ink2:var(--ink2); --a-muted:var(--muted); --a-line:var(--line); --a-field:#131a28; --a-soft:rgba(255,255,255,.055);
@@ -823,7 +937,11 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
         <h2 class="cpH" id="cMapTitle">Where it burns</h2>
         <p class="cpSub" id="cMapSub"></p>
         <div class="cpLegend" id="cMapLegend"></div>
-        <div class="cpMap" id="cMap" role="region" aria-label="Map of hotspots by grid square"></div>
+        <div class="aBar" id="aBar"></div>
+        <div class="aWork" id="aWork">
+          <div class="cpMap" id="cMap" role="region" aria-label="Map of hotspots by grid square"></div>
+          <aside class="aPanel" id="aPanel" aria-label="Selected area" hidden></aside>
+        </div>
         <p class="cpCap" id="cMapNote"></p>
       </section>
 
@@ -1120,6 +1238,6 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

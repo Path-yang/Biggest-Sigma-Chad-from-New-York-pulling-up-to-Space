@@ -432,7 +432,7 @@ export async function globeInit() {
     setHov(c);
     for (const k in G.st!) G.st![k].hover = k === st;
     cv.style.cursor = st || c ? "pointer" : "grab";
-    document.querySelectorAll<HTMLButtonElement>(".pick").forEach(b => b.classList.toggle("hover", b.dataset.st === st));
+    document.querySelectorAll<HTMLButtonElement>(".pick,.tag").forEach(b => b.classList.toggle("hover", b.dataset.st === st));
   };
   cv.onpointerup = e => {
     const d = drag;
@@ -449,6 +449,7 @@ export async function globeInit() {
   };
   G.hover = st => {
     for (const k in G.st!) G.st![k].hover = k === st;
+    document.querySelectorAll<HTMLButtonElement>(".tag[data-st]").forEach(t => t.classList.toggle("hover", t.dataset.st === st));
   };
   G.flyTo = (to, done) => {
     if (reduced) {
