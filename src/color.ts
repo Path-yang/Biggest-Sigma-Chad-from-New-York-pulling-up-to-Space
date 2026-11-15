@@ -45,7 +45,7 @@ export const LUT = () => {
   return lut;
 };
 export const inkOn = (c: RGB) => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] > 150 ? "#14110c" : "#fff");
-export function paintRamp(id: "calRamp" | "cCalRamp" | "cMapRamp", fn: (t: number) => RGB) {
+export function paintRamp(id: "calRamp", fn: (t: number) => RGB) {
   const cv = $(id),
     c = cv.getContext("2d")!;
   for (let x = 0; x < cv.width; x++) {

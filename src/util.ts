@@ -3,10 +3,7 @@ interface ElementById {
   map: HTMLCanvasElement;
   globe: HTMLCanvasElement;
   calRamp: HTMLCanvasElement;
-  cCalRamp: HTMLCanvasElement;
-  cMapRamp: HTMLCanvasElement;
   heroRamp: HTMLCanvasElement;
-  cMap: HTMLCanvasElement;
   cFrom: HTMLSelectElement;
   cTo: HTMLSelectElement;
   cfM: HTMLSelectElement;
