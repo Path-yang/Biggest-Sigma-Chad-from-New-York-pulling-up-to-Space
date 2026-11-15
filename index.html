@@ -41,6 +41,8 @@ input[type=number]{width:84px}
 #hero.noglobe #globe,#hero.noglobe .tag{display:none}
 .tag{position:absolute;transform:translate(-50%,-135%);border:0;background:none;cursor:pointer;font:500 12px var(--font-m);letter-spacing:.16em;color:#fff;text-transform:uppercase;white-space:nowrap;text-shadow:0 1px 8px #000,0 0 2px #000;padding:6px 8px}
 #tagC{white-space:pre-line;line-height:1.5}
+/* New York and California get no standing label: like every other place, their name shows only while pointed at */
+#tagNY:not(.hover),#tagCA:not(.hover){opacity:0;pointer-events:none}
 .tag::after{content:"";display:block;width:1px;height:20px;background:var(--ember);margin:4px auto 0}
 .heroBar{position:absolute;left:0;right:0;bottom:28px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;padding:0 16px}
 #hero.noglobe .heroBar{bottom:auto;top:46%}
@@ -1034,6 +1036,6 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

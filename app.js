@@ -7185,7 +7185,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       setHov(c);
       for (const k in G.st) G.st[k].hover = k === st;
       cv.style.cursor = st || c ? "pointer" : "grab";
-      document.querySelectorAll(".pick").forEach((b) => b.classList.toggle("hover", b.dataset.st === st));
+      document.querySelectorAll(".pick,.tag").forEach((b) => b.classList.toggle("hover", b.dataset.st === st));
     };
     cv.onpointerup = (e) => {
       const d = drag;
@@ -7201,6 +7201,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     };
     G.hover = (st) => {
       for (const k in G.st) G.st[k].hover = k === st;
+      document.querySelectorAll(".tag[data-st]").forEach((t) => t.classList.toggle("hover", t.dataset.st === st));
     };
     G.flyTo = (to, done) => {
       if (reduced) {
