@@ -728,6 +728,8 @@ export interface ForecastMonth {
   part?: string;
 }
 /** the 80% range as a pale band, the forecast's middle outcome in ink, and the typical month of 2001-2025 dashed */
+/** an expected count as whole hotspots: "fewer than 1", never "0.3" */
+const whole = (v: number) => (v === 0 ? "0" : v < 1 ? "fewer than 1" : fmt(Math.round(v)));
 export function forecastMonths(el: HTMLElement, rows: ForecastMonth[], year: number) {
   const Plot = Pl(),
     W = el.clientWidth || 600,
@@ -735,13 +737,14 @@ export function forecastMonths(el: HTMLElement, rows: ForecastMonth[], year: num
     H = ph ? 240 : 280,
     mT = 16,
     mB = 30,
-    seen = rows.filter(r => r.obs != null),
-    ymax = yTop(Math.max(1e-9, ...rows.flatMap(r => [r.hi, r.med, r.typ, r.obs ?? 0]))),
+    /* a month that is not over would read as a quiet month: it is in the tooltip only */
+    seen = rows.filter(r => r.obs != null && !r.part),
+    ymax = yTop(Math.max(1e-9, ...rows.flatMap(r => [r.hi, r.med, r.typ, r.part ? 0 : (r.obs ?? 0)]))),
     pc = (p: number) => (p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%"),
     labs = spread(
       [
         { v: rows[11].typ, text: "Typical", fill: TYPICAL },
-        { v: rows[11].med, text: String(year), fill: INK },
+        { v: rows[11].med, text: seen.length ? "Forecast" : String(year), fill: INK },
       ],
       ymax,
       H,
@@ -753,7 +756,7 @@ export function forecastMonths(el: HTMLElement, rows: ForecastMonth[], year: num
       marginTop: mT,
       marginBottom: mB,
       marginLeft: 44,
-      marginRight: 64,
+      marginRight: 72,
       x: {
         domain: [0, 11],
         ticks: MON.map((_, m) => m).filter(m => !ph || m % 2 === 0),
@@ -777,10 +780,10 @@ export function forecastMonths(el: HTMLElement, rows: ForecastMonth[], year: num
             y: "med",
             ...TIP,
             title: (r: ForecastMonth) =>
-              `${MONL[r.m]} ${year}\nMiddle outcome: ${fmt(r.med)} hotspots\n8 in 10 between ${fmt(r.lo)} and ${fmt(r.hi)}\nExpected (mean): ${fmt(r.mean)}` +
-              `\nTypical ${MONL[r.m]}, 2001–2025: ${fmt(r.typ)}\nChance of more than typical: ${pc(r.pAbove)}` +
+              `${MONL[r.m]} ${year}\nMiddle outcome: ${whole(r.med)} hotspots\n8 in 10 between ${whole(r.lo)} and ${whole(r.hi)}\nExpected (mean): ${whole(r.mean)}` +
+              `\nTypical ${MONL[r.m]}, 2001–2025: ${whole(r.typ)}\nChance of more than typical: ${pc(r.pAbove)}` +
               (r.pAny < 0.995 ? `\nChance of any hotspot: ${pc(r.pAny)}` : "") +
-              (r.obs != null ? `\nSeen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : ""),
+              (r.obs != null ? `\nSeen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.obs < r.lo || r.obs > r.hi ? ", outside the range" : ", inside the range"}` : ""),
           }),
         ),
       ],

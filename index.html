@@ -211,18 +211,25 @@ input[type=number]{width:84px}
 .cpOlHow b{font-weight:600}
 /* ---------- 2026-2027 forecast and fire stations: small flat maps, a ranked list, notes ---------- */
 .cpFcFig{margin-top:40px}
+.cpFcRowT{margin-top:32px}
+.cpFcRowT[hidden]{display:none}
+.cpFcRowT+.cpOlFigs{margin-top:10px}
+.cpAnswers[hidden]{display:none}
+.cpKeyDot{border-radius:50%;width:8px!important;height:8px!important;background:var(--cred);box-shadow:0 0 0 1px #fffefa}
 .cpFcFig .cpPlot,.cpFcFig .cpMini{margin-top:14px}
 .cpMini{background:#f2f3f0;border:1px solid var(--hair);padding:8px;min-width:0}
 .cpMiniBox{position:relative;margin:0 auto}
 .cpMiniBox svg{display:block;width:100%;height:auto;overflow:hidden}
 .cpMiniMark{position:absolute;transform:translate(-50%,-50%);min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--cink);color:#fffefa;font:600 11px/18px var(--sans);text-align:center;pointer-events:none;box-shadow:0 0 0 1.5px #fffefa}
+.cpMiniMark.muted{background:#8a8478}
+.cpMiniMark i{font-style:normal;font-weight:400;font-size:10px;margin-left:2px;opacity:.85}
 .cpNote{max-width:680px;margin:20px 0 0;padding:10px 14px;border-left:3px solid var(--cink);background:var(--tint);font-size:15px}
 .cpStShow{display:block;margin:4px 0 18px;text-align:left;font-size:15px}
 .cpStList{list-style:none;margin:10px 0 0;padding:0;border-top:1px solid var(--cink)}
 .cpOlList .cpStList li{display:grid;grid-template-columns:26px minmax(0,1fr);gap:4px 10px;padding:10px 0;border-bottom:1px solid var(--hair);font-size:15px}
 .cpOlList .cpStList li.stGrp{display:block;padding:12px 0 6px;font:600 13px/1.3 var(--sans);color:var(--cink2)}
 .cpStList small{display:block;font-size:13px;color:var(--cink2);overflow-wrap:anywhere}
-.cpStList small.stFlag{color:var(--cred)}
+.cpStList small.stFlag,.stFlag{color:var(--cred)}
 .stN{display:inline-block;width:20px;height:20px;border-radius:10px;background:var(--cink);color:#fffefa;font:600 11px/20px var(--sans);text-align:center;margin-top:2px}
 .stN.muted{background:#8a8478}
 .stMuted{color:#8a8478}
@@ -231,6 +238,8 @@ input[type=number]{width:84px}
 .cpStShow[hidden]+#cStGapBox[hidden]+#cStDistBox{margin-top:0}
 #cStDist{margin-top:8px}
 #cStLegend .cpNone{padding-bottom:0}
+#cStLegend[hidden]{display:none}
+@media (min-width:701px){#cSt .cpOlGrid:not(.wide) .cpOlFig{position:sticky;top:64px}}
 .cpNone i.stDot{width:8px;height:8px;border-radius:4px;box-shadow:0 0 0 1px #fffefa}
 @media (max-width:860px){
   .cpCharts{grid-template-columns:minmax(0,1fr)}
@@ -537,7 +546,10 @@ th{color:var(--muted);font-weight:400}
         <p class="cpSub" id="cFcSub"></p>
         <div class="cpOlState" id="cFcState" role="status"><p id="cFcMsg"></p><button class="cpText" id="cFcRetry" type="button" hidden>Try again</button></div>
         <div id="cFcMain" hidden>
+          <h3 class="cpH3 cpFcRowT" id="cFcCheckT"></h3>
           <div class="cpAnswers cpOlFigs" id="cFcFigs"></div>
+          <h3 class="cpH3 cpFcRowT" id="cFcAheadT"></h3>
+          <div class="cpAnswers cpOlFigs" id="cFcAhead"></div>
           <p class="cpProse cpOlHow" id="cFcSkill"></p>
           <figure class="cpChart cpWide cpFcFig">
             <div class="cpCalBar"><h3 class="cpH3" id="cFcChartT"></h3><div class="cpSeg" id="cFcYearSeg" role="group" aria-label="Forecast year"><button type="button" data-year="2026">2026</button><button type="button" data-year="2027">2027</button></div></div>
@@ -837,6 +849,6 @@ th{color:var(--muted);font-weight:400}
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

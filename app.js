@@ -368,13 +368,13 @@
     });
     const years = [];
     for (let y = o.yFrom; y <= o.yTo; y++) {
-      const rr = ser.filter((r) => r.y === y), sum = (k) => rr.reduce((a, r) => a + r[k], 0);
+      const rr = ser.filter((r) => r.y === y), sum2 = (k) => rr.reduce((a, r) => a + r[k], 0);
       if (!rr.length) continue;
       const row = {
         y,
-        h: sum("h"),
-        lo: sum("lo"),
-        hi: sum("hi"),
+        h: sum2("h"),
+        lo: sum2("lo"),
+        hi: sum2("hi"),
         naive: rr.reduce((a, r) => a + (r.i >= o.vi0 ? r.V : r.T + r.A), 0)
       };
       if (!fullYear(y)) row.part = true;
@@ -464,15 +464,15 @@
     let all = 0;
     for (let q = 0; q < M.length; q++) all += M[q];
     return s.counties.map((c, ci) => {
-      const v = Array.from(M.subarray(ci * ny, (ci + 1) * ny)), k = v.filter((x) => x > 0).length, sum = v.reduce((x, y) => x + y, 0);
+      const v = Array.from(M.subarray(ci * ny, (ci + 1) * ny)), k = v.filter((x) => x > 0).length, sum2 = v.reduce((x, y) => x + y, 0);
       return {
         ci,
         name: c.name,
         k,
         n: ny,
         p: k / ny,
-        mean: sum / ny,
-        hotShare: all ? sum / all : 0,
+        mean: sum2 / ny,
+        hotShare: all ? sum2 / all : 0,
         e: fire[ci],
         share: fireAll ? fire[ci] / fireAll : 0
       };
@@ -1638,20 +1638,20 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
     return { n20: iso(f.n20), interp: iso(f.interp), any: f.n20.length + f.interp.length > 0 };
   }
   function csvCal() {
-    const st = S.st, s = D.states[st], R = analyseFor(st, S.sel), mt = modisThrough(), whole = S.sel.type === "state", m26 = new Map((s.y2026?.months ?? []).map((m) => [m.i, m])), gaps = new Map((s.hist_gaps ?? []).map((g) => [g.i, g])), rows = [
+    const st = S.st, s = D.states[st], R = analyseFor(st, S.sel), mt = modisThrough(), whole2 = S.sel.type === "state", m26 = new Map((s.y2026?.months ?? []).map((m) => [m.i, m])), gaps = new Map((s.hist_gaps ?? []).map((g) => [g.i, g])), rows = [
       "year,month,month_status,harmonized_viirs_equivalent,range90_low,range90_high,source,raw_terra_modis,raw_aqua_modis,raw_snpp_viirs,raw_noaa20_viirs_on_filled_days,noaa20_converted_snpp_terms,days_from_noaa20_converted,days_estimated_from_neighbours,median_for_calendar_month,ratio_to_median"
     ];
     R.ser.forEach((r) => {
       const f = fillDates(r.i, st), m = m26.get(r.i), g = gaps.get(r.i);
       let snpp = r.V, n20raw = "", n20conv = "";
       if (f.any && m) {
-        snpp = whole ? m.snpp : "";
-        n20raw = whole ? m.n20_raw : "";
-        n20conv = whole ? m.n20_converted : "";
+        snpp = whole2 ? m.snpp : "";
+        n20raw = whole2 ? m.n20_raw : "";
+        n20conv = whole2 ? m.n20_converted : "";
       } else if (f.any && g) {
-        n20raw = whole ? g.n20_gap : "";
-        n20conv = (r.h - (r.V - (whole ? g.snpp_gap : 0))).toFixed(2);
-        if (!whole) n20conv = "";
+        n20raw = whole2 ? g.n20_gap : "";
+        n20conv = (r.h - (r.V - (whole2 ? g.snpp_gap : 0))).toFixed(2);
+        if (!whole2) n20conv = "";
       }
       rows.push(
         [
@@ -2708,14 +2708,14 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     );
   }
   function countyRiskFc(st, m, year) {
-    const w = fcHex(st, "any", year, m), cp = fcHex(st, "any", year, m, true), hx = hexState(st), cs = D.states[st].counties, sum = new Float64Array(cs.length), top = new Float32Array(cs.length);
+    const w = fcHex(st, "any", year, m), cp = fcHex(st, "any", year, m, true), hx = hexState(st), cs = D.states[st].counties, sum2 = new Float64Array(cs.length), top = new Float32Array(cs.length);
     let all = 0;
     for (let k = 0; k < hx.n; k++) {
-      sum[hx.c[k]] += w[k];
+      sum2[hx.c[k]] += w[k];
       all += w[k];
       if (w[k] > top[hx.c[k]]) top[hx.c[k]] = w[k];
     }
-    return cs.map((c, ci) => ({ ci, name: c.name, e: sum[ci], share: all ? sum[ci] / all : 0, p: Math.max(cp ? cp[ci] : 0, top[ci]) })).sort((x, y) => y.e - x.e || y.p - x.p);
+    return cs.map((c, ci) => ({ ci, name: c.name, e: sum2[ci], share: all ? sum2[ci] / all : 0, p: Math.max(cp ? cp[ci] : 0, top[ci]) })).sort((x, y) => y.e - x.e || y.p - x.p);
   }
 
   // src/card.ts
@@ -3618,14 +3618,14 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   var css2 = (x) => `rgba(${x.c[0]},${x.c[1]},${x.c[2]},${x.a.toFixed(3)})`;
   function areaKm2(c) {
-    let sum = 0;
+    let sum2 = 0;
     for (const r of c.r) {
       let s = 0;
       for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2)
         s += (r[j] - r[i]) * Math.PI / 180 * (Math.sin(r[j + 1] * Math.PI / 180) + Math.sin(r[i + 1] * Math.PI / 180));
-      sum += Math.abs(s) / 2;
+      sum2 += Math.abs(s) / 2;
     }
-    return sum * R_KM * R_KM;
+    return sum2 * R_KM * R_KM;
   }
   function ringBox(r) {
     let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
@@ -4395,12 +4395,12 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     const all = pad([x0, y0, x1, y1]);
     let bounds = all;
     if (cells.length) {
-      const wt = cells.map((f) => Math.max(f.properties.n, 0.01)), sum = wt.reduce((a, b) => a + b, 0), at = (key, q) => {
+      const wt = cells.map((f) => Math.max(f.properties.n, 0.01)), sum2 = wt.reduce((a, b) => a + b, 0), at = (key, q) => {
         const idx = cells.map((_, i) => i).sort((a, b) => key(a) - key(b));
         let acc = 0;
         for (const i of idx) {
           acc += wt[i];
-          if (acc >= q * sum) return key(i);
+          if (acc >= q * sum2) return key(i);
         }
         return key(idx[idx.length - 1]);
       }, edge = (i, k) => cells[i].geometry.coordinates[0][k * 2], w = at((i) => edge(i, 0)[0], 0.01), s0 = at((i) => edge(i, 0)[1], 0.01), e = at((i) => edge(i, 1)[0], 0.99), n = at((i) => edge(i, 1)[1], 0.99), dx = (e - w) * 0.06, dy = (n - s0) * 0.06;
@@ -5202,11 +5202,12 @@ Raw counts: ${fmt(y.naive)}`
     fig.setAttribute("aria-label", "Raw detections per year from each satellite");
     mount(el, fig);
   }
+  var whole = (v) => v === 0 ? "0" : v < 1 ? "fewer than 1" : fmt(Math.round(v));
   function forecastMonths(el, rows, year) {
-    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, seen = rows.filter((r) => r.obs != null), ymax = yTop(Math.max(1e-9, ...rows.flatMap((r) => [r.hi, r.med, r.typ, r.obs ?? 0]))), pc4 = (p) => p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%", labs = spread(
+    const Plot = Pl(), W = el.clientWidth || 600, ph = phone(W), H = ph ? 240 : 280, mT = 16, mB = 30, seen = rows.filter((r) => r.obs != null && !r.part), ymax = yTop(Math.max(1e-9, ...rows.flatMap((r) => [r.hi, r.med, r.typ, r.part ? 0 : r.obs ?? 0]))), pc4 = (p) => p > 0.99 ? "over 99%" : p < 0.01 ? "under 1%" : Math.round(p * 100) + "%", labs = spread(
       [
         { v: rows[11].typ, text: "Typical", fill: TYPICAL },
-        { v: rows[11].med, text: String(year), fill: INK2 }
+        { v: rows[11].med, text: seen.length ? "Forecast" : String(year), fill: INK2 }
       ],
       ymax,
       H,
@@ -5218,7 +5219,7 @@ Raw counts: ${fmt(y.naive)}`
         marginTop: mT,
         marginBottom: mB,
         marginLeft: 44,
-        marginRight: 64,
+        marginRight: 72,
         x: {
           domain: [0, 11],
           ticks: MON.map((_, m) => m).filter((m) => !ph || m % 2 === 0),
@@ -5242,13 +5243,13 @@ Raw counts: ${fmt(y.naive)}`
               y: "med",
               ...TIP,
               title: (r) => `${MONL[r.m]} ${year}
-Middle outcome: ${fmt(r.med)} hotspots
-8 in 10 between ${fmt(r.lo)} and ${fmt(r.hi)}
-Expected (mean): ${fmt(r.mean)}
-Typical ${MONL[r.m]}, 2001\u20132025: ${fmt(r.typ)}
+Middle outcome: ${whole(r.med)} hotspots
+8 in 10 between ${whole(r.lo)} and ${whole(r.hi)}
+Expected (mean): ${whole(r.mean)}
+Typical ${MONL[r.m]}, 2001\u20132025: ${whole(r.typ)}
 Chance of more than typical: ${pc4(r.pAbove)}` + (r.pAny < 0.995 ? `
 Chance of any hotspot: ${pc4(r.pAny)}` : "") + (r.obs != null ? `
-Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
+Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.obs < r.lo || r.obs > r.hi ? ", outside the range" : ", inside the range"}` : "")
             })
           )
         ]
@@ -5260,6 +5261,11 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
 
   // src/minimap.ts
   var S2 = 10;
+  var MAX_H = 440;
+  var DENSE = 800;
+  var MARK_GAP = 16;
+  var NARROW = 500;
+  var MAX_NARROW_MARKS = 5;
   var r1 = (v) => Math.round(v * 100) / 100;
   var esc5 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var coarse = () => matchMedia("(pointer: coarse)").matches;
@@ -5307,17 +5313,31 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
           lines2 += `M${r1(X(r[i] + off))},${r1(Y(r[i + 1]))}L${r1(X(r[i + 2] + off))},${r1(Y(r[i + 3]))}`;
         }
       }
-    const cw = r1(cell * F2.kx * S2), ch = r1(cell * S2), layers = o.layers.filter((l) => l.cells.length).map((l) => {
+    const maxW = Math.max(160, Math.round(MAX_H * vw / vh)), boxW = Math.min(maxW, host.clientWidth > 40 ? host.clientWidth - 16 : maxW), boxH = boxW * vh / vw;
+    const cw = r1(cell * F2.kx * S2), ch = r1(cell * S2), cellPx = cell * F2.kx * S2 * boxW / vw, pts2 = o.points || [], dense = pts2.length > DENSE, paint = (ls) => ls.filter((l) => l.cells.length).map((l) => {
       let p = "";
       for (const c of l.cells) p += `M${r1(X(west(c)))},${r1(Y(F2.la[c] * cell + cell))}h${cw}v${ch}h${-cw}z`;
       return `<path d="${p}" fill="${l.fill}"${l.edge ? ` stroke="${l.fill}" stroke-width="1.6" vector-effect="non-scaling-stroke"` : ""}/>`;
     }).join("");
     let dots = "";
-    for (const [lon, lat] of o.points || []) dots += `M${r1(X(near(lon, F2.lon0)))},${r1(Y(lat))}h0`;
-    host.innerHTML = `<div class="cpMiniBox" style="max-width:min(100%,${Math.max(160, Math.round(520 * vw / vh))}px)"><svg viewBox="${r1(x0)} ${r1(y0)} ${r1(vw)} ${r1(vh)}" role="img" aria-label="${esc5(o.label)}"><path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` + layers + `<path d="${lines2}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` + (dots ? `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/><path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : "") + `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/></svg>` + (o.marks || []).map((m) => {
-      const x = X(west(m.c) + cell / 2), y = Y(F2.la[m.c] * cell + cell / 2);
-      return `<span class="cpMiniMark" style="left:${((x - x0) / vw * 100).toFixed(2)}%;top:${((y - y0) / vh * 100).toFixed(2)}%" title="${esc5(m.title)}">${esc5(m.label)}</span>`;
-    }).join("") + `</div>`;
+    for (const [lon, lat] of pts2) dots += `M${r1(X(near(lon, F2.lon0)))},${r1(Y(lat))}h0`;
+    const narrow = innerWidth < NARROW, placed = [], folded = [], cut = [];
+    for (const [i, m] of (o.marks || []).entries()) {
+      const x = (X(west(m.c) + cell / 2) - x0) / vw, y = (Y(F2.la[m.c] * cell + cell / 2) - y0) / vh;
+      if (narrow && i >= MAX_NARROW_MARKS && !m.keep) {
+        cut.push(m.label);
+        continue;
+      }
+      const under = placed.find((q) => Math.hypot((q.x - x) * boxW, (q.y - y) * boxH) < MARK_GAP);
+      if (under) {
+        under.more.push(m.label);
+        folded.push(m.label);
+      } else placed.push({ x, y, m, more: [] });
+    }
+    host.innerHTML = `<div class="cpMiniBox" style="max-width:min(100%,${maxW}px)"><svg viewBox="${r1(x0)} ${r1(y0)} ${r1(vw)} ${r1(vh)}" role="img" aria-label="${esc5(o.label)}"><path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` + paint(o.layers.filter((l) => !(dense && l.over))) + `<path d="${lines2}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` + (dots ? dense ? `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-opacity=".6" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/><path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : "") + (dense ? paint(o.layers.filter((l) => l.over)) : "") + `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/></svg>` + /* the first mark last, so it is drawn on top */
+    placed.slice().reverse().map(
+      ({ x, y, m, more }) => `<span class="cpMiniMark${m.muted ? " muted" : ""}" style="left:${(x * 100).toFixed(2)}%;top:${(y * 100).toFixed(2)}%" title="${esc5(m.title + (more.length ? `; also here: ${more.join(", ")}` : ""))}">${esc5(m.label)}${more.length ? `<i>+${more.length}</i>` : ""}</span>`
+    ).join("") + `</div>`;
     const svg = host.querySelector("svg"), on = svg.querySelector(".cpMiniOn");
     o.caption.innerHTML = o.idle;
     const at = (e) => {
@@ -5352,7 +5372,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
       on.setAttribute("visibility", "hidden");
       o.caption.innerHTML = o.idle;
     };
-    return vw / vh;
+    return { aspect: vw / vh, folded, cut, cellPx };
   }
 
   // src/cfore.ts
@@ -5365,13 +5385,18 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     if (!isObj(h) || !["median", "mean", "p_any"].every((s) => isNums(h[s], 12)) || !num(h.annual_mean) || !num(h.y2025)) return false;
     if (!isObj(yr) || !["2026", "2027"].every((y) => isObj(yr[y]) && num(yr[y].mean) && num(yr[y].trend_factor))) return false;
     if (!isObj(me) || !isObj(me.month) || !(me.cell === null || isObj(me.cell))) return false;
-    const mm = me.month;
-    return numOrNull(mm.crps_skill) && ["brier_above", "brier_above_base", "cover80", "cover80_base"].every((s) => num(mm[s])) && (me.cell === null || numOrNull(me.cell.auc) && numOrNull(me.cell.auc_base)) && num(x.cell) && num(x.ncell) && isNums(x.cell_rows) && x.cell_rows.length % 4 === 0 && typeof x.same_2027 === "boolean" && typeof x.verdict === "string" && typeof x.method === "string";
+    const mm = me.month, mc = me.cell;
+    return numOrNull(mm.crps_skill) && ["brier_above", "brier_above_base", "cover80", "cover80_base"].every((s) => num(mm[s])) && (mc === null || numOrNull(mc.auc) && numOrNull(mc.auc_base) && ["cell_years", "rate", "mae", "mae_base"].every((s) => num(mc[s]))) && num(x.cell) && num(x.ncell) && isNums(x.cell_rows) && x.cell_rows.length % 4 === 0 && typeof x.same_2027 === "boolean" && typeof x.verdict === "string" && typeof x.method === "string";
   }
   var TYPICAL_GAIN = "about 3%";
   var COUNTRIES_SCORED = 234;
-  var VOLCANIC = /* @__PURE__ */ new Set(["Iceland"]);
+  var SKILL_MIN = 0.02;
+  var NOT_FIRE2 = {
+    Iceland: "Most hotspots in Iceland are lava from eruptions, which no fire record can forecast.",
+    Antarctica: "Antarctica has almost no vegetation, so its hotspots are likely volcanic heat (Mount Erebus has a lava lake) or heat from stations, not fire."
+  };
   var P_BREAKS = [0.1, 0.25, 0.5, 0.75, 0.9];
+  var MIN_POSITIVES = 20;
   var esc6 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var pc = (p) => p > 0.99 && p < 1 ? "over 99%" : p > 0 && p < 0.01 ? "under 1%" : Math.round(p * 100) + "%";
   var signed2 = (x) => {
@@ -5384,21 +5409,88 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
   };
   var deg3 = (v, p, n, dp) => `${Math.abs(v).toFixed(dp)}\xB0${v < 0 ? n : p}`;
   var nHot = (n) => `${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}`;
-  var V2 = { k: null, d: null, F: null, year: 2026, mode: "p" };
+  var about = (x) => {
+    if (x === 0) return "0";
+    if (x < 1) return "fewer than 1";
+    if (x < 1e3) return fmt(Math.round(x));
+    const p = 10 ** (Math.floor(Math.log10(x)) - 2);
+    return fmt(Math.round(x / p) * p);
+  };
+  var hs = (x) => x > 0 && x < 1.5 ? "hotspot" : "hotspots";
+  var aboutN = (x) => x > 0 && x < 1 ? "fewer than 1 hotspot" : `about ${about(x)} ${hs(x)}`;
+  var midWords = (x) => x < 0.5 ? "The middle outcome is none" : `The middle outcome is about ${about(x)}`;
+  var builtWords = (tf) => Math.abs(tf - 1) < 5e-3 ? "built from past years with recent ones counted more" : `built from past years with recent ones counted more and the recent trend applied (\xD7${tf.toFixed(2)})`;
+  var sum = (a) => a.reduce((s, v) => s + v, 0);
+  var skilled = (F2) => (F2.metrics.month.crps_skill ?? 0) > SKILL_MIN;
+  function checkOf(F2, d) {
+    const p = d.partial, y = d.y2026;
+    if (!p || !y || p.y !== 2026 || d.y0 > 2026) return null;
+    const i0 = (2026 - d.y0) * 12, mon = p.m - 1, full = p.i - i0;
+    if (full !== mon || mon < 0 || mon > 11 || d.monthly.V.length <= p.i || !(p.days_in_month > 0)) return null;
+    const frac = Math.min(1, Math.max(0, p.day1 / p.days_in_month)), obs = d.monthly.V.slice(i0, p.i + 1), upTo = (a) => sum(a.slice(0, full)) + a[full] * frac, after = (a) => a[full] * (1 - frac) + sum(a.slice(full + 1, 12)), m = F2.month;
+    let inRange = 0;
+    for (let k = 0; k < full; k++) if (obs[k] >= m.lo[k] && obs[k] <= m.hi[k]) inRange++;
+    const over = mon === 11 && frac >= 1, t = y.ytd, jc = y.join_check_2025;
+    return {
+      day: p.day1,
+      mon,
+      full,
+      obs,
+      cur: y.ytd.cur,
+      exp: upTo(m.mean),
+      mid: upTo(m.med),
+      usual: upTo(F2.hist.mean),
+      viirs: t.V.length ? { mean: sum(t.V) / t.V.length, med: t.V_stats.median, from: t.years[0], to: t.years[1] } : null,
+      gap: jc && num(jc.V_pct) ? { pct: jc.V_pct / 100, warn: !!jc.warn } : null,
+      inRange,
+      rest: over ? null : {
+        from: frac < 1 ? `${p.day1 + 1} ${MON[mon]}` : `1 ${MON[mon + 1]}`,
+        exp: after(m.mean),
+        mid: after(m.med),
+        usual: after(F2.hist.mean)
+      },
+      to: `${p.day1} ${MON[mon]}`
+    };
+  }
+  function rel(cur2, ref) {
+    if (ref <= 0) return cur2 > 0 ? "more than" : "the same as";
+    const r = cur2 / ref;
+    if (r >= 2) return `${times(r).replace("\xD7", "")} times`;
+    if (Math.abs(r - 1) < 0.05) return "close to";
+    return `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "more" : "fewer"} than`;
+  }
+  var V2 = { k: null, d: null, F: null, C: null, year: 2026, mode: "p" };
   function fcOpen(k) {
     V2.k = k;
-    V2.d = V2.F = null;
+    V2.d = V2.F = V2.C = null;
     V2.year = 2026;
     V2.mode = "p";
-    $("cFcKick").textContent = "2026 and 2027";
     $("cFcTitle").textContent = "2026 and 2027";
     $("cFcSub").textContent = $("cFcSrc").textContent = "";
     $("cFcMain").hidden = true;
-    state2("Loading the 2026\u20132027 forecast\u2026");
+    [
+      "cFcFigs",
+      "cFcAhead",
+      "cFcSkill",
+      "cFcChart",
+      "cFcMap",
+      "cFcLegend",
+      "cFcPick",
+      "cFcCheckT",
+      "cFcAheadT",
+      "cFcChartT",
+      "cFcChartS",
+      "cFcMapT",
+      "cFcMapS",
+      "cFcMethod",
+      "cFcVerdict",
+      "cFcDlMsg"
+    ].forEach((id) => $(id).innerHTML = "");
+    state2(k ? "Loading the forecast\u2026" : "");
   }
   function fcClose() {
+    fcOpen("");
     V2.k = null;
-    V2.d = V2.F = null;
   }
   function fcStart(d) {
     if (V2.k !== d.country) return;
@@ -5408,20 +5500,18 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
   function load() {
     const k = V2.k;
     if (!k) return;
-    state2("Loading the 2026\u20132027 forecast\u2026");
+    state2("Loading the forecast\u2026");
     loadChecked(forecastPath(k), (x) => isForecast(x, k)).then(
       (F2) => {
-        if (V2.k !== k) return;
+        if (V2.k !== k || !V2.d) return;
         V2.F = F2;
+        V2.C = checkOf(F2, V2.d);
         state2("");
         render2();
       },
       (e) => {
         if (V2.k !== k) return;
-        state2(
-          `The 2026\u20132027 forecast did not load${e instanceof Error ? ` (${e.message})` : ""}. The rest of this page is unaffected.`,
-          true
-        );
+        state2(`The forecast did not load${e instanceof Error ? ` (${e.message})` : ""}. The rest of this page is unaffected.`, true);
       }
     );
   }
@@ -5434,18 +5524,17 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     if (V2.F && V2.d && !$("cFcMain").hidden) chart();
   }
   function render2() {
-    const F2 = V2.F, tn = theName(F2.name), mm = F2.metrics.month, sk = mm.crps_skill, avg = F2.hist.annual_mean, e26 = F2.year["2026"].mean, e27 = F2.year["2027"].mean, skill2 = sk != null && sk > 0, volcanic = VOLCANIC.has(F2.country);
-    $("cFcSrc").innerHTML = `Data: <a href="${esc6(fileUrl(forecastPath(F2.country)))}" target="_blank" rel="noopener">${esc6(forecastPath(F2.country))}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built by scripts/build_world_forecast.py from the harmonized monthly record (summary/v2), data through December 2025. Hotspots are counted in VIIRS terms; MODIS years before 2012 are converted as on the rest of this page.`;
+    const F2 = V2.F, C = V2.C, tn = theName(F2.name), avg = F2.hist.annual_mean, e26 = F2.year["2026"].mean, skill2 = skilled(F2), sk = F2.metrics.month.crps_skill ?? 0;
+    $("cFcSrc").innerHTML = `Data: <a href="${esc6(fileUrl(forecastPath(F2.country)))}" target="_blank" rel="noopener">${esc6(forecastPath(F2.country))}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built by scripts/build_world_forecast.py from the harmonized monthly record (summary/v2), data through December 2025. Hotspots are counted in VIIRS terms; MODIS years before 2012 are converted as on the rest of this page.` + (C ? ` 2026 so far is from summary/v3, as at the top of this page.` : "");
     if (avg === 0 && e26 === 0) {
       $("cFcTitle").textContent = "No fire on record, so there is nothing to forecast";
-      $("cFcSub").textContent = `NASA's satellites counted no vegetation-fire hotspots in ${tn} from 2001 to 2025.`;
+      $("cFcSub").textContent = `NASA's satellites counted no vegetation-fire hotspots in ${tn} from 2001 to 2025.` + (C ? ` 2026 so far, to ${C.to}: ${nHot(C.cur)}.` : "");
       $("cFcMain").hidden = true;
       return;
     }
-    const vsAvg = (r) => r >= 0.95 && r <= 1.05 ? "close to the 2001\u20132025 average" : `${Math.round(Math.abs(r - 1) * 100)}% ${r > 1 ? "above" : "below"} the 2001\u20132025 average`;
-    $("cFcTitle").textContent = skill2 ? `If recent years are a guide, ${tn} will see about ${fmt(e26)} hotspots in 2026, ${avg > 0 ? vsAvg(e26 / avg) : "after none on average in 2001\u20132025"}` : `This forecast did no better than the plain 2001\u20132025 record in ${tn}, so the usual year is the better guide`;
-    $("cFcSub").textContent = `Worked out from the fire record alone (2001\u20132025, in VIIRS terms), with recent years counted more and a damped trend. It has no weather, fuel or ignition data, so it shows what a typical year looks like now. It cannot say which fires will happen, or whether a year will be unusual.` + (volcanic ? ` Most hotspots in ${tn} are lava from eruptions, which no fire record can forecast.` : "");
-    figures(F2, skill2);
+    $("cFcTitle").textContent = skill2 ? C ? C.exp >= 5 ? `By ${C.day} ${MONL[C.mon]}, ${tn} had ${nHot(C.cur)} in 2026, ${rel(C.cur, C.exp)} the ${about(C.exp)} this forecast expected` : `By ${C.day} ${MONL[C.mon]}, ${tn} had ${nHot(C.cur)} in 2026; this forecast expected ${C.exp < 1 ? "fewer than 1" : `about ${about(C.exp)}`}` : `From the record through 2025, this forecast expected ${aboutN(e26)} in ${tn} in 2026` : `This forecast did ${sk > 0 ? "about as well as" : "no better than"} the plain 2001\u20132025 record in ${tn}, so the usual year is ${sk > 0 ? "just as good a" : "the better"} guide`;
+    $("cFcSub").textContent = `Made from the fire record through December 2025 (in VIIRS terms), with recent years counted more and a damped trend. It has no weather, fuel or ignition data, so it shows what a typical year looks like now. It cannot say which fires will happen, or whether a year will be unusual.` + (C ? ` Most of 2026 has now happened, so it is checked here against what the satellites saw.` : ` 2026 so far did not load, so the forecast is not checked against it here.`) + (NOT_FIRE2[F2.country] ? ` ${NOT_FIRE2[F2.country]}` : "");
+    figures(F2, C, skill2);
     skillText(F2, skill2);
     $("cFcMethod").textContent = F2.method;
     $("cFcVerdict").textContent = `Scores for ${tn}: ${F2.verdict}`;
@@ -5456,45 +5545,73 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     chart();
     map();
   }
-  function figures(F2, skill2) {
-    const sk = F2.metrics.month.crps_skill ?? 0, avg = F2.hist.annual_mean, e26 = F2.year["2026"].mean, e27 = F2.year["2027"].mean, item = (h, fig, small, p) => `<div class="cpAns"><h2>${h}</h2><p class="cpFig">${fig}<small>${small}</small></p><p>${p}</p></div>`, track = item(
+  var item = (h, fig, small, p) => `<div class="cpAns"><h2>${h}</h2><p class="cpFig">${fig}<small>${small}</small></p><p>${p}</p></div>`;
+  function figures(F2, C, skill2) {
+    const sk = F2.metrics.month.crps_skill ?? 0, avg = F2.hist.annual_mean, e26 = F2.year["2026"].mean, e27 = F2.year["2027"].mean, mid = (y) => sum(F2.month.med.slice((y - 2026) * 12, (y - 2025) * 12)), even = Math.abs(sk) <= SKILL_MIN && sk !== 0, track = item(
       "Track record, 2018\u20132025",
-      sk === 0 ? "0%" : size(sk),
-      skill2 ? "closer than history alone" : sk < 0 ? "further off than history alone" : "no closer than history alone",
+      even ? "About even" : sk === 0 ? "0%" : size(sk),
+      even ? `with history alone (${size(sk)} ${sk > 0 ? "closer" : "further off"})` : sk > 0 ? "closer than history alone" : sk < 0 ? "further off than history alone" : "no closer than history alone",
       `Each year was forecast from the years before it. \u201CHistory alone\u201D counts every past year the same, with no trend.`
     );
+    $("cFcCheckT").hidden = $("cFcFigs").hidden = !C;
+    if (C) {
+      const tol = C.gap ? Math.abs(C.gap.pct) * C.cur : 0, eF = Math.abs(C.cur - C.exp), vs = (base2) => {
+        const eB = Math.abs(C.cur - base2);
+        return eF < eB * 0.9 && eB - eF > tol ? -1 : eB < eF * 0.9 && eF - eB > tol ? 1 : 0;
+      }, vsAll = vs(C.usual), vsV = C.viirs ? vs(C.viirs.mean) : vsAll, vName = "the VIIRS years alone", phr = (c) => c < 0 ? "closer than" : c > 0 ? "further off than" : "about as close as", closer = !C.viirs ? `In 2026 so far the forecast came ${phr(vsAll)} the usual year.` : vsAll === vsV ? vsAll < 0 ? `In 2026 so far the forecast came closer than both the 2001\u20132025 average and ${vName}.` : vsAll > 0 ? `In 2026 so far both the 2001\u20132025 average and ${vName} came closer than the forecast.` : `In 2026 so far the forecast came about as close as both the 2001\u20132025 average and ${vName}.` : `In 2026 so far the forecast came ${phr(vsAll)} the 2001\u20132025 average and ${phr(vsV)} ${vName}.` + (vsAll < 0 ? " Most of its gain comes from counting the VIIRS years more." : ""), care = C.gap && C.gap.warn ? ` Read 2026 with care: run on 2025, the 2026 method came out ${Math.round(Math.abs(C.gap.pct) * 100)}% ${C.gap.pct > 0 ? "higher" : "lower"} than the archive this forecast was built from.` : "", seen = item("2026 so far", fmt(C.cur), `hotspots, 1 Jan\u2013${C.to}`, `What the satellites saw, as at the top of this page.${care}`), fc = item(
+        "This forecast, same dates",
+        about(C.exp),
+        `${hs(C.exp)} expected on average`,
+        `Made before 2026 began. ${C.mid < 0.5 ? "Its middle path has no hotspots." : `Its middle path adds up to ${about(C.mid)}.`}` + (C.full >= 3 ? ` ${C.inRange} of the ${C.full} complete months fell inside its 80% range; about ${Math.round(C.full * 0.8)} would be on target.` : "")
+      ), usual = item(
+        "A usual year, same dates",
+        about(C.usual),
+        `${hs(C.usual)}, the 2001\u20132025 average`,
+        `History alone: every past year counted the same.` + (C.viirs ? ` The VIIRS years alone (${C.viirs.from}\u2013${C.viirs.to}) had ${about(C.viirs.mean)} on average for these dates (typical ${fmt(C.viirs.med)}, as at the top of this page).` : "") + ` ${closer} One year is a small test.`
+      );
+      $("cFcCheckT").textContent = `2026 so far, to ${C.to}, against the forecast`;
+      $("cFcFigs").innerHTML = seen + (skill2 ? fc + usual : usual + fc);
+    }
+    const trend = F2.year["2027"].trend_factor / F2.year["2026"].trend_factor - 1, trendText = F2.same_2027 || Math.abs(trend) < 5e-4 ? "The same as 2026: there is no recent trend to carry forward, and nothing else is known about 2027." : `The same months as 2026, ${trend > 0 ? "raised" : "lowered"} by the recent trend (${signed2(trend)}). Nothing else is known about 2027.`;
     if (skill2) {
-      const t = F2.year["2027"].trend_factor / F2.year["2026"].trend_factor - 1;
-      $("cFcFigs").innerHTML = item(
-        "Expected in 2026",
-        fmt(e26),
-        "hotspots",
-        `An average year in 2001\u20132025 had ${fmt(avg)}, and 2025 had ${fmt(F2.hist.y2025)}. Individual months can land well outside this; see the range below.`
-      ) + item(
-        "Expected in 2027",
-        fmt(e27),
-        "hotspots",
-        F2.same_2027 || Math.abs(t) < 5e-4 ? "The same as 2026: there is no recent trend to carry forward, and nothing else is known about 2027." : `The same months as 2026, ${t > 0 ? "raised" : "lowered"} by the recent trend (${signed2(t)}). Nothing else is known about 2027.`
+      const first = C ? C.rest ? item(
+        "Rest of 2026",
+        about(C.rest.exp),
+        `${hs(C.rest.exp)} expected on average, ${C.rest.from}\u201331 Dec`,
+        `${midWords(C.rest.mid)}. A usual year has ${about(C.rest.usual)} in these weeks.`
+      ) : "" : item(
+        "2026, as forecast",
+        about(e26),
+        `${hs(e26)} expected on average`,
+        `Forecast from the record through 2025; ${mid(2026) < 0.5 ? "its middle path has no hotspots" : `its middle path adds up to about ${about(mid(2026))}`}. An average year in 2001\u20132025 had ${about(avg)}.`
+      );
+      $("cFcAheadT").textContent = C ? C.rest ? "Still ahead: the rest of 2026, and 2027" : "Still ahead: 2027" : "2026 and 2027, as forecast";
+      $("cFcAhead").innerHTML = first + item(
+        "2027",
+        about(e27),
+        `${hs(e27)} expected on average`,
+        `${midWords(mid(2027))}; one big past year can pull the average up. ${trendText}`
       ) + track;
       return;
     }
-    const med = F2.hist.median, top = med.map((v, m) => ({ v, m })).filter((o) => o.v > 0).sort((a, b) => b.v - a.v).slice(0, 3), pk = top[0];
-    const season = top.length ? item(
+    const med = F2.hist.median, top = med.map((v, m) => ({ v, m })).filter((o) => o.v > 0).sort((a, b) => b.v - a.v).slice(0, 3), pk = top[0], own = `The method's own figure for 2027 is ${about(e27)} on average, but it did not beat the plain record here, so we do not lean on it.`;
+    const season = pk ? item(
       "Usually busiest",
-      top.length ? top.map((o) => o.m).sort((a, b) => a - b).map((m) => MON[m]).join(", ") : "No month",
-      pk ? `a typical ${MONL[pk.m]} has ${nHot(pk.v)}` : "in a typical year every month has none",
-      `The method's own figure for 2026 is ${fmt(e26)} hotspots, but it did not beat the plain record here, so we do not lean on it.`
-    ) : item(
-      "Usually busiest",
-      "No usual season",
-      "most years had no hotspots at all",
-      `Hotspots came in a few years only. The method's own figure for 2026 is ${fmt(e26)}, but it did not beat the plain record here, so we do not lean on it.`
-    );
-    $("cFcFigs").innerHTML = item("A usual year", fmt(avg), "hotspots, the 2001\u20132025 average", `2025 had ${fmt(F2.hist.y2025)}.`) + season + track;
+      top.map((o) => o.m).sort((a, b) => a - b).map((m) => MON[m]).join(", "),
+      `a typical ${MONL[pk.m]} has ${about(pk.v)} ${hs(pk.v)}`,
+      own
+    ) : item("Usually busiest", "No usual month", "each month had none in at least half the years 2001\u20132025", own);
+    $("cFcAheadT").textContent = `Still ahead: the usual year is ${sk > 0 ? "just as good a" : "the better"} guide`;
+    $("cFcAhead").innerHTML = item(
+      "A usual year",
+      about(avg),
+      `${hs(avg)}, the 2001\u20132025 average`,
+      `2025 had ${fmt(F2.hist.y2025)}.` + (C?.rest ? ` A usual ${C.rest.from}\u201331 Dec has ${about(C.rest.usual)}.` : "")
+    ) + season + track;
   }
   function skillText(F2, skill2) {
-    const tn = theName(F2.name), mm = F2.metrics.month, sk = mm.crps_skill ?? 0;
-    const t = `<b>How well this did on 2018\u20132025.</b> Each year from 2018 to 2025 was forecast from the years before it and scored against what happened. ` + (skill2 ? `For ${esc6(tn)}, the monthly forecasts were ${size(sk)} closer than history alone (every past year counted the same, with no trend). That is ${sk < 0.1 ? "a small gain" : "more than in most countries"}. Across ${COUNTRIES_SCORED} countries the middle one improved by only ${TYPICAL_GAIN}, and most of the gain comes from counting the VIIRS years since 2012 more than the older MODIS years. ` : `For ${esc6(tn)}, the monthly forecasts were ${sk < 0 ? `${size(sk)} further off than` : "no closer than"} history alone, so this forecast does no better than the past record here. Read the chart below as a picture of past years, with recent ones counted more, not as a forecast. Across ${COUNTRIES_SCORED} countries the middle one improved by only ${TYPICAL_GAIN}. `) + `The 80% range held the real month ${pc(mm.cover80)} of the time (history alone: ${pc(mm.cover80_base)})` + (mm.cover80 < 0.75 ? ", so here it is too narrow: expect more surprises than the band shows." : ".");
+    const tn = theName(F2.name), mm = F2.metrics.month, sk = mm.crps_skill ?? 0, tiny = F2.hist.annual_mean < 5;
+    const t = `<b>How well this did on 2018\u20132025.</b> Each year from 2018 to 2025 was forecast from the years before it and scored against what happened. ` + (skill2 ? `For ${esc6(tn)}, the monthly forecasts were ${size(sk)} closer than history alone (every past year counted the same, with no trend). ` + (tiny ? `With so few hotspots a year, that score rests on very few months with fire. ` : `That is ${sk < 0.1 ? "a small gain" : "more than in most countries"}. `) + `Across ${COUNTRIES_SCORED} countries the middle one improved by only ${TYPICAL_GAIN}, and most of the gain comes from counting the VIIRS years since 2012 more than the older MODIS years. ` : `For ${esc6(tn)}, the monthly forecasts were ${Math.abs(sk) <= SKILL_MIN && sk !== 0 ? `about as good as history alone (${size(sk)} ${sk > 0 ? "closer" : "further off"})` : sk < 0 ? `${size(sk)} further off than history alone` : "no closer than history alone"}, so this forecast adds nothing over the past record here. The chart below shows its months, ${builtWords(F2.year["2026"].trend_factor)}; in tests they did no better than the dashed line, the typical month. Across ${COUNTRIES_SCORED} countries the middle one improved by only ${TYPICAL_GAIN}. `) + `The one setting used for every country was picked on these same years, so these scores flatter it slightly. The 80% range held the real month ${pc(mm.cover80)} of the time (history alone: ${pc(mm.cover80_base)})` + (mm.cover80 < 0.75 ? ", so here it is too narrow: expect more surprises than the band shows." : ".") + (mapBelowChance(F2) ? ` Its map of squares is left out: tested on 2018\u20132025, it told squares that burned from squares that did not worse than a coin toss (AUC ${F2.metrics.cell.auc.toFixed(2)}).` : "");
     $("cFcSkill").innerHTML = t;
   }
   function segs() {
@@ -5502,7 +5619,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     document.querySelectorAll("#cFcMapSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === V2.mode)));
   }
   function chart() {
-    const F2 = V2.F, y = V2.year, i0 = (y - 2026) * 12, skill2 = (F2.metrics.month.crps_skill ?? 0) > 0, rows = MON.map((_, m) => ({
+    const F2 = V2.F, C = V2.C, y = V2.year, i0 = (y - 2026) * 12, skill2 = skilled(F2), tf = F2.year[y === 2026 ? "2026" : "2027"].trend_factor, rows = MON.map((_, m) => ({
       m,
       mean: F2.month.mean[i0 + m],
       lo: F2.month.lo[i0 + m],
@@ -5510,10 +5627,17 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
       hi: F2.month.hi[i0 + m],
       typ: F2.hist.median[m],
       pAny: F2.month.p_any[i0 + m],
-      pAbove: F2.month.p_above[i0 + m]
-    })), meds = rows.map((r) => r.med), pk = meds.indexOf(Math.max(...meds));
-    $("cFcChartT").textContent = skill2 ? meds[pk] > 0 ? `${MONL[pk]} looks like the busiest month of ${y}` : `Most months of ${y} look quiet` : `What past years suggest for each month of ${y}`;
-    $("cFcChartS").innerHTML = `${skill2 ? "" : "Built from past years, recent ones counted more. "}The solid line is the middle outcome and the band holds 8 in 10 outcomes; the dashed line is the typical month of 2001\u20132025. The yearly figures above add up the expected (mean) months, which one big year can pull up.<span class="cpMiniKey"><span><i style="background:#e0dace"></i>8 in 10 outcomes</span></span>`;
+      pAbove: F2.month.p_above[i0 + m],
+      obs: y === 2026 && C && m <= C.full ? C.obs[m] : null,
+      part: y === 2026 && C && m === C.full ? `1\u2013${C.day} ${MON[m]}, not over` : void 0
+    })), meds = rows.map((r) => r.med), pk = meds.indexOf(Math.max(...meds)), built = builtWords(tf), key = `<span class="cpMiniKey"><span><i style="background:#e0dace"></i>8 in 10 outcomes</span>` + (y === 2026 && C ? `<span><i class="cpKeyDot"></i>2026 as seen</span>` : "") + `</span>`;
+    if (y === 2026 && C) {
+      $("cFcChartT").textContent = C.full >= 3 ? `${C.inRange} of the ${C.full} complete months of 2026 fell inside the forecast's 80% range` : `2026 so far against the forecast's months`;
+      $("cFcChartS").innerHTML = `Red dots: 2026 as the satellites saw it, ${C.full ? `January to ${MONL[C.full - 1]}` : "so far"}; ${MONL[C.mon]} is not over and is left off (point at it for its first ${C.day} days). The band holds 8 in 10 outcomes of the forecast made before the year began, the solid line is its middle outcome, and the dashed line is the typical month of 2001\u20132025. ` + (skill2 ? "" : `The forecast's months are ${built}; in its tests it did no better than the dashed line. `) + key;
+    } else {
+      $("cFcChartT").textContent = y === 2026 ? `What the forecast expected for each month of 2026` : skill2 ? meds[pk] > 0 ? `${MONL[pk]} looks like the busiest month of 2027` : `Most months of 2027 look quiet` : `What past years suggest for each month of 2027`;
+      $("cFcChartS").innerHTML = (skill2 ? "" : `These months are ${built}; in tests that did no better than the dashed line. `) + `The solid line is the middle outcome and the band holds 8 in 10 outcomes; the dashed line is the typical month of 2001\u20132025. The yearly figures above add up the expected (mean) months, which one big year can pull up.` + key;
+    }
     const el = $("cFcChart");
     if (!window.Plot || !window.d3) {
       const k = V2.k;
@@ -5529,13 +5653,27 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     }
     forecastMonths(el, rows, y);
   }
+  var MIN_MAP_SQUARES = 10;
+  var mapBelowChance = (F2) => {
+    const cm = F2.metrics.cell;
+    return !!cm && cm.auc != null && cm.cell_years * cm.rate >= MIN_POSITIVES && cm.auc < 0.5;
+  };
+  function mapUseful(F2) {
+    let k = 0;
+    for (let r = 1; r < F2.cell_rows.length; r += 4) if (F2.cell_rows[r] >= 0.1) k++;
+    return k >= MIN_MAP_SQUARES && !mapBelowChance(F2);
+  }
   function legend3(title, cols, labels) {
     return `<div><b>${title}</b><div class="cpKey">` + cols.map((c, i) => `<div class="cpStep"><i style="background:${c}"></i><span>${i === 0 ? "" : labels[i - 1]}</span></div>`).join("") + `<div class="cpStep" style="flex:0 0 1px"><i style="background:none"></i><span>${labels[cols.length - 1] ?? ""}</span></div></div></div>`;
   }
+  function burned2026(d) {
+    const out = /* @__PURE__ */ new Set(), yi = 2026 - d.y0, r = d.cell_rows;
+    if (!d.partial) return out;
+    for (let p = 0; p + 4 < r.length; p += 5) if (r[p + 1] === yi && r[p + 2] > 0) out.add(r[p]);
+    return out;
+  }
   function map() {
-    const F2 = V2.F, d = V2.d, tn = theName(F2.name), host = $("cFcMap"), n = Math.min(F2.ncell, F2.cell_rows.length / 4, d.cells.length / 2), km2 = Math.round(d.cell * 111);
-    $("cFcMapFig").hidden = n === 0 || F2.cell !== d.cell;
-    if ($("cFcMapFig").hidden) return;
+    const F2 = V2.F, d = V2.d, C = V2.C, tn = theName(F2.name), host = $("cFcMap"), n = Math.min(F2.ncell, F2.cell_rows.length / 4, d.cells.length / 2), km2 = Math.round(d.cell * 111);
     const p = new Float64Array(n), ph = new Float64Array(n), ex = new Float64Array(n);
     for (let r = 0; r < F2.cell_rows.length; r += 4) {
       const c = F2.cell_rows[r];
@@ -5544,22 +5682,34 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
       ph[c] = F2.cell_rows[r + 2];
       ex[c] = F2.cell_rows[r + 3];
     }
-    const all = Array.from({ length: n }, (_, c) => c), cls = (v, breaks) => breaks.filter((b) => v >= b).length;
-    let layers;
+    $("cFcMapFig").hidden = n < 5 || F2.cell !== d.cell || !mapUseful(F2);
+    if ($("cFcMapFig").hidden) {
+      host.innerHTML = "";
+      return;
+    }
+    const all = Array.from({ length: n }, (_, c) => c), cls = (v, breaks) => breaks.filter((b) => v >= b).length, seen = C ? burned2026(d) : null, cm = F2.metrics.cell, enough = !!cm && cm.cell_years * cm.rate >= MIN_POSITIVES, dp = d.cell === 0.25 ? 3 : 2;
+    let layers, tested = "";
     if (V2.mode === "p") {
       const cols = classColours(P_BREAKS);
       layers = cols.map((fill, i) => ({ fill, cells: all.filter((c) => cls(p[c], P_BREAKS) === i), edge: n < 400 }));
-      $("cFcLegend").innerHTML = legend3("Chance of at least one hotspot in 2026", cols, [
+      $("cFcLegend").innerHTML = legend3("Chance of at least one hotspot in 2026, as forecast", cols, [
         ...P_BREAKS.map((b) => Math.round(b * 100) + "%"),
         "100%"
       ]);
-      const even = all.filter((c) => p[c] >= 0.5).length;
-      $("cFcMapT").textContent = even === 0 ? `No square in ${tn} has an even chance of a hotspot in 2026` : `${even === n ? "Every" : `${fmt(even)} of ${fmt(n)}`} square${even === 1 && even !== n ? "" : "s"} ${even === 1 ? "has" : "have"} an even or better chance of a hotspot in 2026`;
-      $("cFcMapS").textContent = `Chance of at least one hotspot in 2026 in each ${d.cell}\xB0 square (about ${km2} km across), from how often it burned before, recent years counted more. The squares are yearly, so there is no month-by-month map.`;
+      const evenSet = all.filter((c) => p[c] >= 0.5), even = evenSet.length;
+      $("cFcMapT").textContent = even === 0 ? `The forecast gave no square in ${tn} an even chance of a hotspot in 2026` : `The forecast gave ${even === n ? "every square" : `${fmt(even)} of ${fmt(n)} squares`} an even or better chance of a hotspot in 2026`;
+      let check = "";
+      if (seen) {
+        const share = (cs) => cs.length ? pc(cs.filter((c) => seen.has(c)).length / cs.length) : "", rest = all.filter((c) => p[c] < 0.5), fresh2 = [...seen].filter((c) => c >= F2.ncell).length;
+        check = ` By ${C.to}, ${even && rest.length ? `${share(evenSet)} of those squares had a hotspot in 2026, and ${share(rest)} of the others` : `${share(all)} of the squares had a hotspot in 2026`}` + (fresh2 ? `; ${fmt(fresh2)} square${fresh2 === 1 ? "" : "s"} with none in 2001\u20132025 burned, which this map could not foresee.` : ".");
+      }
+      $("cFcMapS").textContent = `Forecast from the record through 2025: the chance of at least one hotspot in 2026 in each ${d.cell}\xB0 square (about ${km2} km north to south), from how often it burned before, recent years counted more. The squares are yearly, so there is no month-by-month map.` + check;
+      if (cm && cm.auc != null && cm.auc_base != null)
+        tested = !enough ? " Too few squares burned in 2018\u20132025 to test these chances." : ` Tested on 2018\u20132025, these chances told squares that burned from squares that did not with an AUC of ${cm.auc.toFixed(2)} (history alone ${cm.auc_base.toFixed(2)}; 0.5 is a coin toss, 1 is perfect).` + (cm.auc < 0.5 ? " Here that is worse than a coin toss, so do not read the map as a guide." : Math.abs(cm.auc - cm.auc_base) < 0.01 ? " That is no better than history alone." : cm.auc < 0.65 ? " That is weak." : "");
     } else {
       const { breaks, max } = classBreaks(Array.from(ex)), cols = classColours(breaks);
       layers = cols.map((fill, i) => ({ fill, cells: all.filter((c) => ex[c] > 0 && cls(ex[c], breaks) === i), edge: n < 400 }));
-      $("cFcLegend").innerHTML = legend3("Expected hotspots in 2026", cols, [...breaks.map((b) => short(b)), short(max)]);
+      $("cFcLegend").innerHTML = legend3("Expected hotspots in 2026, as forecast", cols, [...breaks.map((b) => short(b)), short(max)]);
       const vals = Array.from(ex).sort((a, b) => b - a), tot = vals.reduce((a, b) => a + b, 0);
       let acc = 0, k50 = 0;
       for (const v of vals) {
@@ -5568,31 +5718,31 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
         if (acc >= tot / 2) break;
       }
       const share = k50 / n * 100;
-      $("cFcMapT").textContent = tot > 0 && n >= 10 ? `Half of the expected 2026 hotspots fall in ${share < 1 ? "under 1" : Math.round(share)}% of the squares` : "Expected hotspots in 2026";
+      $("cFcMapT").textContent = tot > 0 && n >= 10 ? `The forecast put half of the expected 2026 hotspots in ${share < 1 ? "under 1" : Math.round(share)}% of the squares` : "Expected hotspots in 2026, as forecast";
       $("cFcMapS").textContent = `The expected 2026 total shared out by each ${d.cell}\xB0 square's part of past hotspots, recent years counted more. A square's share of the past is the whole method: it does not know about new fires.`;
+      if (cm && enough)
+        tested = cm.mae > cm.mae_base ? " Tested on 2018\u20132025, these per-square numbers were further off than history alone." : cm.mae < cm.mae_base * 0.99 ? ` Tested on 2018\u20132025, these per-square numbers were ${size(1 - cm.mae / cm.mae_base)} closer than history alone.` : " Tested on 2018\u20132025, these per-square numbers were about as close as history alone.";
     }
-    const cm = F2.metrics.cell, dp = d.cell === 0.25 ? 3 : 2;
-    let tested = "";
-    if (cm && cm.auc != null && cm.auc_base != null)
-      tested = ` Tested on 2018\u20132025, these chances told squares that burned from squares that did not with an AUC of ${cm.auc.toFixed(2)} (history alone ${cm.auc_base.toFixed(2)}; 0.5 is a coin toss, 1 is perfect).` + (cm.auc < 0.5 ? " Here that is worse than a coin toss, so do not read the map as a guide." : cm.auc < 0.65 ? " That is weak." : "");
     drawMini(host, d, {
       layers,
-      label: `Map of ${tn} in squares, coloured by ${V2.mode === "p" ? "the chance of at least one hotspot" : "the expected hotspots"} in 2026`,
+      label: `Map of ${tn} in squares, coloured by ${V2.mode === "p" ? "the chance of at least one hotspot" : "the expected hotspots"} in 2026, as forecast`,
       caption: $("cFcPick"),
       idle: (matchMedia("(pointer: coarse)").matches ? "Tap" : "Point at") + " a square for its numbers." + tested,
       pick: (c) => {
         if (c >= n) return null;
         const [lat, lon] = cellCentre(d, c);
-        return `<b>Near ${deg3(lat, "N", "S", dp)}, ${deg3(lon, "E", "W", dp)}</b>: ${pc(p[c])} chance of at least one hotspot in 2026. It had one in ${pc(ph[c])} of the years 2001\u20132025. Expected: ${nHot(ex[c])}.`;
+        return `<b>Near ${deg3(lat, "N", "S", dp)}, ${deg3(lon, "E", "W", dp)}</b>: the forecast gave a ${pc(p[c])} chance of at least one hotspot in 2026 (expected: ${ex[c] === 0 ? "none" : aboutN(ex[c])}). It had one in ${pc(ph[c])} of the years 2001\u20132025.` + (seen ? ` 2026 to ${C.to}: ${seen.has(c) ? "it had a hotspot" : "no hotspot yet"}.` : "");
       }
     });
   }
   function csv() {
-    const F2 = V2.F;
+    const F2 = V2.F, C = V2.C;
     if (!F2) return;
-    const rows = ["year,month,expected_mean,p10,median,p90,chance_any_hotspot,chance_above_2001_2025_median,median_2001_2025,mean_2001_2025"];
+    const rows = [
+      "year,month,expected_mean,p10,median,p90,chance_any_hotspot,chance_above_2001_2025_median,median_2001_2025,mean_2001_2025,seen_2026,seen_2026_status"
+    ];
     for (let i = 0; i < 24; i++) {
-      const m = i % 12;
+      const m = i % 12, seen = C && i <= C.full ? C.obs[i] : null;
       rows.push(
         [
           2026 + Math.floor(i / 12),
@@ -5604,7 +5754,9 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
           F2.month.p_any[i],
           F2.month.p_above[i],
           F2.hist.median[m],
-          F2.hist.mean[m]
+          F2.hist.mean[m],
+          seen ?? "",
+          seen == null ? "" : i === C.full ? `days_1_to_${C.day}` : "complete"
         ].join(",")
       );
     }
@@ -5641,25 +5793,38 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
   }
   var ARABIA = /* @__PURE__ */ new Set(["Saudi_Arabia", "Yemen", "Oman", "United_Arab_Emirates", "Qatar", "Kuwait", "Bahrain"]);
   var SAHARA = /* @__PURE__ */ new Set(["Algeria", "Libya", "Egypt", "Mali", "Niger", "Chad", "Mauritania", "Sudan", "Tunisia", "Morocco"]);
-  var desert = (k, lat, lon) => ARABIA.has(k) || SAHARA.has(k) && lat >= 18 && lat < 34 && lon >= -17 && lon <= 34;
+  var SAHARA_NORTH = { Libya: 31, Egypt: 31 };
+  var desert = (k, lat, lon) => ARABIA.has(k) || SAHARA.has(k) && lat >= 18 && lat < (SAHARA_NORTH[k] ?? 34) && lon >= -17 && lon <= 34;
+  var DESERT_FLAG = "Unverified: in the desert, these detections may be gas flares or industrial heat that FIRMS did not flag.";
   var SOLAR = /* @__PURE__ */ new Set(["United_Arab_Emirates", "Chile", "Israel"]);
+  var SOLAR_CELLS = [
+    [24.75, 55.35],
+    [24.75, 55.45],
+    [24.75, 55.55],
+    [24.65, 55.45],
+    [-25.55, -70.15]
+  ];
+  var solarCell = (lat, lon) => SOLAR_CELLS.some(([a, b]) => Math.abs(a - lat) < 0.01 && Math.abs(b - lon) < 0.01);
+  var SOLAR_FLAG = "Possibly a solar plant or other daytime industrial heat: almost none of its detections are at night.";
   var WHY = {
-    static: "likely a gas flare or industrial heat",
-    flare_field: "likely a gas flare or industrial heat",
-    night_all_season: "all-season night burning, likely flares",
-    night_weak: "mostly weak night detections, likely a flare, kiln or mine"
+    static: ["likely a gas flare or industrial heat", "likely gas flares or industrial heat"],
+    flare_field: ["likely a gas flare or industrial heat", "likely gas flares or industrial heat"],
+    night_all_season: ["all-season night burning, likely flares", "with all-season night burning, likely flares"],
+    night_weak: ["mostly weak night detections, likely a flare, kiln or mine", "with mostly weak night detections, likely flares, kilns or mines"]
   };
-  var whyText = (S3, code) => WHY[S3.why_codes[String(code)] ?? ""] ?? "a steady heat source, likely not vegetation fire";
+  var whyOf = (S3, code) => WHY[S3.why_codes[String(code)] ?? ""] ?? ["a steady heat source, likely not vegetation fire", "other steady heat, likely not vegetation fire"];
   var REG = "#feb24c";
   var GAP = "#bd0026";
   var GAP_MUTED = "#e2694f";
   var STEADY = "#bdb6a8";
+  var MIN_MAP_SQUARES2 = 5;
   var esc7 = (t) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
   var pc2 = (p) => p > 0 && p < 0.01 ? "under 1%" : Math.round(p * 100) + "%";
   var km = (v) => (v < 10 ? v.toFixed(1) : fmt(v)) + " km";
   var deg4 = (v, p, n, dp) => `${Math.abs(v).toFixed(dp)}\xB0${v < 0 ? n : p}`;
   var perYear = (v) => v < 0.1 ? "under 0.1 hotspots a year" : `about ${fmt(v)} hotspot${fmt(v) === "1" ? "" : "s"} a year`;
   var NO_STATION = "no fire station mapped in OpenStreetMap within 15 km";
+  var across = (d) => `about ${Math.round(d.cell * 111)} km north to south`;
   var noteOf = (S3) => S3.gap_note.replace(/\s*(Show them as|Do not present)[\s\S]*$/, "");
   function snapshot(src) {
     const m = /(\d{4})-(\d{2})-(\d{2})/.exec(src);
@@ -5673,11 +5838,26 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     $("cStTitle").textContent = "Fire stations";
     $("cStSub").textContent = $("cStSrc").textContent = "";
     $("cStMain").hidden = true;
-    state3("Loading the fire stations\u2026");
+    [
+      "cStFigs",
+      "cStLegend",
+      "cStMap",
+      "cStPick",
+      "cStList",
+      "cStDist",
+      "cStCaveats",
+      "cStNote",
+      "cStListT",
+      "cStListS",
+      "cStListNote",
+      "cStDistNote",
+      "cStMethod"
+    ].forEach((id) => $(id).innerHTML = "");
+    state3(k ? "Loading the fire stations\u2026" : "");
   }
   function stClose() {
+    stOpen("");
     V3.k = null;
-    V3.d = V3.S = null;
   }
   function stStart(d) {
     if (V3.k !== d.country) return;
@@ -5690,7 +5870,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     state3("Loading the fire stations\u2026");
     loadChecked(stationsPath(k), (x) => isStations(x, k)).then(
       (S3) => {
-        if (V3.k !== k) return;
+        if (V3.k !== k || !V3.d) return;
         V3.S = S3;
         state3("");
         render3();
@@ -5714,14 +5894,17 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
       s1: S3.cell_rows[8 * c + 1],
       fpy: S3.fire_per_year[c] ?? 0
     });
-    S3.persistent.forEach((c, i) => steady.set(c, S3.persistent_why[i]));
-    const burn = [];
-    for (let c = 0; c < n; c++) if (S3.cell_rows[8 * c + 7] >= 4 && !steady.has(c)) burn.push(place2(c));
-    const lv = S3.completeness.level;
+    S3.persistent.forEach((c, i) => {
+      if (c < n && S3.cell_rows[8 * c + 7] >= 4) steady.set(c, S3.persistent_why[i]);
+    });
+    const all = new Set(S3.persistent), burn = [];
+    for (let c = 0; c < n; c++) if (S3.cell_rows[8 * c + 7] >= 4 && !all.has(c)) burn.push(place2(c));
+    const lv = S3.completeness.level, gaps = S3.gaps.filter((c) => c < n).map(place2);
     return {
       n,
       burn,
-      gaps: S3.gaps.filter((c) => c < n).map(place2),
+      gaps,
+      gapSet: new Set(gaps.map((p) => p.c)),
       steady,
       show: lv === "fair" ? "yes" : lv === "patchy" ? "ask" : "no"
     };
@@ -5736,136 +5919,161 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     const op = s[3] >= 0 ? S3.operators[s[3]] : "";
     return s[2] || (op ? `an unnamed station of ${op}` : "an unnamed station");
   }
-  function nearest(S3, p) {
+  function nearest(S3, p, isGap) {
     if (p.km1 < 0 || p.s1 < 0) return "No fire station is mapped in OpenStreetMap anywhere in the country.";
     const nm = stationName(S3, p.s1);
-    return `Nearest mapped station: ${km(p.km1)}${nm ? `, <bdi>${esc7(nm)}</bdi>` : ""}.`;
+    return `Nearest mapped station: ${isGap && p.km1 < 15.5 ? "just over 15 km" : km(p.km1)}${nm ? `, <bdi>${esc7(nm)}</bdi>` : ""}.`;
   }
+  var anyDesert = (S3, d, ps) => ps.some((p) => {
+    const pos = posOf(d, p.c);
+    return desert(S3.country, pos.lat, pos.lon);
+  });
   function render3() {
     const S3 = V3.S, d = V3.d, tn = theName(S3.name), F2 = facts(S3, d), lv = S3.completeness.level, snap = snapshot(S3.source);
     $("cStSrc").innerHTML = `Fire stations \xA9 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors, ODbL</a>. Data: <a href="${esc7(fileUrl(stationsPath(S3.country)))}" target="_blank" rel="noopener">${esc7(stationsPath(S3.country))}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built by scripts/build_world_stations.py from the OpenStreetMap planet file of ${esc7(snap || S3.source)}. Fire: NASA FIRMS, ${esc7(S3.fire)}.`;
     const nb = F2.burn.length, ng = F2.gaps.length;
-    $("cStTitle").textContent = lv === "unpopulated" ? `${fmt(S3.stations_total)} fire station${S3.stations_total === 1 ? "" : "s"} mapped in OpenStreetMap` : nb === 0 ? `No place in ${tn} burned in 4 or more of the 14 years 2012\u20132025` : F2.show === "no" ? `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing` : F2.show === "ask" ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain` : ng === 0 ? `Every place in ${tn} with regular fire has a fire station mapped in OpenStreetMap within 15 km` : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${NO_STATION}`;
-    $("cStSub").textContent = `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012\u20132025. Distances are straight lines from the middle of each ${d.cell}\xB0 square, not drive times.` + (d.cell >= 0.5 ? ` Squares here are about ${Math.round(d.cell * 111)} km across, so the 15 km test is rough.` : "");
-    const note = $("cStNote");
-    note.hidden = F2.show === "yes";
-    note.textContent = noteOf(S3) + (F2.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") + (F2.show === "ask" ? " The places are hidden until you ask for them." : "");
+    $("cStTitle").textContent = lv === "unpopulated" ? `${fmt(S3.stations_total)} fire station${S3.stations_total === 1 ? "" : "s"} mapped in OpenStreetMap` : nb === 0 ? `No place in ${tn} burned in 4 or more of the 14 years 2012\u20132025` : F2.show === "no" ? `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing` : F2.show === "ask" ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain` : ng === 0 ? `Every place in ${tn} with regular fire has a fire station mapped in OpenStreetMap within 15 km` : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${NO_STATION}` + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? ", though in the desert some may be industrial heat" : "");
+    $("cStSub").textContent = `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012\u20132025. Distances are straight lines from the middle of each ${d.cell}\xB0 square, not drive times.` + (d.cell >= 0.5 ? ` Squares here are ${across(d)}, so the 15 km test is rough.` : "");
     figures2(S3, d, F2);
     $("cStMethod").textContent = S3.method;
     $("cStMain").hidden = false;
     draw2();
   }
   function figures2(S3, d, F2) {
-    const co = S3.completeness, item = (h, fig, small, p) => `<div class="cpAns"><h2>${h}</h2><p class="cpFig">${fig}${small ? `<small>${small}</small>` : ""}</p><p>${p}</p></div>`, nb = F2.burn.length, ng = F2.gaps.length, kms = F2.burn.map((p) => p.km1 < 0 ? Infinity : p.km1).sort((a, b) => a - b), mid = kms.length ? kms[Math.floor((kms.length - 1) / 2)] : NaN;
-    const t1 = item(
+    const co = S3.completeness, item2 = (h, fig, small, p) => `<div class="cpAns"><h2>${h}</h2><p class="cpFig">${fig}${small ? `<small>${small}</small>` : ""}</p><p>${p}</p></div>`, nb = F2.burn.length, ng = F2.gaps.length, kms = F2.burn.map((p) => p.km1 < 0 ? Infinity : p.km1).sort((a, b) => a - b), mid = kms.length ? kms[Math.floor((kms.length - 1) / 2)] : NaN, ns = F2.steady.size;
+    const t1 = item2(
       "Fire stations mapped",
       fmt(S3.stations_total),
       co.per_million != null ? `${fmt(co.per_million)} per million people` : "",
       co.peer_median_per_million != null ? `Countries in the same income group have a median of ${fmt(co.peer_median_per_million)} per million.` : "There is no population figure to compare with."
     );
-    const t2 = item(
+    const t2 = item2(
       "Places with regular fire",
       fmt(nb),
       `square${nb === 1 ? "" : "s"} with fire in 4 or more of the 14 years`,
-      `Each square is ${d.cell}\xB0, about ${Math.round(d.cell * 111)} km across.` + (F2.steady.size ? ` ${fmt(F2.steady.size)} square${F2.steady.size === 1 ? "" : "s"} of steady heat, likely industrial, ${F2.steady.size === 1 ? "is" : "are"} left out.` : "")
+      `Each square is ${d.cell}\xB0, ${across(d)}.` + (ns ? ` ${fmt(ns)} more ${ns === 1 ? "square" : "squares"} whose heat looks like flares or industry ${ns === 1 ? "is" : "are"} left out.` : "")
     );
     let t3;
-    if (nb === 0) t3 = item("Gaps", "None", "", "No place burned often enough to count.");
-    else if (F2.show !== "no")
-      t3 = item(
-        "No station mapped within 15 km",
-        F2.show === "ask" && !V3.reveal ? `<span class="stMuted">${fmt(ng)}</span>` : fmt(ng),
-        `${pc2(ng / nb)} of those places`,
-        F2.show === "ask" ? "Many of these may be stations that are missing from OpenStreetMap." : "A gap means none is mapped, not that none exists."
-      );
+    if (nb === 0) t3 = item2("Gaps", "None", "", "No place burned often enough to count.");
+    else if (F2.show === "yes")
+      t3 = item2("No fire station mapped in OpenStreetMap within 15 km", fmt(ng), `${pc2(ng / nb)} of those places`, "A gap means none is mapped, not that none exists.");
     else
-      t3 = item(
+      t3 = item2(
         "Median distance to a mapped station",
         Number.isFinite(mid) ? km(mid) : "None mapped",
         "from places with regular fire",
-        co.level === "unpopulated" ? "Few people live here." : "With this little mapped, the distance mostly measures the map, not the fire service."
+        co.level === "unpopulated" ? "Few people live here." : F2.show === "ask" ? "Many of these places may have a station that OpenStreetMap is missing, so the distance partly measures the map." : "With this little mapped, the distance mostly measures the map, not the fire service."
       );
     $("cStFigs").innerHTML = t1 + t2 + t3;
   }
   function draw2() {
-    const S3 = V3.S, d = V3.d, F2 = facts(S3, d), tn = theName(S3.name), gapsOn = F2.show === "yes" || F2.show === "ask" && V3.reveal, gapSet = new Set(F2.gaps.map((p) => p.c)), byCell = new Map(F2.burn.map((p) => [p.c, p])), top = gapsOn ? F2.gaps.slice(0, 10) : [], marks = top.map((p, i) => ({ c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${posOf(d, p.c).text}` })), layers = [
-      { fill: STEADY, cells: [...F2.steady.keys()].filter((c) => c < F2.n) },
-      { fill: REG, cells: F2.burn.filter((p) => !(gapsOn && gapSet.has(p.c))).map((p) => p.c) },
-      { fill: F2.show === "yes" ? GAP : GAP_MUTED, cells: gapsOn ? F2.gaps.map((p) => p.c) : [] }
-    ].map((l) => ({ ...l, edge: F2.n < 400 || l.fill !== REG }));
+    const S3 = V3.S, d = V3.d, F2 = facts(S3, d), tn = theName(S3.name), lv = S3.completeness.level, gapsOn = F2.show === "yes" || F2.show === "ask" && V3.reveal, byCell = new Map(F2.burn.map((p) => [p.c, p])), top = gapsOn ? F2.gaps.slice(0, 10) : [], marks = top.map((p, i) => {
+      const pos = posOf(d, p.c);
+      return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: F2.show !== "yes", keep: solarCell(pos.lat, pos.lon) };
+    }), layers = [
+      { fill: STEADY, cells: [...F2.steady.keys()] },
+      { fill: REG, cells: F2.burn.filter((p) => !(gapsOn && F2.gapSet.has(p.c))).map((p) => p.c), over: true },
+      { fill: F2.show === "yes" ? GAP : GAP_MUTED, cells: gapsOn ? F2.gaps.map((p) => p.c) : [], over: true }
+    ].map((l) => ({ ...l, edge: F2.n < 400 }));
+    const note = $("cStNote");
+    note.hidden = F2.show === "yes";
+    note.textContent = noteOf(S3) + (F2.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") + (F2.show === "ask" && !V3.reveal ? " The places are hidden until you ask for them." : "") + (F2.show === "ask" && V3.reveal ? " They are shown below in muted colours, as places to check, not findings." : "");
+    let empty = F2.burn.length === 0 && F2.steady.size === 0;
+    const box = $("cStMap"), fig = box.closest(".cpOlFig"), grid2 = box.closest(".cpOlGrid");
     const sw = (c, t, cls = "") => `<span class="cpNone"><i class="${cls}" style="background:${c}"></i>${t}</span>`;
-    $("cStLegend").innerHTML = sw("#1b1b1b", "fire station mapped in OpenStreetMap", "stDot") + (F2.burn.length ? sw(REG, gapsOn ? "regular fire, station within 15 km" : "regular fire (4 or more of 14 years)") : "") + (gapsOn && F2.gaps.length ? sw(F2.show === "yes" ? GAP : GAP_MUTED, `regular fire, ${NO_STATION}`) : "") + (F2.steady.size ? sw(STEADY, "steady heat, likely industrial: left out") : "");
-    const listed = S3.stations.length, coarse3 = matchMedia("(pointer: coarse)").matches, idle = `${coarse3 ? "Tap" : "Point at"} a square for its numbers.` + (S3.stations_subset ? ` The dots are the ${fmt(listed)} stations nearest to some square, of ${fmt(S3.stations_total)} mapped.` : ""), box = $("cStMap");
-    const aspect = drawMini(box, d, {
-      layers,
-      points: S3.stations.map((s) => [s[0], s[1]]),
-      marks,
-      label: `Map of ${tn}: fire stations mapped in OpenStreetMap and the squares with regular fire`,
-      caption: $("cStPick"),
-      idle,
-      pick: (c) => {
-        const pos = posOf(d, c), why = F2.steady.get(c);
-        if (why !== void 0) return `<b>${pos.text}</b>: steady heat, ${esc7(whyText(S3, why))}. Left out of the gaps.`;
-        const p = byCell.get(c);
-        if (!p) return null;
-        const isGap = gapsOn && gapSet.has(c), flag = isGap && desert(S3.country, pos.lat, pos.lon) ? " Unverified: in the desert, these detections may be gas flares or industrial heat." : "";
-        return `<b>${pos.text}</b>: fire in ${p.by} of the 14 years 2012\u20132025 (VIIRS), ${perYear(p.fpy)}. ${nearest(S3, p)}` + (isGap ? ` That is beyond 15 km: ${NO_STATION}.` : "") + flag;
+    $("cStLegend").innerHTML = sw("#1b1b1b", "fire station mapped in OpenStreetMap", "stDot") + (F2.burn.length ? sw(REG, gapsOn ? "regular fire, station within 15 km" : "regular fire (4 or more of 14 years)") : "") + (gapsOn && F2.gaps.length ? sw(F2.show === "yes" ? GAP : GAP_MUTED, `regular fire, ${NO_STATION}`) : "") + (F2.steady.size ? sw(STEADY, "heat that looks like flares or industry: left out") : "");
+    let folded = [], cut = [];
+    fig.hidden = $("cStLegend").hidden = empty;
+    if (!empty) {
+      const listed = S3.stations.length, coarse3 = matchMedia("(pointer: coarse)").matches, idle = `${coarse3 ? "Tap" : "Point at"} a square for its numbers.` + (S3.stations_subset ? ` The dots are the ${fmt(listed)} stations nearest to some square, of ${fmt(S3.stations_total)} mapped.` : ""), paint = () => drawMini(box, d, {
+        layers,
+        points: S3.stations.map((s) => [s[0], s[1]]),
+        marks,
+        label: `Map of ${tn}: fire stations mapped in OpenStreetMap and the squares with regular fire`,
+        caption: $("cStPick"),
+        idle,
+        pick: (c) => {
+          const pos = posOf(d, c), why = F2.steady.get(c);
+          if (why !== void 0) return `<b>${pos.text}</b>: ${esc7(whyOf(S3, why)[0])}. Left out of the gaps.`;
+          const p = byCell.get(c);
+          if (!p) return null;
+          const isGap = gapsOn && F2.gapSet.has(c), flag = (isGap && desert(S3.country, pos.lat, pos.lon) ? ` ${DESERT_FLAG}` : "") + (solarCell(pos.lat, pos.lon) ? ` ${SOLAR_FLAG}` : "");
+          return `<b>${pos.text}</b>: fire in ${p.by} of the 14 years 2012\u20132025 (VIIRS), ${perYear(p.fpy)}. ${nearest(S3, p, F2.gapSet.has(c))}` + (isGap ? ` That is beyond 15 km: ${NO_STATION}.` : "") + flag;
+        }
+      });
+      let r = paint();
+      const wide = r.aspect > 1.8;
+      if (grid2.classList.contains("wide") !== wide) {
+        grid2.classList.toggle("wide", wide);
+        r = paint();
       }
-    });
-    box.closest(".cpOlGrid")?.classList.toggle("wide", aspect > 1.8);
-    list2(S3, d, F2, top, gapsOn);
+      folded = r.folded;
+      cut = r.cut;
+      empty = F2.burn.length + F2.steady.size < MIN_MAP_SQUARES2 && r.cellPx < 2;
+    }
+    fig.hidden = $("cStLegend").hidden = empty;
+    if (empty) {
+      box.innerHTML = $("cStPick").innerHTML = $("cStLegend").innerHTML = "";
+      grid2.classList.add("wide");
+      folded = cut = [];
+    }
+    list2(S3, d, F2, top, gapsOn, folded, cut, empty);
     caveats(S3, d, F2, top, gapsOn);
   }
-  function list2(S3, d, F2, top, gapsOn) {
+  var words = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+  function list2(S3, d, F2, top, gapsOn, folded, cut, noMap) {
     const show = $("cStShow");
     show.hidden = F2.show !== "ask" || F2.gaps.length === 0;
     show.textContent = V3.reveal ? "Hide the uncertain gaps" : `Show the ${fmt(F2.gaps.length)} uncertain gap${F2.gaps.length === 1 ? "" : "s"} anyway`;
     const gl = $("cStGapBox");
     gl.hidden = !gapsOn || !top.length;
     if (!gl.hidden) {
+      const dz = top.map((p) => {
+        const pos = posOf(d, p.c);
+        return desert(S3.country, pos.lat, pos.lon);
+      }), allDesert = dz.every(Boolean);
       $("cStListT").textContent = `Places with regular fire and ${NO_STATION}`;
-      $("cStListS").textContent = top[0].by >= 7 ? "Among places that burned in at least 7 of the 14 years, the most fire first." : "These burned in 4 to 6 of the 14 years; the most fire first.";
+      $("cStListS").innerHTML = (top[0].by >= 7 ? "Among places that burned in at least 7 of the 14 years, the most fire first." : "These burned in 4 to 6 of the 14 years; the most fire first.") + (allDesert ? ` <span class="stFlag">${DESERT_FLAG}</span>` : dz.some(Boolean) ? ` <span class="stFlag">Places marked \u201Cin the desert\u201D are unverified: their detections may be gas flares or industrial heat that FIRMS did not flag.</span>` : "");
       let group2 = top[0].by < 7;
       $("cStList").innerHTML = top.map((p, i) => {
-        const pos = posOf(d, p.c), head = !group2 && p.by < 7 ? (group2 = true, `<li class="stGrp">Then places that burned in 4 to 6 of the 14 years</li>`) : "", flags = (desert(S3.country, pos.lat, pos.lon) ? `<small class="stFlag">Unverified: in the desert, these detections may be gas flares or industrial heat.</small>` : "") + (S3.country === "United_Arab_Emirates" && i === 0 ? `<small class="stFlag">Possibly a large solar plant: a recheck found its heat mostly by day.</small>` : ""), osm = `https://www.openstreetmap.org/?mlat=${pos.lat.toFixed(3)}&mlon=${pos.lon.toFixed(3)}#map=11/${pos.lat.toFixed(3)}/${pos.lon.toFixed(3)}`;
-        return head + `<li><span class="stN${F2.show === "yes" ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b><small>Burned in ${p.by} of the 14 years 2012\u20132025 (VIIRS) \xB7 ${perYear(p.fpy)}</small><small>${nearest(S3, p)}</small>${flags}<small><a href="${osm}" target="_blank" rel="noopener">Check the place on OpenStreetMap</a></small></span></li>`;
+        const pos = posOf(d, p.c), head = !group2 && p.by < 7 ? (group2 = true, `<li class="stGrp">Then places that burned in 4 to 6 of the 14 years</li>`) : "", flags = (dz[i] && !allDesert ? `<small class="stFlag">In the desert: unverified</small>` : "") + (solarCell(pos.lat, pos.lon) ? `<small class="stFlag">${SOLAR_FLAG}</small>` : ""), osm = `https://www.openstreetmap.org/?mlat=${pos.lat.toFixed(3)}&mlon=${pos.lon.toFixed(3)}#map=11/${pos.lat.toFixed(3)}/${pos.lon.toFixed(3)}`;
+        return head + `<li><span class="stN${F2.show === "yes" ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b><small>Burned in ${p.by} of the 14 years 2012\u20132025 (VIIRS) \xB7 ${perYear(p.fpy)}</small><small>${nearest(S3, p, true)}</small>${flags}<small><a href="${osm}" target="_blank" rel="noopener">Check the place on OpenStreetMap</a></small></span></li>`;
       }).join("");
-      $("cStListNote").textContent = (F2.gaps.length > top.length ? `The ${fmt(top.length)} at the top of ${fmt(F2.gaps.length)}. ` : "") + (F2.show === "yes" ? noteOf(S3) : "");
+      $("cStListNote").textContent = (F2.gaps.length > top.length ? `The ${fmt(top.length)} at the top of ${fmt(F2.gaps.length)}. ` : "") + (noMap ? "" : (folded.length ? `On the map, ${folded.length === 1 ? "number" : "numbers"} ${words(folded)} ${folded.length === 1 ? "sits" : "sit"} under a nearby mark, counted in its \u201C+n\u201D. ` : "") + (cut.length ? `${cut.length === 1 ? "Number" : "Numbers"} ${words(cut)} ${cut.length === 1 ? "is" : "are"} not marked on a narrow screen. ` : "")) + (F2.show === "yes" ? noteOf(S3) : "");
     }
-    const nb = F2.burn.length, bands = [
-      ["Within 15 km", (v) => v >= 0 && v <= 15],
-      ["15 to 50 km", (v) => v > 15 && v <= 50],
-      ["50 to 100 km", (v) => v > 50 && v <= 100],
-      ["Over 100 km", (v) => v > 100],
-      ["No station mapped in the country", (v) => v < 0]
+    const nb = F2.burn.length, beyond = (p) => F2.gapSet.has(p.c) || p.km1 > 15, bands = [
+      ["Within 15 km", (p) => p.km1 >= 0 && !beyond(p)],
+      ["15 to 50 km", (p) => p.km1 >= 0 && beyond(p) && p.km1 <= 50],
+      ["50 to 100 km", (p) => p.km1 > 50 && p.km1 <= 100],
+      ["Over 100 km", (p) => p.km1 > 100],
+      ["No station mapped in the country", (p) => p.km1 < 0]
     ];
     $("cStDistBox").hidden = nb === 0;
-    if (nb)
-      $("cStDist").innerHTML = `<tr><th>Nearest mapped station</th><th>Places</th><th>Share</th></tr>` + bands.map(([label, f]) => {
-        const k = F2.burn.filter((p) => f(p.km1)).length;
-        return k || label !== "No station mapped in the country" ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc2(k / nb)}</td></tr>` : "";
-      }).join("");
-    $("cStDistNote").textContent = F2.show === "no" && S3.completeness.level !== "unpopulated" ? "With so few stations mapped, these distances mostly show how much of the map is missing." : "Places with fire in at least 4 of the 14 years, steady heat left out.";
+    $("cStDist").innerHTML = nb ? `<tr><th>Nearest mapped station</th><th>Places</th><th>Share</th></tr>` + bands.map(([label, f]) => {
+      const k = F2.burn.filter(f).length;
+      return k || label !== "No station mapped in the country" ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc2(k / nb)}</td></tr>` : "";
+    }).join("") : "";
+    $("cStDistNote").textContent = F2.show === "no" && S3.completeness.level !== "unpopulated" ? "With so few stations mapped, these distances mostly show how much of the map is missing." : "Places with fire in at least 4 of the 14 years; heat that looks like flares or industry is left out.";
   }
   function caveats(S3, d, F2, top, gapsOn) {
     const counts = /* @__PURE__ */ new Map();
     for (const code of F2.steady.values()) {
-      const t2 = whyText(S3, code);
+      const t2 = whyOf(S3, code)[1];
       counts.set(t2, (counts.get(t2) || 0) + 1);
     }
-    const steady = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t2, n]) => `${fmt(n)} ${t2}`), anyDesert = F2.show !== "no" && F2.gaps.some((p) => {
+    const steady = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t2, n]) => `${fmt(n)} ${t2}`), deserts = F2.show !== "no" && anyDesert(S3, d, F2.gaps), solarShown = gapsOn && top.some((p) => {
       const pos = posOf(d, p.c);
-      return desert(S3.country, pos.lat, pos.lon);
+      return solarCell(pos.lat, pos.lon);
     });
     let t = `<b>Read with care.</b> A gap means ${NO_STATION}, not that no station exists: OpenStreetMap is never complete. Stations across a border are not counted, so near a border a distance can be too long. `;
     if (steady.length)
-      t += `Squares whose heat looks steady rather than seasonal are left out (${steady.join("; ")}); the filter is careful but not perfect. `;
-    if (anyDesert)
+      t += `Squares whose heat looks like flares or industry are left out (${steady.join("; ")}); the filter can also catch some real burning. `;
+    if (deserts)
       t += `In the Arabian Peninsula and the Sahara the gaps are unverified: their detections may come from gas flares, drilling or industrial heat that FIRMS did not flag. `;
     if (SOLAR.has(S3.country))
-      t += `Large solar plants can show up as daytime heat that the satellite reads as fire. A recheck found that pattern among the gaps here` + (S3.country === "United_Arab_Emirates" ? ", including the first one listed" : "") + `, so treat a gap with daytime-only detections as unverified. `;
+      t += solarShown ? `Large solar plants can show up as daytime heat that the satellite reads as fire. The listed places where a recheck found almost no detections at night are marked. ` : `Some of the regular-fire squares here may be large solar plants, which show up as daytime heat. `;
     if (top.length && d.cell >= 0.5)
-      t += `A square here is up to ${Math.round(d.cell * 111)} km across, so a station near its edge can still be more than 15 km from its middle. `;
+      t += `A square here is ${across(d)}, so a station near its edge can still be more than 15 km from its middle. `;
     $("cStCaveats").innerHTML = t.trim();
   }
   function stEvents() {
@@ -5956,7 +6164,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
     return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
   };
-  var VOLCANIC2 = /* @__PURE__ */ new Set(["Iceland"]);
+  var VOLCANIC = /* @__PURE__ */ new Set(["Iceland"]);
   var coarse2 = () => matchMedia("(pointer: coarse)").matches;
   function stepped(title, cols, breaks, max) {
     if (!breaks.length)
@@ -6118,7 +6326,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}` : "")
     const jc = d.y2026?.join_check_2025;
     if (t2 && jc?.warn)
       t += ` Read ${t2.y} here with care: run on 2025, the method used for ${t2.y} came out ${Math.abs(jc.V_pct).toFixed(0)}% ${jc.V_pct > 0 ? "higher" : "lower"} than the archive.`;
-    if (VOLCANIC2.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
+    if (VOLCANIC.has(d.country)) t += ` Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.`;
     if (CV.yFrom < viirsYear(d) && d.val.monthly_wape != null && d.val.monthly_wape > 1)
       t += ` Treat the years before ${viirsYear(d)} as rough: tested on years VIIRS saw, converted months were off by ${pc3(d.val.monthly_wape)} on average.`;
     return t;
@@ -6325,11 +6533,11 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   }
   function method(d) {
     const val = d.val;
-    const item = (v, t) => `<div><dt>${v}</dt><dd>${t}</dd></div>`;
-    $("cTiles").innerHTML = item(
+    const item2 = (v, t) => `<div><dt>${v}</dt><dd>${t}</dd></div>`;
+    $("cTiles").innerHTML = item2(
       val.raw_factor == null ? "n/a" : val.raw_factor.toFixed(1) + "\xD7",
       `more hotspots from VIIRS than MODIS for the same fires in ${esc8(the(d.name))}, 2012\u20132025`
-    ) + item(pc3(val.annual_med_err), "typical error of a converted year, tested on years we could check") + item(pc3(val.annual_max_err), "error in the worst tested year") + item(pc3(val.monthly_wape), "typical error of a converted month, weighted by size");
+    ) + item2(pc3(val.annual_med_err), "typical error of a converted year, tested on years we could check") + item2(pc3(val.annual_max_err), "error in the worst tested year") + item2(pc3(val.monthly_wape), "typical error of a converted month, weighted by size");
     $("cRateNote").textContent = d.rate_note;
     const y26 = d.y2026, p = partOf(d), jc = y26?.join_check_2025;
     $("cSatRule").textContent = p ? SAT_RULE : "Suomi NPP only from 2012; NOAA-20 is not added, which would count the same fires twice.";
@@ -6726,7 +6934,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     for (const st of STS) {
       const topM = new T.MeshBasicMaterial({ color: 16777215, side: T.DoubleSide, transparent: true, opacity: 0.45, depthWrite: false });
       topM.visible = false;
-      let sum = new T.Vector3(), cnt = 0;
+      let sum2 = new T.Vector3(), cnt = 0;
       for (const r of D.globe.plate[st]) {
         const pts2 = [];
         for (let i = 0; i < r.length - 2; i += 2) pts2.push(new T.Vector2(r[i], r[i + 1]));
@@ -6742,11 +6950,11 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
         grp.add(top);
         tops.push(top);
         for (const p of pts2) {
-          sum.add(v3(p.x, p.y, RT2));
+          sum2.add(v3(p.x, p.y, RT2));
           cnt++;
         }
       }
-      const cen = sum.divideScalar(cnt).normalize(), lat = 90 - Math.acos(cen.y) * 180 / Math.PI, lon = Math.atan2(cen.z, -cen.x) * 180 / Math.PI - 180;
+      const cen = sum2.divideScalar(cnt).normalize(), lat = 90 - Math.acos(cen.y) * 180 / Math.PI, lon = Math.atan2(cen.z, -cen.x) * 180 / Math.PI - 180;
       G.st[st] = {
         topM,
         cen: cen.clone().multiplyScalar(RT2 + 0.02),

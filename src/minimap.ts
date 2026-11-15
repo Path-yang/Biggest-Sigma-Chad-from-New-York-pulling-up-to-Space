@@ -14,11 +14,16 @@ export interface MiniLayer {
   cells: number[];
   /** a stroke in the fill colour, so a 0.1° square on a big country is still a visible dot */
   edge?: boolean;
+  /** drawn over the station dots where they are dense, so what matters most stays visible */
+  over?: boolean;
 }
 export interface MiniMark {
   c: number;
   label: string;
   title: string;
+  muted?: boolean;
+  /** never left off for want of room on a narrow screen (a mark that carries a warning) */
+  keep?: boolean;
 }
 export interface MiniOptions {
   layers: MiniLayer[];
@@ -32,8 +37,26 @@ export interface MiniOptions {
   caption: HTMLElement;
   idle: string;
 }
+export interface MiniResult {
+  aspect: number;
+  /** marks folded into a nearby mark's "+n", because they sat on it */
+  folded: string[];
+  /** marks left off on a narrow screen */
+  cut: string[];
+  /** a square's width on screen, in CSS pixels */
+  cellPx: number;
+}
 
 const S = 10;
+/** the tallest a map is drawn, in CSS pixels */
+const MAX_H = 440;
+/** more station dots than this are drawn small and see-through, or they bury the squares */
+const DENSE = 800;
+/** numbered markers closer than this, in CSS pixels, would hide each other */
+const MARK_GAP = 16;
+/** a phone: only the first five marks are drawn */
+const NARROW = 500;
+const MAX_NARROW_MARKS = 5;
 const r1 = (v: number) => Math.round(v * 100) / 100;
 const esc = (t: string) => t.replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
 const coarse = () => matchMedia("(pointer: coarse)").matches;
@@ -71,8 +94,8 @@ export function cellCentre(d: CountrySummary, c: number): [number, number] {
   return [(f.la[c] + 0.5) * d.cell, near((f.lo[c] + 0.5) * d.cell, 0)];
 }
 
-/** draw the map into host; returns its width over its height */
-export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): number {
+/** draw the map into host; returns its width over its height, and which marks were folded or left off */
+export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): MiniResult {
   const F = frameOf(d),
     cell = d.cell,
     X = (lonU: number) => (lonU - F.lon0) * F.kx * S,
@@ -110,36 +133,68 @@ export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): 
         lines += `M${r1(X(r[i] + off))},${r1(Y(r[i + 1]))}L${r1(X(r[i + 2] + off))},${r1(Y(r[i + 3]))}`;
       }
     }
+  /* the box's width on screen, so that squares and markers can be sized in pixels */
+  const maxW = Math.max(160, Math.round((MAX_H * vw) / vh)),
+    boxW = Math.min(maxW, host.clientWidth > 40 ? host.clientWidth - 16 : maxW),
+    boxH = (boxW * vh) / vw;
   const cw = r1(cell * F.kx * S),
     ch = r1(cell * S),
-    layers = o.layers
-      .filter(l => l.cells.length)
-      .map(l => {
-        let p = "";
-        for (const c of l.cells) p += `M${r1(X(west(c)))},${r1(Y(F.la[c] * cell + cell))}h${cw}v${ch}h${-cw}z`;
-        return `<path d="${p}" fill="${l.fill}"${l.edge ? ` stroke="${l.fill}" stroke-width="1.6" vector-effect="non-scaling-stroke"` : ""}/>`;
-      })
-      .join("");
+    cellPx = (cell * F.kx * S * boxW) / vw,
+    pts = o.points || [],
+    dense = pts.length > DENSE,
+    paint = (ls: MiniLayer[]) =>
+      ls
+        .filter(l => l.cells.length)
+        .map(l => {
+          let p = "";
+          for (const c of l.cells) p += `M${r1(X(west(c)))},${r1(Y(F.la[c] * cell + cell))}h${cw}v${ch}h${-cw}z`;
+          return `<path d="${p}" fill="${l.fill}"${l.edge ? ` stroke="${l.fill}" stroke-width="1.6" vector-effect="non-scaling-stroke"` : ""}/>`;
+        })
+        .join("");
   let dots = "";
-  for (const [lon, lat] of o.points || []) dots += `M${r1(X(near(lon, F.lon0)))},${r1(Y(lat))}h0`;
+  for (const [lon, lat] of pts) dots += `M${r1(X(near(lon, F.lon0)))},${r1(Y(lat))}h0`;
+  /* marks: on a phone only the first five (and any that carry a warning); a mark on top of an earlier one is
+     folded into that one's "+n" */
+  const narrow = innerWidth < NARROW,
+    placed: { x: number; y: number; m: MiniMark; more: string[] }[] = [],
+    folded: string[] = [],
+    cut: string[] = [];
+  for (const [i, m] of (o.marks || []).entries()) {
+    const x = (X(west(m.c) + cell / 2) - x0) / vw,
+      y = (Y(F.la[m.c] * cell + cell / 2) - y0) / vh;
+    if (narrow && i >= MAX_NARROW_MARKS && !m.keep) {
+      cut.push(m.label);
+      continue;
+    }
+    const under = placed.find(q => Math.hypot((q.x - x) * boxW, (q.y - y) * boxH) < MARK_GAP);
+    if (under) {
+      under.more.push(m.label);
+      folded.push(m.label);
+    } else placed.push({ x, y, m, more: [] });
+  }
   host.innerHTML =
-    `<div class="cpMiniBox" style="max-width:min(100%,${Math.max(160, Math.round((520 * vw) / vh))}px)">` +
+    `<div class="cpMiniBox" style="max-width:min(100%,${maxW}px)">` +
     `<svg viewBox="${r1(x0)} ${r1(y0)} ${r1(vw)} ${r1(vh)}" role="img" aria-label="${esc(o.label)}">` +
     `<path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` +
-    layers +
+    paint(o.layers.filter(l => !(dense && l.over))) +
     `<path d="${lines}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` +
     (dots
-      ? `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
-        `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
+      ? dense
+        ? `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-opacity=".6" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
+        : `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
+          `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
       : "") +
+    (dense ? paint(o.layers.filter(l => l.over)) : "") +
     `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/>` +
     `</svg>` +
-    (o.marks || [])
-      .map(m => {
-        const x = X(west(m.c) + cell / 2),
-          y = Y(F.la[m.c] * cell + cell / 2);
-        return `<span class="cpMiniMark" style="left:${(((x - x0) / vw) * 100).toFixed(2)}%;top:${(((y - y0) / vh) * 100).toFixed(2)}%" title="${esc(m.title)}">${esc(m.label)}</span>`;
-      })
+    /* the first mark last, so it is drawn on top */
+    placed
+      .slice()
+      .reverse()
+      .map(
+        ({ x, y, m, more }) =>
+          `<span class="cpMiniMark${m.muted ? " muted" : ""}" style="left:${(x * 100).toFixed(2)}%;top:${(y * 100).toFixed(2)}%" title="${esc(m.title + (more.length ? `; also here: ${more.join(", ")}` : ""))}">${esc(m.label)}${more.length ? `<i>+${more.length}</i>` : ""}</span>`,
+      )
       .join("") +
     `</div>`;
   const svg = host.querySelector("svg")!,
@@ -180,5 +235,5 @@ export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): 
     on.setAttribute("visibility", "hidden");
     o.caption.innerHTML = o.idle;
   };
-  return vw / vh;
+  return { aspect: vw / vh, folded, cut, cellPx };
 }
