@@ -116,16 +116,16 @@
 
   // src/model.ts
   var STATE_EPOCHS = { vi0: VI0, aq0: AQ0, bins: D.meta.bins };
-  function harmWith(s2, e, i, T, A, V4) {
+  function harmWith(s2, e, i, T, A, V5) {
     const m = i % 12;
-    if (i >= e.vi0) return { h: V4, lo: V4, hi: V4, src: "VIIRS observed" };
+    if (i >= e.vi0) return { h: V5, lo: V5, hi: V5, src: "VIIRS observed" };
     const terraOnly = i < e.aq0, h2 = terraOnly ? T * s2.r_t[m] : (T + A) * s2.r_ta[m], src = terraOnly ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted";
     if (h2 === 0) return { h: 0, lo: 0, hi: s2.zero_hi, src };
     let b = 0;
     while (b < e.bins.length && h2 > e.bins[b]) b++;
     return { h: h2, lo: h2 * s2.pi[b][0], hi: h2 * s2.pi[b][1], src };
   }
-  var harm = (st, i, T, A, V4) => harmWith(D.states[st], STATE_EPOCHS, i, T, A, V4);
+  var harm = (st, i, T, A, V5) => harmWith(D.states[st], STATE_EPOCHS, i, T, A, V5);
   var HX = {};
   function hexState(st) {
     if (HX[st]) return HX[st];
@@ -223,7 +223,7 @@
   }
   var selMask = () => maskFor(S.st, S.sel);
   function analyseFor(st, sel) {
-    const s2 = D.states[st], T = new Float64Array(NM), A = new Float64Array(NM), V4 = new Float64Array(NM);
+    const s2 = D.states[st], T = new Float64Array(NM), A = new Float64Array(NM), V5 = new Float64Array(NM);
     const byCounty = sel.type === "state" || sel.type === "county", rows = byCounty ? s2.county_rows : s2.hex_rows, mask = byCounty ? null : maskFor(st, sel);
     for (let p = 0; p < rows.length; p += 5) {
       const k = rows[p];
@@ -231,7 +231,7 @@
         const i = rows[p + 1];
         T[i] += rows[p + 2];
         A[i] += rows[p + 3];
-        V4[i] += rows[p + 4];
+        V5[i] += rows[p + 4];
       }
     }
     const G2 = new Float64Array(NM), grows = (byCounty ? s2.gap_county_rows : s2.gap_hex_rows) ?? [];
@@ -260,7 +260,7 @@
     const R = analyseSeries({
       T,
       A,
-      V: V4,
+      V: V5,
       y0: Y0,
       yFrom: S.yFrom,
       yTo: S.yTo,
@@ -343,12 +343,12 @@
   }
   var ytdSentence = (t) => `${t.y} so far (${t.span}): ${fmt(t.cur)} ${fmt(t.cur) === "1" ? "hotspot" : "hotspots"}${t.hi - t.lo >= 1 ? `, likely ${fmt(t.lo)} to ${fmt(t.hi)}` : ""}, ${rankWords(t.rank, t.n)} for the same dates (typical ${fmt(t.med)}).`;
   function analyseSeries(o) {
-    const { T, A, V: V4 } = o, partI = o.partI ?? -1, nm = o.nm ?? Infinity, fullEnd = partI >= 0 ? partI : nm;
+    const { T, A, V: V5 } = o, partI = o.partI ?? -1, nm = o.nm ?? Infinity, fullEnd = partI >= 0 ? partI : nm;
     const ser = [];
     for (let i = (o.yFrom - o.y0) * 12, end = Math.min((o.yTo - o.y0 + 1) * 12, nm); i < end; i++) {
       const r = Object.assign(
-        { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V4[i] },
-        o.harm(i, T[i], A[i], V4[i])
+        { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A[i], V: V5[i] },
+        o.harm(i, T[i], A[i], V5[i])
       );
       if (i >= fullEnd) r.part = true;
       ser.push(r);
@@ -1682,10 +1682,10 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
     ];
     const gh = s2.gap_hex_rows ?? [];
     for (let p = 0; p < gh.length; p += 3) gapHex.set(gh[p] * NM + gh[p + 1], gh[p + 2]);
-    const push = (k, i, T, A, V4) => {
+    const push = (k, i, T, A, V5) => {
       const y = Y0 + Math.floor(i / 12);
       if (!mask[k] || y < S.yFrom || y > S.yTo) return;
-      const h2 = harm(S.st, i, T, A, V4), f = fillDates(i, S.st), dh = gapHex.get(k * NM + i) ?? 0;
+      const h2 = harm(S.st, i, T, A, V5), f = fillDates(i, S.st), dh = gapHex.get(k * NM + i) ?? 0;
       gapHex.delete(k * NM + i);
       rows.push(
         [
@@ -1698,7 +1698,7 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
           i > mt ? "" : T,
           i > mt ? "" : A,
           /* Suomi NPP as observed; blank on 2026 months with days from NOAA-20, whose per-hexagon split is not kept */
-          f.any && y >= 2026 ? "" : V4,
+          f.any && y >= 2026 ? "" : V5,
           Math.max(0, h2.h + dh).toFixed(2),
           `"${f.any ? FILL_SRC : h2.src}"`,
           f.n20,
@@ -7694,6 +7694,392 @@ ${short(f.perYear)} hotspots a year` : c.n;
     }
   }
 
+  // src/voice.ts
+  function recognizer() {
+    const w = window;
+    const C = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    return typeof C === "function" ? C : null;
+  }
+  var canSpeak = () => "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+  var english = () => (navigator.languages ?? []).find((l) => /^en\b/i.test(l));
+  var listenLang = () => english() ?? (navigator.language || "en-US");
+  function speakLang(text2) {
+    const looksEnglish = /\b(the|and|with|were|than|which|there|this|that|hotspots?|fires?|burned)\b/i.test(text2);
+    return looksEnglish ? english() ?? "en-US" : navigator.language || "en-US";
+  }
+  var ALOUD_KEY = "bc-copilot-aloud";
+  var STOP_GRACE = 2e3;
+  var LISTEN_LIMIT = 3e4;
+  var DOUBLE_PRESS = 700;
+  var STARTING = "Starting the microphone\u2026";
+  var LISTENING = "Listening\u2026";
+  var PRIVACY = "Voice uses your browser's speech service; in Chrome that sends audio to Google.";
+  var ERRORS = {
+    "not-allowed": "Microphone access was blocked. Allow it in the browser to talk to the copilot.",
+    "service-not-allowed": "Speech recognition is turned off in this browser. You can type your question instead.",
+    "no-speech": "No speech was heard. Press the mic to try again.",
+    "audio-capture": "No microphone was found. You can type your question instead.",
+    network: "The browser's speech service could not be reached. You can type your question instead.",
+    "language-not-supported": "This browser cannot recognise speech in your language. You can type your question instead."
+  };
+  var OTHER_ERROR = "Voice input stopped. You can type your question instead.";
+  var MIC_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><g class="off"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></g><rect class="on" x="6" y="6" width="8" height="8" rx="1.5"/></svg>';
+  var SPEAKER_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 8v4h3l4 3.5v-11L6.5 8z"/><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"/></svg>';
+  var V4 = null;
+  var lineKind = null;
+  var session = null;
+  var utter = null;
+  var utterHash = "";
+  var readAloud = true;
+  var lookingAtPage = false;
+  function showLine(kind, text2) {
+    if (!V4) return;
+    lineKind = kind;
+    V4.line.dataset.kind = kind;
+    V4.lineIcon.innerHTML = kind === "speaking" ? SPEAKER_SVG : "";
+    V4.lineText.textContent = text2;
+    V4.lineStop.hidden = kind !== "speaking";
+    V4.sr.textContent = kind === "note" ? text2 : "";
+    if (!V4.line.hidden) return;
+    const log = V4.host.log, atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+    V4.line.hidden = false;
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+  function hideLine() {
+    if (!V4 || V4.line.hidden) return;
+    const hadFocus = V4.line.contains(document.activeElement);
+    lineKind = null;
+    V4.line.hidden = true;
+    V4.sr.textContent = "";
+    if (hadFocus && !V4.mic.disabled) V4.mic.focus();
+  }
+  function fit() {
+    if (!V4) return;
+    const t = V4.host.input;
+    t.style.height = "";
+    t.style.height = Math.min(120, t.scrollHeight + t.offsetHeight - t.clientHeight) + "px";
+  }
+  function setMic(on) {
+    if (!V4) return;
+    V4.mic.setAttribute("aria-pressed", String(on));
+    V4.mic.title = on ? "Stop and send" : "Start talking";
+    V4.host.root.classList.toggle("listening", on);
+    V4.host.send.disabled = on || V4.host.busy();
+  }
+  function listen() {
+    const Ctor = recognizer();
+    if (!V4 || !Ctor || session || V4.host.busy()) return;
+    hush();
+    primeSpeech();
+    const r = new Ctor();
+    r.lang = listenLang();
+    r.interimResults = true;
+    r.continuous = false;
+    r.maxAlternatives = 1;
+    const input = V4.host.input, s2 = { r, before: input.value, placeholder: input.placeholder, heard: "", error: "", started: false, send: false, stopping: 0, limit: 0 };
+    r.onstart = r.onaudiostart = () => began(s2);
+    r.onresult = (e) => heard(s2, e);
+    r.onerror = (e) => {
+      s2.error = e.error;
+    };
+    r.onend = () => ended(s2);
+    try {
+      r.start();
+    } catch {
+      showLine("note", OTHER_ERROR);
+      return;
+    }
+    session = s2;
+    setMic(true);
+    input.placeholder = STARTING;
+    showLine("starting", STARTING);
+  }
+  function began(s2) {
+    if (session !== s2 || !V4 || s2.started) return;
+    s2.started = true;
+    s2.limit = window.setTimeout(() => stopListening(false), LISTEN_LIMIT);
+    if (V4.host.input.placeholder === STARTING) V4.host.input.placeholder = LISTENING;
+    if (lineKind === "starting") showLine("listening", "Listening. Ask your question out loud.");
+  }
+  function heard(s2, e) {
+    if (session !== s2 || !V4) return;
+    began(s2);
+    let words2 = "", final = e.results.length > 0;
+    for (let i = 0; i < e.results.length; i++) {
+      const res = e.results[i];
+      words2 += res[0]?.transcript ?? "";
+      if (!res.isFinal) final = false;
+    }
+    const most = V4.host.input.maxLength > 0 ? V4.host.input.maxLength : 500;
+    words2 = words2.replace(/\s+/g, " ").trim();
+    const full = words2.length >= most;
+    if (full) words2 = words2.slice(0, most).replace(/\s+\S*$/, "");
+    s2.heard = words2;
+    V4.host.input.value = words2;
+    fit();
+    if (final && words2) {
+      release(s2, true);
+      sendHeard(words2);
+    } else if (full) stopListening(true);
+  }
+  function ended(s2) {
+    if (session !== s2 || !V4) return;
+    release(s2, false);
+    const failed = s2.error && s2.error !== "aborted" ? s2.error : "";
+    if (s2.send && s2.heard && !failed) return sendHeard(s2.heard);
+    if (!s2.heard) {
+      V4.host.input.value = s2.before;
+      fit();
+    }
+    if (failed) showLine("note", ERRORS[failed] ?? OTHER_ERROR);
+    else if (s2.heard) showLine("note", "Press send to ask this, or change it first.");
+    else hideLine();
+  }
+  function sendHeard(words2) {
+    if (!V4) return;
+    hideLine();
+    const { host, mic } = V4;
+    if (document.activeElement === mic) host.root.focus();
+    host.ask(words2);
+  }
+  function release(s2, abort) {
+    s2.r.onstart = s2.r.onaudiostart = s2.r.onresult = s2.r.onerror = s2.r.onend = null;
+    clearTimeout(s2.stopping);
+    clearTimeout(s2.limit);
+    if (abort) {
+      try {
+        s2.r.abort();
+      } catch {
+      }
+    }
+    if (session === s2) session = null;
+    setMic(false);
+    const ph = V4?.host.input.placeholder;
+    if (V4 && (ph === STARTING || ph === LISTENING)) V4.host.input.placeholder = s2.placeholder;
+  }
+  function stopListening(send) {
+    const s2 = session;
+    if (!s2) return;
+    if (send) s2.send = true;
+    if (s2.stopping) return;
+    if (!s2.started) return cancelListening(true);
+    try {
+      s2.r.stop();
+    } catch {
+    }
+    s2.stopping = window.setTimeout(() => {
+      if (session !== s2) return;
+      try {
+        s2.r.abort();
+      } catch {
+      }
+      ended(s2);
+    }, STOP_GRACE);
+  }
+  function cancelListening(restore2) {
+    const s2 = session;
+    if (!s2 || !V4) return;
+    release(s2, true);
+    if (lineKind === "listening" || lineKind === "starting") hideLine();
+    if (restore2) {
+      V4.host.input.value = s2.before;
+      fit();
+    }
+  }
+  function spoken(raw) {
+    const lines2 = raw.split("\n").map(
+      (l) => l.trim().replace(/^>\s*/, "").replace(/^#+\s*/, "").replace(/^(?:[-*•]|\d+[.)])\s+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\b(see|visit)\s+https?:\/\/\S+/gi, "$1 the link").replace(/\bhttps?:\/\/\S+/gi, "").replace(/\*+|`+|~~|__/g, "").replace(/(?:~|≈)\s*(?=\d)/g, "about ").replace(/\s*→\s*/g, " to ").replace(/\b(\d{4})\s*[–-]\s*(\d{2,4})\b(?![–-]\d)/g, "$1 to $2").replace(/(\d)\s*×/g, "$1 times").replace(/\s+/g, " ").trim()
+    ).filter((l) => /[A-Za-z0-9]/.test(l) && !l.startsWith("|")).map((l) => /[.!?:;。！？]$/.test(l) ? l : l + ".");
+    const all = sentences(lines2.join(" "));
+    let out = all[0] ?? "";
+    if (all[1] && out.length < 110 && out.length + all[1].length < 300) out += " " + all[1];
+    if (out.length > 320) out = out.slice(0, 300).replace(/\s+\S*$/, "") + "\u2026";
+    return out;
+  }
+  var SHORT_FORM = /(?:\b(?:e\.g|i\.e|etc|vs|approx|ca|Mt|St|Dr|Mr|Mrs|Ms|No|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)|\b[A-Z])\.$/;
+  function sentences(text2) {
+    const out = [];
+    let start4 = 0;
+    for (let i = 0; i < text2.length; i++) {
+      const c = text2[i];
+      if (c !== "." && c !== "!" && c !== "?" || i + 1 < text2.length && text2[i + 1] !== " ") continue;
+      const piece = text2.slice(start4, i + 1);
+      if (c === "." && SHORT_FORM.test(piece)) continue;
+      if (piece.trim()) out.push(piece.trim());
+      start4 = i + 1;
+    }
+    const rest = text2.slice(start4).trim();
+    if (rest) out.push(rest);
+    return out;
+  }
+  var primed = false;
+  function primeSpeech() {
+    if (primed || !canSpeak()) return;
+    primed = true;
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  }
+  function say(text2) {
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) synth.cancel();
+    const u = new SpeechSynthesisUtterance(text2);
+    u.lang = speakLang(text2);
+    const watch = window.setInterval(() => {
+      if (utter !== u || !synth.speaking && !synth.pending) over();
+    }, 1500);
+    const over = () => {
+      clearInterval(watch);
+      if (utter !== u) return;
+      utter = null;
+      if (lineKind === "speaking") hideLine();
+    };
+    u.onend = over;
+    u.onerror = over;
+    utter = u;
+    utterHash = location.hash;
+    showLine("speaking", "Reading the answer aloud");
+    synth.speak(u);
+  }
+  function hush() {
+    if (!utter) return;
+    utter = null;
+    window.speechSynthesis.cancel();
+    if (lineKind === "speaking") hideLine();
+  }
+  function voiceAnswer(raw) {
+    if (!V4 || !V4.aloud || !readAloud || V4.host.root.hidden && !lookingAtPage) return;
+    say(spoken(raw) || "The answer is on the screen.");
+  }
+  function voiceBusy(busy3) {
+    if (!V4) return;
+    V4.mic.disabled = busy3;
+    if (!busy3) return;
+    hush();
+    cancelListening(false);
+    if (lineKind === "note") hideLine();
+  }
+  function voiceStop(keepReading = false) {
+    lookingAtPage = keepReading;
+    if (!keepReading) hush();
+    cancelListening(true);
+    if (lineKind !== "speaking") hideLine();
+  }
+  function setAloud(on) {
+    readAloud = on;
+    V4?.aloud?.setAttribute("aria-pressed", String(on));
+    if (!on) hush();
+    try {
+      localStorage.setItem(ALOUD_KEY, on ? "1" : "0");
+    } catch {
+    }
+  }
+  function voiceInit(host) {
+    if (!recognizer()) return;
+    const mic = h("button", "askMic");
+    mic.type = "button";
+    mic.innerHTML = MIC_SVG;
+    mic.setAttribute("aria-label", "Talk to the copilot");
+    mic.onclick = () => session ? stopListening(true) : listen();
+    host.send.before(mic);
+    const line = h("div", "askVoice"), lineIcon = h("span", "askVoiceIcon"), lineText = h("span", "askVoiceText"), lineStop = h("button", "askVoiceStop", "Stop");
+    line.hidden = true;
+    lineIcon.setAttribute("aria-hidden", "true");
+    lineStop.type = "button";
+    lineStop.setAttribute("aria-label", "Stop reading aloud");
+    lineStop.onclick = hush;
+    line.append(lineIcon, lineText, lineStop);
+    host.form.before(line);
+    const sr = h("span", "askVoiceSr");
+    sr.setAttribute("role", "status");
+    host.root.append(sr);
+    const info = h("span", "askVoiceInfo");
+    info.appendChild(h("span", "", PRIVACY));
+    let aloud = null;
+    if (canSpeak()) {
+      aloud = h("button", "askAloud");
+      aloud.type = "button";
+      aloud.append(h("span", "askSw"), "Read answers aloud");
+      aloud.title = "Read the start of each answer to a spoken question aloud";
+      aloud.onclick = () => setAloud(!readAloud);
+      info.appendChild(aloud);
+      try {
+        readAloud = localStorage.getItem(ALOUD_KEY) !== "0";
+      } catch {
+      }
+      aloud.setAttribute("aria-pressed", String(readAloud));
+    }
+    host.note.appendChild(info);
+    const quick = h("button", "askLaunchMic");
+    quick.type = "button";
+    quick.setAttribute("aria-label", "Talk to the fire copilot");
+    quick.title = "Talk to the fire copilot";
+    quick.innerHTML = MIC_SVG;
+    let quickAt = -Infinity;
+    quick.onclick = () => {
+      quickAt = performance.now();
+      host.open();
+      if (host.busy()) return;
+      listen();
+      setTimeout(() => mic.focus(), 90);
+    };
+    host.launch.after(quick);
+    host.root.addEventListener(
+      "click",
+      (e) => {
+        if (performance.now() - quickAt > DOUBLE_PRESS) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      true
+    );
+    document.body.classList.add("askVoiceOK");
+    new ResizeObserver(() => {
+      if (host.launch.offsetWidth) document.body.style.setProperty("--askLW", host.launch.offsetWidth + "px");
+    }).observe(host.launch);
+    V4 = { host, mic, line, lineIcon, lineText, lineStop, sr, info, aloud };
+    setMic(false);
+    host.input.addEventListener("input", () => {
+      hush();
+      cancelListening(false);
+      if (lineKind === "note") hideLine();
+    });
+    host.root.addEventListener(
+      "submit",
+      (e) => {
+        if (!session) return;
+        e.preventDefault();
+        e.stopPropagation();
+        stopListening(true);
+      },
+      true
+    );
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "Escape") {
+          if (session) cancelListening(true);
+          else if (utter) {
+            hush();
+            if (host.root.hidden) return;
+          } else return;
+          e.stopPropagation();
+          e.preventDefault();
+        } else if (e.key === "Enter" && session && e.target === host.input && !e.shiftKey && !e.isComposing) {
+          e.stopPropagation();
+          e.preventDefault();
+          stopListening(true);
+        }
+      },
+      true
+    );
+    addEventListener("hashchange", () => {
+      if (utter && location.hash !== utterHash) hush();
+    });
+    addEventListener("pagehide", () => {
+      hush();
+      cancelListening(false);
+    });
+  }
+
   // src/copilot.ts
   var SOCKET = "wss://hotspotters.compare/agents/fire-copilot/";
   var SESSION_KEY = "bc-copilot-session";
@@ -7962,9 +8348,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
     });
     scroll();
   }
-  function userBlock(text2) {
-    const m = h("div", "askMsg user");
-    m.appendChild(h("p", "", text2));
+  function userBlock(text2, said = false) {
+    const m = h("div", "askMsg user"), p = m.appendChild(h("p"));
+    if (said) p.appendChild(h("span", "askVia", "Said"));
+    p.append(text2);
     return m;
   }
   var IDLE_HINT = "Ask about a place, a month or a year";
@@ -7974,8 +8361,9 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (UI.send) UI.send.disabled = b;
     if (UI.fresh) UI.fresh.disabled = b;
     if (UI.input) UI.input.placeholder = b ? "Wait for this answer\u2026" : IDLE_HINT;
+    voiceBusy(b);
   }
-  var seeIt = () => innerWidth <= 600 ? { label: "See it", run: close } : void 0;
+  var seeIt = () => innerWidth <= 600 ? { label: "See it", run: () => close(true) } : void 0;
   function noteDid(text2, button) {
     const target = turn2 ? turn2.box : UI.log?.lastElementChild;
     if (!(target instanceof HTMLElement)) return;
@@ -7987,14 +8375,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
     }
     scroll();
   }
-  function ask(raw) {
+  function ask(raw, said = false) {
     const q = raw.trim().slice(0, 500);
     if (!q || turn2) return;
     const log = UI.log;
     log.querySelector(".askWelcome")?.remove();
     log.querySelectorAll(".askChips.follow,.askOffline,.askConnecting").forEach((x) => x.remove());
     if (UI.said) UI.said.textContent = "";
-    log.appendChild(userBlock(q));
+    log.appendChild(userBlock(q, said));
     const box2 = h("div", "askMsg bot"), status = h("div", "askStatus"), statusText = h("span", "", "Connecting");
     status.append(h("span", "askPulse"), statusText);
     const live = {
@@ -8010,7 +8398,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
       hash: location.hash,
       cardCount: 0,
       frame: 0,
-      offered: []
+      offered: [],
+      said
     };
     box2.append(status, live.cards, live.text);
     log.appendChild(box2);
@@ -8112,7 +8501,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
         const asked = t.box.previousElementSibling;
         if (asked?.classList.contains("user")) asked.remove();
         t.box.remove();
-        ask(t.question);
+        ask(t.question, t.said);
       };
       box2.appendChild(again);
       t.box.appendChild(box2);
@@ -8121,10 +8510,12 @@ ${short(f.perYear)} hotspots a year` : c.n;
     setBusy(false);
     scroll();
     if (innerWidth > 900 && UI.root && !UI.root.hidden) UI.input?.focus();
+    if (t.said && !error) voiceAnswer(t.raw);
   }
   var UNREACHABLE = "Can't reach the copilot at hotspotters.compare. It may be down, or this network may block it.";
   function newConversation() {
     if (turn2) return;
+    voiceStop();
     mapMarks([]);
     UI.log.textContent = "";
     UI.log.appendChild(welcome());
@@ -8297,9 +8688,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
       log.appendChild(box2);
     });
   }
-  function close() {
+  function close(keepReading = false) {
     const { root, launch } = UI;
     if (!root || !launch) return;
+    voiceStop(keepReading);
     root.hidden = true;
     launch.hidden = false;
     launch.setAttribute("aria-expanded", "false");
@@ -8343,7 +8735,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     fresh2.onclick = newConversation;
     shut.setAttribute("aria-label", "Close the copilot");
     shut.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>';
-    shut.onclick = close;
+    shut.onclick = () => close();
     head.append(title, fresh2, shut);
     const note = h("p", "askNote", HONESTY), log = h("div", "askLog"), said = h("div", "askSaid");
     said.setAttribute("role", "status");
@@ -8383,6 +8775,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     root.append(head, note, log, form, said);
     document.body.append(launch, root);
     Object.assign(UI, { launch, root, log, input, send, fresh: fresh2, where, said });
+    voiceInit({ root, log, form, input, send, note, launch, open, ask: (q) => ask(q, true), busy: () => turn2 !== null });
     syncPlace();
     addEventListener("hashchange", () => setTimeout(syncPlace, 0));
     const sheet = document.getElementById("sheetWrap");

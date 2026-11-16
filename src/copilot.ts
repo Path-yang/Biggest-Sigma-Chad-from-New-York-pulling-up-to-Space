@@ -8,6 +8,7 @@ import { mapCountry, mapFocus, mapMarks, mapView } from "./cmap";
 import { go, goCountry } from "./views";
 import { parseInbound } from "./askproto";
 import { cardEl, h, prose } from "./askcards";
+import { voiceAnswer, voiceBusy, voiceInit, voiceStop } from "./voice";
 
 /* =====================================================================
    THE FIRE COPILOT: a chat window that asks the HotSpotters FireCopilot agent (DeepSeek, on Cloudflare) about
@@ -165,6 +166,8 @@ type Live = {
   frame: number;
   /** places already offered with an "Open" button in this answer */
   offered: string[];
+  /** the question was spoken, not typed */
+  said: boolean;
 };
 const UI = {
   launch: null as HTMLButtonElement | null,
@@ -338,9 +341,11 @@ function restore(items: Turn[]) {
   });
   scroll();
 }
-function userBlock(text: string) {
-  const m = h("div", "askMsg user");
-  m.appendChild(h("p", "", text));
+function userBlock(text: string, said = false) {
+  const m = h("div", "askMsg user"),
+    p = m.appendChild(h("p"));
+  if (said) p.appendChild(h("span", "askVia", "Said"));
+  p.append(text);
   return m;
 }
 const IDLE_HINT = "Ask about a place, a month or a year";
@@ -350,10 +355,11 @@ function setBusy(b: boolean) {
   if (UI.send) UI.send.disabled = b;
   if (UI.fresh) UI.fresh.disabled = b;
   if (UI.input) UI.input.placeholder = b ? "Wait for this answer…" : IDLE_HINT;
+  voiceBusy(b);
 }
 type NoteButton = { label: string; run: () => void };
 /** on phones the window covers the page, so a change to the page happens out of sight: offer a way out to see it */
-const seeIt = (): NoteButton | undefined => (innerWidth <= 600 ? { label: "See it", run: close } : undefined);
+const seeIt = (): NoteButton | undefined => (innerWidth <= 600 ? { label: "See it", run: () => close(true) } : undefined);
 /** a quiet line in the answer saying what the page did, so a moved map or a new page is never a surprise */
 function noteDid(text: string, button?: NoteButton) {
   const target = turn ? turn.box : UI.log?.lastElementChild;
@@ -367,14 +373,14 @@ function noteDid(text: string, button?: NoteButton) {
   scroll();
 }
 
-function ask(raw: string) {
+function ask(raw: string, said = false) {
   const q = raw.trim().slice(0, 500);
   if (!q || turn) return;
   const log = UI.log!;
   log.querySelector(".askWelcome")?.remove();
   log.querySelectorAll(".askChips.follow,.askOffline,.askConnecting").forEach(x => x.remove());
   if (UI.said) UI.said.textContent = "";
-  log.appendChild(userBlock(q));
+  log.appendChild(userBlock(q, said));
   const box = h("div", "askMsg bot"),
     status = h("div", "askStatus"),
     statusText = h("span", "", "Connecting");
@@ -393,6 +399,7 @@ function ask(raw: string) {
     cardCount: 0,
     frame: 0,
     offered: [],
+    said,
   };
   box.append(status, live.cards, live.text);
   log.appendChild(box);
@@ -501,7 +508,7 @@ function finish(error?: string) {
       const asked = t.box.previousElementSibling;
       if (asked?.classList.contains("user")) asked.remove();
       t.box.remove();
-      ask(t.question);
+      ask(t.question, t.said);
     };
     box.appendChild(again);
     t.box.appendChild(box);
@@ -510,10 +517,12 @@ function finish(error?: string) {
   setBusy(false);
   scroll();
   if (innerWidth > 900 && UI.root && !UI.root.hidden) UI.input?.focus();
+  if (t.said && !error) voiceAnswer(t.raw);
 }
 const UNREACHABLE = "Can't reach the copilot at hotspotters.compare. It may be down, or this network may block it.";
 function newConversation() {
   if (turn) return;
+  voiceStop();
   mapMarks([]);
   UI.log!.textContent = "";
   UI.log!.appendChild(welcome());
@@ -714,9 +723,11 @@ function open() {
     log.appendChild(box);
   });
 }
-function close() {
+/** `keepReading`: the window closes so the reader can see the page; an answer being read aloud goes on */
+function close(keepReading = false) {
   const { root, launch } = UI;
   if (!root || !launch) return;
+  voiceStop(keepReading);
   root.hidden = true;
   launch.hidden = false;
   launch.setAttribute("aria-expanded", "false");
@@ -769,7 +780,7 @@ export function copilotInit() {
   fresh.onclick = newConversation;
   shut.setAttribute("aria-label", "Close the copilot");
   shut.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>';
-  shut.onclick = close;
+  shut.onclick = () => close();
   head.append(title, fresh, shut);
   const note = h("p", "askNote", HONESTY),
     log = h("div", "askLog"),
@@ -814,6 +825,7 @@ export function copilotInit() {
   root.append(head, note, log, form, said);
   document.body.append(launch, root);
   Object.assign(UI, { launch, root, log, input, send, fresh, where, said });
+  voiceInit({ root, log, form, input, send, note, launch, open, ask: q => ask(q, true), busy: () => turn !== null });
   syncPlace();
   addEventListener("hashchange", () => setTimeout(syncPlace, 0));
   /* the data sheet (#compare, "Open the full data"): the copilot window makes room for its header */
