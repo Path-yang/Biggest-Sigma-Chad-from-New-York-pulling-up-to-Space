@@ -1,6 +1,7 @@
 import type { CountrySummary } from "./types";
 import { fmt } from "./util";
 import { cutEdge, near, shapeOf } from "./world";
+import { loadProvinces, provinceOfMark } from "./prov";
 
 /* =====================================================================
    COUNTRY MAP: the grid squares on a MapLibre map over the OpenFreeMap "positron" basemap.
@@ -555,7 +556,31 @@ export function mapFocus(b: Box, pad: { right: number; bottom: number }, maxZoom
   return true;
 }
 /** draw the copilot's shapes over the squares (an empty list clears them) */
+/** draw the copilot's places; a province or district that provinces/v1 knows by name is drawn with its own outline
+    once that file is here, instead of a dashed box */
+let marksSeq = 0;
 export function mapMarks(marks: MapMark[]) {
+  const ok = drawMarks(marks),
+    mine = ++marksSeq,
+    k = L && L.ready ? L.k : null;
+  if (!ok || !k || !marks.some(m => m.box)) return ok;
+  loadProvinces(k).then(
+    P => {
+      if (mine !== marksSeq || !L || !L.ready || L.k !== k) return;
+      let changed = false;
+      const out = marks.map(mk => {
+        const hit = mk.box ? provinceOfMark(P, mk.name, mk.box, lon0()) : null;
+        if (!hit) return mk;
+        changed = true;
+        return { ...mk, geometry: hit.geometry, box: hit.box };
+      });
+      if (changed) drawMarks(out);
+    },
+    () => {},
+  );
+  return ok;
+}
+function drawMarks(marks: MapMark[]) {
   if (!L || !L.ready) return false;
   const map = L.map,
     off = (b: Box) => near((b[0] + b[2]) / 2, lon0()) - (b[0] + b[2]) / 2;

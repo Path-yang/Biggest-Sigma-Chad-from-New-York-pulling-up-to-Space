@@ -2398,16 +2398,16 @@ Raw counts: ${fmt(fy[i].naive)}`
         (c) => `${c.ytd.med > 0 ? times(c.ytd.cur / c.ytd.med) + " the typical " + c.ytd.span + ", " : ""}${rankWords(c.ytd.rank, c.ytd.n)} for the same dates`
       ]);
     let h2 = `<div class="sh"></div>` + C.map((c) => `<div class="sh"><i style="background:${STC[c.st]}"></i>${NAME[c.st]}</div>`).join("");
-    for (const [label, val, num4, sub] of rowsDef) {
-      const mx = num4 ? Math.max(...C.map(num4)) : 0;
+    for (const [label, val, num5, sub] of rowsDef) {
+      const mx = num5 ? Math.max(...C.map(num5)) : 0;
       h2 += `<div class="sl">${label}</div>` + C.map(
-        (c) => `<div class="sv"><b>${val(c)}</b>${sub ? `<small>${sub(c)}</small>` : ""}${num4 ? `<div class="bar" style="width:${mx ? Math.max(0.5, num4(c) / mx * 100) : 0}%;background:${STC[c.st]}"></div>` : ""}</div>`
+        (c) => `<div class="sv"><b>${val(c)}</b>${sub ? `<small>${sub(c)}</small>` : ""}${num5 ? `<div class="bar" style="width:${mx ? Math.max(0.5, num5(c) / mx * 100) : 0}%;background:${STC[c.st]}"></div>` : ""}</div>`
       ).join("");
     }
     $("score").innerHTML = h2;
     const key = C.map((c) => `<span><i style="background:${STC[c.st]};height:3px"></i>${NAME[c.st]}</span>`).join("");
     $("cmpKey1").innerHTML = $("cmpKey2").innerHTML = key;
-    const share2 = (c) => c.R.stats.map((z) => c.R.total ? z.sum / c.R.total * 100 : 0), idx = (c) => c.R.years.filter((y) => !y.part).map((y) => c.mean ? y.h / c.mean : 0), xs = C[0].R.years.filter((y) => !y.part).map((y) => y.y);
+    const share2 = (c) => c.R.stats.map((z) => c.R.total ? z.sum / c.R.total * 100 : 0), idx2 = (c) => c.R.years.filter((y) => !y.part).map((y) => c.mean ? y.h / c.mean : 0), xs = C[0].R.years.filter((y) => !y.part).map((y) => y.y);
     lines(
       $("chCmpMonths"),
       MON,
@@ -2425,7 +2425,7 @@ Raw counts: ${fmt(fy[i].naive)}`
     lines(
       $("chCmpYears"),
       xs,
-      C.map((c) => ({ name: NAME[c.st], c: STC[c.st], v: idx(c) })),
+      C.map((c) => ({ name: NAME[c.st], c: STC[c.st], v: idx2(c) })),
       {
         W: 560,
         h: 250,
@@ -2434,7 +2434,7 @@ Raw counts: ${fmt(fy[i].naive)}`
         every: 9,
         fy: (v) => v + "\xD7",
         aria: "Each year against the state's own average",
-        tip: (i) => xs[i] + "\n" + C.map((c) => `${NAME[c.st]}: ${times(idx(c)[i])} its average (${fmt(c.R.years[i].h)} hotspots)`).join("\n")
+        tip: (i) => xs[i] + "\n" + C.map((c) => `${NAME[c.st]}: ${times(idx2(c)[i])} its average (${fmt(c.R.years[i].h)} hotspots)`).join("\n")
       }
     );
     $("twoCal").innerHTML = C.map(
@@ -4279,6 +4279,115 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   }
   var loadFonts = () => style(FONTS);
 
+  // src/prov.ts
+  var PROV_DIR = "provinces/v1";
+  var isProvince = (x) => isObj(x) && typeof x.id === "string" && typeof x.name === "string" && Array.isArray(x.aliases) && isNums(x.bbox, 4) && isNums(x.monthly) && isNums(x.per_year) && isNums(x.usual, 12) && isNums(x.watch, 12) && typeof x.total === "number" && isObj(x.geometry) && (x.geometry.type === "Polygon" || x.geometry.type === "MultiPolygon");
+  var isFile = (k) => (x) => isObj(x) && x.v === 1 && x.country === k && typeof x.y0 === "number" && typeof x.n_months === "number" && Array.isArray(x.watch_years) && typeof x.last_date === "string" && (x.partial === null || isObj(x.partial) && ["y", "m", "i", "day0", "day1"].every((f) => typeof x.partial[f] === "number")) && Array.isArray(x.provinces) && x.provinces.every(isProvince);
+  var outlineName = (f) => f.boundaries?.source === "geoBoundaries" ? "geoBoundaries" : "Natural Earth";
+  var outlineCredit = (f) => outlineName(f) === "geoBoundaries" ? (f.licence ?? "").split(" Fire values")[0].trim() || "Province boundaries: geoBoundaries (Runfola et al. 2020, geoboundaries.org)." : "Outlines: Natural Earth (public domain).";
+  var loadProvinces = (k) => loadChecked(`${PROV_DIR}/${encodeURIComponent(k)}.json`, isFile(k), 25e3);
+  var median2 = (a) => {
+    const s2 = [...a].sort((x, y) => x - y), h2 = s2.length >> 1;
+    return !s2.length ? 0 : s2.length % 2 ? s2[h2] : (s2[h2 - 1] + s2[h2]) / 2;
+  };
+  function frameOf(f) {
+    const pi = f.partial ? f.partial.i : f.n_months, lastFull = pi - 1, cy = f.y0 + Math.floor(lastFull / 12), cm = lastFull % 12 + 1, yb = cm === 12 ? cy : cy - 1;
+    return { pi, lastFull, cy, cm, yb, next: f.partial ? f.partial.m % 12 : lastFull % 12 === 11 ? 0 : lastFull % 12 + 1 };
+  }
+  var idx = (f, y, m) => (y - f.y0) * 12 + m;
+  function soFar(f, p) {
+    const fr = frameOf(f), sumYear = (y) => {
+      let s2 = 0;
+      for (let m = 0; m < fr.cm; m++) s2 += p.monthly[idx(f, y, m)] ?? 0;
+      return s2;
+    };
+    const past = [];
+    for (let y = f.y0; y <= fr.yb && y < fr.cy; y++) past.push(sumYear(y));
+    return { cur: fr.cy > fr.yb ? sumYear(fr.cy) : 0, usual: median2(past), months: fr.cm, y: fr.cy };
+  }
+  function busiestMonth(f, p) {
+    const fr = frameOf(f), sums = new Array(12).fill(0);
+    for (let y = f.y0; y <= fr.yb; y++) for (let m = 0; m < 12; m++) sums[m] += p.monthly[idx(f, y, m)] ?? 0;
+    let best = 0;
+    for (let m = 1; m < 12; m++) if (sums[m] > sums[best]) best = m;
+    return { m: best, sum: sums[best] };
+  }
+  function worstYear(f, p) {
+    const fr = frameOf(f);
+    let y = -1, v = 0;
+    p.per_year.forEach((n, i) => {
+      if (f.y0 + i <= fr.yb && n > v) {
+        v = n;
+        y = f.y0 + i;
+      }
+    });
+    return { y, v };
+  }
+  function levels(ps, m) {
+    const r = [...ps].sort((a, b) => b.watch[m] - a.watch[m]), total2 = r.reduce((s2, x) => s2 + x.watch[m], 0), out = /* @__PURE__ */ new Map();
+    let cum = 0;
+    for (const x of r) {
+      const e = x.watch[m];
+      out.set(x, total2 > 0 && e >= 1 && cum < 0.5 * total2 ? "high" : total2 > 0 && e >= 1 && cum < 0.8 * total2 ? "elevated" : "low");
+      cum += e;
+    }
+    return out;
+  }
+  var nameKey = (s2) => s2.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  var KIND = /\b(state|province|provincia|provincie|region|regione|department|departement|departamento|district|county|oblast|krai|kray|governorate|prefecture|territory|municipality|canton|voivodeship|division|emirate|parish|autonomous|republic|federal|capital|area|of|the|de|del|do|da)\b/giu;
+  var stripKind = (s2) => s2.replace(KIND, " ");
+  function provinceNamed(f, name) {
+    const first = name.split(",")[0];
+    for (const raw of [name, first, stripKind(first)]) {
+      const k = nameKey(raw);
+      if (!k) continue;
+      const hit = f.provinces.find((p) => p.iso && nameKey(p.iso) === k || nameKey(p.id) === k) ?? f.provinces.find((p) => nameKey(p.name) === k) ?? f.provinces.find((p) => p.aliases.some((a) => nameKey(a) === k)) ?? f.provinces.find((p) => nameKey(stripKind(p.name)) === k) ?? f.provinces.find((p) => p.aliases.some((a) => nameKey(stripKind(a)) === k));
+      if (hit) return hit;
+    }
+    return null;
+  }
+  function searchProvinces(f, q, max = 8) {
+    const k = nameKey(q);
+    if (!k) return [];
+    const score = (p) => {
+      const n = nameKey(p.name);
+      if (n.startsWith(k)) return 0;
+      if (n.includes(k)) return 1;
+      if (p.aliases.some((a) => nameKey(a).startsWith(k))) return 2;
+      if (p.aliases.some((a) => nameKey(a).includes(k))) return 3;
+      return 9;
+    };
+    return f.provinces.map((p) => ({ p, s: score(p) })).filter((x) => x.s < 9).sort((a, b) => a.s - b.s || b.p.total - a.p.total).slice(0, max).map((x) => x.p);
+  }
+  function shapeNear(p, lon02) {
+    const polys = p.geometry.type === "Polygon" ? [p.geometry.coordinates] : p.geometry.coordinates;
+    let w = Infinity, s2 = Infinity, e = -Infinity, n = -Infinity;
+    const out = polys.map((poly2) => {
+      const first = poly2[0]?.[0];
+      const off = first ? near(first[0], lon02) - first[0] : 0;
+      return poly2.map(
+        (ring2) => ring2.map(([x, y]) => {
+          const X = x + off;
+          if (X < w) w = X;
+          if (X > e) e = X;
+          if (y < s2) s2 = y;
+          if (y > n) n = y;
+          return [X, y];
+        })
+      );
+    });
+    return { geometry: { type: "MultiPolygon", coordinates: out }, box: [w, s2, e, n] };
+  }
+  function provinceOfMark(f, name, box2, lon02) {
+    const p = provinceNamed(f, name);
+    if (!p) return null;
+    const sh = shapeNear(p, lon02), off = near((box2[0] + box2[2]) / 2, lon02) - (box2[0] + box2[2]) / 2, nb = [box2[0] + off, box2[1], box2[2] + off, box2[3]];
+    if (!(sh.box[0] <= nb[2] + 0.5 && sh.box[2] >= nb[0] - 0.5 && sh.box[1] <= nb[3] + 0.5 && sh.box[3] >= nb[1] - 0.5)) return null;
+    const area = (b) => Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+    if (area(nb) < 0.1 * area(sh.box)) return null;
+    return { p, ...sh };
+  }
+
   // src/cmap.ts
   var STYLE = "https://tiles.openfreemap.org/styles/positron";
   var FIRE = ["#fed976", "#feb24c", "#fd8d3c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026"];
@@ -4396,13 +4505,13 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     let bounds = all;
     if (cells.length) {
       const wt = cells.map((f) => Math.max(f.properties.n, 0.01)), sum2 = wt.reduce((a, b) => a + b, 0), at = (key, q) => {
-        const idx = cells.map((_, i) => i).sort((a, b) => key(a) - key(b));
+        const idx2 = cells.map((_, i) => i).sort((a, b) => key(a) - key(b));
         let acc = 0;
-        for (const i of idx) {
+        for (const i of idx2) {
           acc += wt[i];
           if (acc >= q * sum2) return key(i);
         }
-        return key(idx[idx.length - 1]);
+        return key(idx2[idx2.length - 1]);
       }, edge = (i, k) => cells[i].geometry.coordinates[0][k * 2], w = at((i) => edge(i, 0)[0], 0.01), s0 = at((i) => edge(i, 0)[1], 0.01), e = at((i) => edge(i, 1)[0], 0.99), n = at((i) => edge(i, 1)[1], 0.99), dx = (e - w) * 0.06, dy = (n - s0) * 0.06;
       bounds = pad([w - dx, s0 - dy, e + dx, n + dy]);
     }
@@ -4682,7 +4791,28 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     });
     return true;
   }
+  var marksSeq = 0;
   function mapMarks(marks) {
+    const ok = drawMarks(marks), mine = ++marksSeq, k = L && L.ready ? L.k : null;
+    if (!ok || !k || !marks.some((m) => m.box)) return ok;
+    loadProvinces(k).then(
+      (P) => {
+        if (mine !== marksSeq || !L || !L.ready || L.k !== k) return;
+        let changed = false;
+        const out = marks.map((mk) => {
+          const hit = mk.box ? provinceOfMark(P, mk.name, mk.box, lon0()) : null;
+          if (!hit) return mk;
+          changed = true;
+          return { ...mk, geometry: hit.geometry, box: hit.box };
+        });
+        if (changed) drawMarks(out);
+      },
+      () => {
+      }
+    );
+    return ok;
+  }
+  function drawMarks(marks) {
     if (!L || !L.ready) return false;
     const map2 = L.map, off = (b) => near((b[0] + b[2]) / 2, lon0()) - (b[0] + b[2]) / 2;
     const features = marks.flatMap((mk) => {
@@ -5439,20 +5569,20 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     GRIDS.set(k, p);
     return p;
   }
-  function seriesOf(g, idx) {
+  function seriesOf(g, idx2) {
     const S3 = new Float64Array(g.nm);
-    for (let k = 0; k < idx.length; k++) {
-      const o = idx[k] * g.nm;
+    for (let k = 0; k < idx2.length; k++) {
+      const o = idx2[k] * g.nm;
       for (let i = 0; i < g.nm; i++) S3[i] += g.v[o + i];
     }
     return S3;
   }
-  function median2(a) {
+  function median3(a) {
     const s2 = Array.from(a).sort((x, y) => x - y), h2 = s2.length >> 1;
     if (!s2.length) return 0;
     return s2.length % 2 ? s2[h2] : (s2[h2 - 1] + s2[h2]) / 2;
   }
-  function frameOf(g) {
+  function frameOf2(g) {
     const lastFull = g.partial ? g.partial.i - 1 : g.nm - 1, cy = g.y0 + Math.floor((g.nm - 1) / 12), yb = g.y0 + Math.floor((lastFull + 1) / 12) - 1, cyLast = lastFull - (cy - g.y0) * 12;
     return { y0: g.y0, nm: g.nm, yb, cy, cyLast, partial: g.partial };
   }
@@ -5464,7 +5594,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     for (let m = 0; m < 12; m++) {
       const v = [];
       for (let y = F2.y0; y <= F2.yb; y++) v.push(S3[idxOf(F2, y, m)]);
-      usual.push(median2(v));
+      usual.push(median3(v));
     }
     const years = [];
     for (let y = F2.y0; y <= F2.yb; y++) {
@@ -5487,7 +5617,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
         y: F2.cy,
         last: F2.cyLast,
         cur: cur2,
-        usual: median2(past),
+        usual: median3(past),
         /* sums of rounded values: equal within a tenth */
         rank: 1 + past.filter((v) => v > cur2 + 0.05).length,
         ties: past.filter((v) => Math.abs(v - cur2) <= 0.05).length,
@@ -5505,13 +5635,13 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     const top = years.length ? years.reduce((a, r) => r.v > a.v ? r : a, years[0]) : null;
     const share2 = [];
     for (let m = 0; m < 12; m++)
-      share2.push(median2(years.filter((r) => r.v > 0).map((r) => S3[idxOf(F2, r.y, m)] / r.v * 100)));
+      share2.push(median3(years.filter((r) => r.v > 0).map((r) => S3[idxOf(F2, r.y, m)] / r.v * 100)));
     const trend2 = mean >= TREND_MIN_MEAN && years.filter((r) => r.v >= 1).length >= TREND_MIN_YEARS ? trendOf(years, F2.y0) : null;
     return {
       usual,
       share: share2,
       years,
-      usualYear: median2(years.map((r) => r.v)),
+      usualYear: median3(years.map((r) => r.v)),
       ytd,
       part,
       peak,
@@ -5529,7 +5659,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
         slopes.push((l[j] - l[i]) / (x[j] - x[i]));
         S3 += Math.sign(years[j].v - years[i].v);
       }
-    const b = median2(slopes), a = median2(l.map((v, i) => v - b * x[i]));
+    const b = median3(slopes), a = median3(l.map((v, i) => v - b * x[i]));
     const groups = /* @__PURE__ */ new Map();
     for (const r of years) groups.set(r.v, (groups.get(r.v) ?? 0) + 1);
     let tie = 0;
@@ -5542,7 +5672,7 @@ Seen in ${year}${r.part ? ` (${r.part})` : ""}: ${fmt(r.obs)}${r.part ? "" : r.o
     return Array.from({ length: 10 }, (_, k) => lastY - 9 + k).filter((y) => y >= F2.y0);
   }
   function estimate(F2, S3, m, years) {
-    const vals = years.map((y) => S3[idxOf(F2, y, m)]), med = median2(vals), last3 = vals.slice(-3), recent = last3.reduce((a, b) => a + b, 0) / Math.max(1, last3.length), sorted = vals.slice().sort((a, b) => a - b), q = (f) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))))] ?? 0;
+    const vals = years.map((y) => S3[idxOf(F2, y, m)]), med = median3(vals), last3 = vals.slice(-3), recent = last3.reduce((a, b) => a + b, 0) / Math.max(1, last3.length), sorted = vals.slice().sort((a, b) => a - b), q = (f) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))))] ?? 0;
     return { vals, med, recent, expected: 0.6 * med + 0.4 * recent, lo: q(0.2), hi: q(0.8), active: vals.filter((v) => v >= 1).length };
   }
 
@@ -6001,10 +6131,10 @@ Click to show ${r.y} on the map`
     const c = A.g?.cell ?? 0, ns = c * 111.2, ew = ns * Math.cos(lat * Math.PI / 180), r = (v) => v >= 20 ? Math.round(v / 5) * 5 : Math.max(1, Math.round(v));
     return `${c}\xB0` + (ew < ns * 0.85 ? ` (about ${r(ns)} by ${r(ew)} km here)` : ` (about ${r(ns)} km)`);
   }
-  var meanLat = (idx) => {
+  var meanLat = (idx2) => {
     let t = 0;
-    for (let k = 0; k < idx.length; k++) t += A.g.lat[idx[k]];
-    return idx.length ? t / idx.length : 0;
+    for (let k = 0; k < idx2.length; k++) t += A.g.lat[idx2[k]];
+    return idx2.length ? t / idx2.length : 0;
   };
   var STACKED = "(max-width: 900px), (max-height: 560px)";
   var phone2 = () => matchMedia(STACKED).matches;
@@ -6218,7 +6348,7 @@ Click to show ${r.y} on the map`
         loading = false;
         if (A.k !== k) return;
         A.g = g;
-        A.F = frameOf(g);
+        A.F = frameOf2(g);
         A.err = "";
         A.seasonY = A.F.cy;
         A.time = { on: A.time.on, y: A.F.cy > A.F.yb ? A.F.cy : A.F.yb, m: A.F.cy > A.F.yb ? A.F.cyLast : 11 };
@@ -6336,14 +6466,14 @@ Click to show ${r.y} on the map`
     requestAnimationFrame(() => A.map?.resize());
   }
   function makeArea(shape) {
-    const g = A.g, F2 = A.F, idx = [];
-    if (!shape) for (let c = 0; c < g.n; c++) idx.push(c);
+    const g = A.g, F2 = A.F, idx2 = [];
+    if (!shape) for (let c = 0; c < g.n; c++) idx2.push(c);
     else {
       const inside = tester(shape);
-      for (let c = 0; c < g.n; c++) if (inside(g.lat[c], g.lon[c])) idx.push(c);
+      for (let c = 0; c < g.n; c++) if (inside(g.lat[c], g.lon[c])) idx2.push(c);
     }
-    const S3 = seriesOf(g, idx);
-    return { shape, idx: Int32Array.from(idx), S: S3, st: stats(F2, S3) };
+    const S3 = seriesOf(g, idx2);
+    return { shape, idx: Int32Array.from(idx2), S: S3, st: stats(F2, S3) };
   }
   var LETTERS = "ABCD";
   function asPin(a, want) {
@@ -7172,7 +7302,7 @@ Click to show ${r.y} on the map`
   var coarse = () => matchMedia("(pointer: coarse)").matches;
   var FRAMES = /* @__PURE__ */ new WeakMap();
   var keyOf = (la, lo) => (la + 4e3) * 2e4 + (lo + 8e3);
-  function frameOf2(d) {
+  function frameOf3(d) {
     const had = FRAMES.get(d);
     if (had) return had;
     const { la, lo } = cellIndexes(d), lon02 = centreLon(d, lo), md = mapData(d, d.y0, d.y1), area = (b) => Math.max(1e-6, (b[2] - b[0]) * (b[3] - b[1])), bounds = area(md.all) > 4 * area(md.bounds) ? md.bounds : md.all, kx = Math.max(0.2, Math.cos((bounds[1] + bounds[3]) / 2 * Math.PI / 180)), key = /* @__PURE__ */ new Map();
@@ -7182,11 +7312,11 @@ Click to show ${r.y} on the map`
     return f;
   }
   function cellCentre(d, c) {
-    const f = frameOf2(d);
+    const f = frameOf3(d);
     return [(f.la[c] + 0.5) * d.cell, near((f.lo[c] + 0.5) * d.cell, 0)];
   }
   function drawMini(host, d, o) {
-    const F2 = frameOf2(d), cell = d.cell, X = (lonU) => (lonU - F2.lon0) * F2.kx * S2, Y = (lat) => -lat * S2, west = (c) => near(F2.lo[c] * cell + cell / 2, F2.lon0) - cell / 2;
+    const F2 = frameOf3(d), cell = d.cell, X = (lonU) => (lonU - F2.lon0) * F2.kx * S2, Y = (lat) => -lat * S2, west = (c) => near(F2.lo[c] * cell + cell / 2, F2.lon0) - cell / 2;
     let [x0, y0, x1, y1] = [X(F2.bounds[0]), Y(F2.bounds[3]), X(F2.bounds[2]), Y(F2.bounds[1])];
     for (const m of o.marks || []) {
       const w = west(m.c), s2 = F2.la[m.c] * cell;
@@ -7693,7 +7823,7 @@ Click to show ${r.y} on the map`
   function fcGlance(F2, d) {
     if (F2.hist.annual_mean === 0 && F2.year["2026"].mean === 0) return null;
     const C = checkOf(F2, d), skill2 = skilled(F2), m = C ? C.mon : (d.partial?.m ?? (/* @__PURE__ */ new Date()).getMonth() + 1) - 1, next = C ? m + 1 : m, pAny = skill2 ? F2.month.p_any[next] : F2.hist.p_any[next % 12];
-    const soFar = C ? {
+    const soFar2 = C ? {
       label: `${MONL[m]} so far`,
       value: C.obs[C.full] > 0 ? nHot3(C.obs[C.full]) : "None yet",
       title: `1\u2013${C.day} ${MONL[m]} 2026, as the satellites saw it`
@@ -7706,7 +7836,7 @@ Click to show ${r.y} on the map`
     } : null;
     return {
       vs,
-      soFar,
+      soFar: soFar2,
       chance: {
         label: `Chance of fire in ${MONL[next % 12]}${next >= 12 ? " 2027" : ""}`,
         value: pc(pAny),
@@ -8625,6 +8755,159 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     return loading2;
   }
 
+  // src/fine.ts
+  var FINE_DIR = "fine/v1";
+  var FINE_CELL = 0.05;
+  var isIndex = (k) => (x) => isObj(x) && x.country === k && isNums(x.years) && Array.isArray(x.files) && x.files.every((f) => isObj(f) && typeof f.file === "string" && isNums(f.bbox, 4));
+  function getJson(url, ms) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    return fetch(url, { signal: ctl.signal }).then((r) => {
+      if (!r.ok) throw new Error(`Hugging Face answered ${r.status}`);
+      return r.json();
+    }).finally(() => clearTimeout(t));
+  }
+  var INDEX = /* @__PURE__ */ new Map();
+  function fineIndex(k) {
+    let p = INDEX.get(k);
+    if (!p) {
+      p = getJson(fileUrl(`${FINE_DIR}/${encodeURIComponent(k)}/index.json`), 2e4).then((x) => {
+        if (!isIndex(k)(x)) throw new Error("The fine grid index is not in the expected format");
+        return x;
+      });
+      p.catch(() => INDEX.delete(k));
+      INDEX.set(k, p);
+    }
+    return p;
+  }
+  function decode2(t) {
+    if (!isObj(t) || !isNums(t.rows) || !isNums(t.origin, 2) || !isNums(t.years)) throw new Error("bad tile");
+    const R = t.rows, ny = t.years.length;
+    let n = 0;
+    for (let p = 0; p < R.length; n++) p += 4 + 2 * R[p + 3];
+    const out = {
+      y0: t.years[0],
+      ny,
+      la: new Int32Array(n),
+      lo: new Int32Array(n),
+      total: new Float32Array(n),
+      years: new Float32Array(n * ny)
+    };
+    for (let p = 0, i = 0; p < R.length; i++) {
+      const k = R[p + 3];
+      out.la[i] = t.origin[0] + R[p];
+      out.lo[i] = t.origin[1] + R[p + 1];
+      out.total[i] = R[p + 2];
+      p += 4;
+      for (let j = 0; j < k; j++, p += 2) out.years[i * ny + R[p]] = R[p + 1];
+    }
+    return out;
+  }
+  var KEEP2 = 48;
+  var MAX_FLIGHT = 3;
+  var TILES2 = /* @__PURE__ */ new Map();
+  var FLIGHT = /* @__PURE__ */ new Set();
+  var FAILED = /* @__PURE__ */ new Set();
+  var queue = [];
+  var gen = 0;
+  function fineStop() {
+    gen++;
+    queue = [];
+  }
+  var requests = 0;
+  function pump() {
+    while (FLIGHT.size < MAX_FLIGHT && queue.length) {
+      const { path, done } = queue.shift();
+      if (TILES2.has(path) || FLIGHT.has(path)) continue;
+      FLIGHT.add(path);
+      requests++;
+      getJson(fileUrl(path), 3e4).then(decode2).then(
+        (t) => {
+          TILES2.set(path, t);
+          while (TILES2.size > KEEP2) TILES2.delete(TILES2.keys().next().value);
+          done();
+        },
+        () => FAILED.add(path)
+      ).finally(() => {
+        FLIGHT.delete(path);
+        pump();
+      });
+    }
+  }
+  var shifted = (b, lon02) => {
+    const off = near((b[0] + b[2]) / 2, lon02) - (b[0] + b[2]) / 2;
+    return [b[0] + off, b[1], b[2] + off, b[3]];
+  };
+  var meets = (a, b) => a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+  function filesIn(ix2, k, view, lon02, max = 16) {
+    const cx = (view[0] + view[2]) / 2, cy = (view[1] + view[3]) / 2;
+    return ix2.files.map((f) => ({ f, b: shifted(f.bbox, lon02) })).filter((x) => meets(x.b, view)).sort(
+      (a, b) => Math.hypot((a.b[0] + a.b[2]) / 2 - cx, (a.b[1] + a.b[3]) / 2 - cy) - Math.hypot((b.b[0] + b.b[2]) / 2 - cx, (b.b[1] + b.b[3]) / 2 - cy)
+    ).slice(0, max).map((x) => `${FINE_DIR}/${encodeURIComponent(k)}/${x.f.file}`);
+  }
+  function wantFine(k, view, lon02, arrived) {
+    const g = ++gen;
+    return fineIndex(k).then((ix2) => {
+      const paths = filesIn(ix2, k, view, lon02);
+      if (g !== gen) return { wanted: paths.length, have: paths.filter((p) => TILES2.has(p)).length, empty: !ix2.files.length };
+      queue = paths.filter((p) => !TILES2.has(p) && !FLIGHT.has(p) && !FAILED.has(p)).map((path) => ({ path, done: arrived }));
+      pump();
+      return { wanted: paths.length, have: paths.filter((p) => TILES2.has(p)).length, empty: !ix2.files.length };
+    });
+  }
+  function fineFeatures(k, view, lon02, year) {
+    const features = [], pre = `${FINE_DIR}/${encodeURIComponent(k)}/`, c = FINE_CELL, padX = (view[2] - view[0]) * 0.1, padY = (view[3] - view[1]) * 0.1;
+    let max = 0;
+    for (const [path, t] of TILES2) {
+      if (!path.startsWith(pre)) continue;
+      const yi = year == null ? -1 : year - t.y0;
+      if (year != null && (yi < 0 || yi >= t.ny)) continue;
+      for (let i = 0; i < t.la.length; i++) {
+        const v = yi < 0 ? t.total[i] : t.years[i * t.ny + yi];
+        if (!(v > 0)) continue;
+        const s2 = t.la[i] * c, w = near(t.lo[i] * c + c / 2, lon02) - c / 2;
+        if (w + c < view[0] - padX || w > view[2] + padX || s2 + c < view[1] - padY || s2 > view[3] + padY) continue;
+        const e = w + c, n = s2 + c, r = (x) => Math.round(x * 1e4) / 1e4;
+        if (v > max) max = v;
+        features.push({
+          type: "Feature",
+          properties: { n: Math.round(v * 10) / 10, la: t.la[i], lo: t.lo[i] },
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [r(w), r(s2)],
+                [r(e), r(s2)],
+                [r(e), r(n)],
+                [r(w), r(n)],
+                [r(w), r(s2)]
+              ]
+            ]
+          }
+        });
+      }
+    }
+    return { type: "FeatureCollection", features, max };
+  }
+  function fineCell(k, la, lo) {
+    const pre = `${FINE_DIR}/${encodeURIComponent(k)}/`;
+    for (const [path, t] of TILES2) {
+      if (!path.startsWith(pre)) continue;
+      for (let i = 0; i < t.la.length; i++)
+        if (t.la[i] === la && t.lo[i] === lo)
+          return { y0: t.y0, total: t.total[i], years: Array.from(t.years.subarray(i * t.ny, (i + 1) * t.ny)) };
+    }
+    return null;
+  }
+  function fineValues(k, perYear2) {
+    const pre = `${FINE_DIR}/${encodeURIComponent(k)}/`, out = [];
+    for (const [path, t] of TILES2) {
+      if (!path.startsWith(pre)) continue;
+      if (!perYear2) out.push(...t.total);
+      else for (const v of t.years) if (v > 0) out.push(v);
+    }
+    return out;
+  }
+
   // src/glance.ts
   var STYLE4 = "https://tiles.openfreemap.org/styles/dark";
   var FALLBACK2 = { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#05070c" } }] };
@@ -8655,7 +8938,14 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     ready: false,
     byKey: null,
     lon0: 0,
-    yearScale: null
+    yearScale: null,
+    P: null,
+    pMsg: "",
+    pMode: "all",
+    pSel: null,
+    pAll: false,
+    fineOn: false,
+    fineSel: null
   };
   var mapSeq = 0;
   var glanceKey = () => G.k || null;
@@ -8672,6 +8962,12 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     G.year = null;
     G.sel = -1;
     G.marks = [];
+    G.P = null;
+    G.pSel = null;
+    G.pAll = false;
+    G.fineOn = false;
+    G.fineSel = null;
+    hovered = null;
     G.lon0 = shapeOf(k)?.c[0] ?? 0;
     el.hidden = false;
     $("gName").textContent = nameOf(k);
@@ -8684,16 +8980,21 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     $("gStates").hidden = k !== "United_States";
     $("gHint").textContent = "";
     $("gCard").scrollTop = 0;
+    $("gProvQ").value = "";
     requestAnimationFrame(() => el.classList.add("in"));
     trackSheet();
     startMap(k);
     load4(k);
+    loadProv(k);
   }
   function closeGlance() {
     if (G.k === null) return;
+    fineStop();
     mapSeq++;
     G.k = null;
     G.d = G.R = G.F = G.S = null;
+    G.P = null;
+    G.pSel = null;
     G.byKey = null;
     G.yearScale = null;
     G.ready = false;
@@ -8728,6 +9029,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       setupYears(d);
       renderCard2();
       drawCells(true);
+      drawProv();
       extras(k);
     }).catch((e) => {
       if (G.k !== k) return;
@@ -8806,7 +9108,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       if (t2) lead2 += " " + soFarWords(t2, !!jc?.warn);
       if (t2 && jc?.warn)
         lead2 += ` Read ${t2.y} here with care: run on 2025, the method used for ${t2.y} came out ${Math.abs(jc.V_pct).toFixed(0)}% ${jc.V_pct > 0 ? "higher" : "lower"} than the archive.`;
-      if (VOLCANIC.has(d.country)) lead2 += " Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.";
+      if (VOLCANIC.has(d.country))
+        lead2 += " Most of these detections are lava from eruptions, which the satellites cannot tell apart from fire.";
     }
     $("gLead").textContent = lead2;
     const rows = [];
@@ -8847,6 +9150,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   }
   function pickCard() {
     const d = G.d, c = G.sel;
+    if (d && G.fineSel) return fineCard(d, G.fineSel);
     if (!d || c < 0) {
       $("gPick").hidden = true;
       return;
@@ -8936,9 +9240,16 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       if (k)
         sum2 = `<p class="hint">${rings.length ? `Squares whose middle is in ${esc10(one.name)}` : "Squares inside the frame"}: ${nHot5(n)}, ${yearWords(d, G.year)}.</p>`;
     }
+    const pv = one ? resolved.get(one) : void 0;
+    if (d && pv && G.P) {
+      const v = G.year == null ? pv.total : pv.per_year[G.year - G.P.y0] ?? 0;
+      sum2 = `<p class="hint">${esc10(pv.name)}: ${nHot5(v)}, ${yearWords(d, G.year)}. Outline from ${outlineName(G.P)}.</p><button class="link" type="button" id="gNoteP">Show its numbers</button>`;
+    }
     box2.innerHTML = `<div class="gPickHead"><p class="eyebrow">From the copilot</p><button class="link" type="button" id="gNoteX">Clear</button></div><p class="gNames">${names.join(", ")}</p>${sum2}`;
     box2.hidden = false;
     $("gNoteX").onclick = () => glanceMarks([]);
+    const np = document.getElementById("gNoteP");
+    if (np && pv) np.onclick = () => selectProv(pv, false);
   }
   function setupYears(d) {
     const r = $("gYear");
@@ -8963,6 +9274,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     drawCells(false);
     pickCard();
     noteCard();
+    provCard();
+    updateFine();
   }
   function tidy(st) {
     st.layers = st.layers.filter((l) => !DROP2.test(l.id)).map((l) => {
@@ -9068,6 +9381,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     map2.addSource("outline", { type: "geojson", data: EMPTY2 });
     map2.addSource("sel", { type: "geojson", data: EMPTY2 });
     map2.addSource("ask", { type: "geojson", data: EMPTY2 });
+    map2.addSource("prov", { type: "geojson", data: EMPTY2, tolerance: 0.2 });
+    map2.addSource("fine", { type: "geojson", data: EMPTY2, tolerance: 0, buffer: 2 });
     map2.addLayer(
       { id: "cells", type: "fill", source: "cells", paint: { "fill-color": RAMP2[3], "fill-opacity": 0.92, "fill-antialias": false } },
       under
@@ -9081,6 +9396,49 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
         paint: { "line-color": RAMP2[3], "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.8, 7, 0.5, 9, 0] }
       },
       under
+    );
+    map2.addLayer(
+      { id: "fine", type: "fill", source: "fine", paint: { "fill-color": RAMP2[3], "fill-opacity": 0.95, "fill-antialias": false } },
+      under
+    );
+    map2.addLayer(
+      {
+        id: "prov-fill",
+        type: "fill",
+        source: "prov",
+        paint: {
+          "fill-color": "#dfe6f2",
+          "fill-opacity": [
+            "case",
+            ["boolean", ["feature-state", "sel"], false],
+            0.07,
+            ["boolean", ["feature-state", "hover"], false],
+            0.05,
+            0
+          ]
+        }
+      },
+      labels
+    );
+    map2.addLayer(
+      {
+        id: "prov-line",
+        type: "line",
+        source: "prov",
+        paint: {
+          "line-color": ["case", ["boolean", ["feature-state", "sel"], false], "#ffffff", "#c9d3e3"],
+          "line-width": ["case", ["boolean", ["feature-state", "sel"], false], 2.4, ["boolean", ["feature-state", "hover"], false], 1.6, 0.7],
+          "line-opacity": [
+            "case",
+            ["boolean", ["feature-state", "sel"], false],
+            1,
+            ["boolean", ["feature-state", "hover"], false],
+            0.85,
+            0.3
+          ]
+        }
+      },
+      labels
     );
     map2.addLayer(
       {
@@ -9155,20 +9513,42 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       clear();
       map2.getCanvas().style.cursor = "";
     });
-    map2.on("click", (e) => {
-      const f = map2.queryRenderedFeatures(e.point, { layers: ["cells"] })[0];
-      if (!f || !G.d || !G.byKey) return;
-      const p = f.properties, c = G.byKey.get(Math.round(p.s / G.d.cell) + "|" + Math.round(p.w / G.d.cell));
-      if (c != null) pick(c === G.sel ? -1 : c);
+    let provHover = null;
+    map2.on("mousemove", (e) => {
+      const f = map2.queryRenderedFeatures(e.point, { layers: ["prov-fill"] })[0], id = f ? f.id : null;
+      if (id === provHover) return;
+      hoverProv(id);
+      provHover = id;
     });
+    map2.on("mouseout", () => {
+      hoverProv(null);
+      provHover = null;
+    });
+    map2.on("click", (e) => {
+      if (!G.d) return;
+      const ff = G.fineOn ? map2.queryRenderedFeatures(e.point, { layers: ["fine"] })[0] : null;
+      if (ff) {
+        const q = ff.properties, same = G.fineSel && G.fineSel.la === q.la && G.fineSel.lo === q.lo;
+        return pickFine(same ? null : { la: q.la, lo: q.lo });
+      }
+      const f = G.fineOn ? null : map2.queryRenderedFeatures(e.point, { layers: ["cells"] })[0];
+      if (f && G.byKey) {
+        const p = f.properties, c = G.byKey.get(Math.round(p.s / G.d.cell) + "|" + Math.round(p.w / G.d.cell));
+        if (c != null) return pick(c === G.sel ? -1 : c);
+      }
+      const pf = map2.queryRenderedFeatures(e.point, { layers: ["prov-fill"] })[0], pv = pf && G.P ? G.P.provinces[pf.id] : null;
+      if (pv) selectProv(pv === G.pSel ? null : pv, false);
+    });
+    map2.on("moveend", updateFine);
     drawCells(true);
-    drawMarks();
+    drawMarks2();
+    drawProv();
   }
   function drawCells(frame2) {
     const d = G.d;
     if (!d) return;
     const data = mapData(d, G.year ?? d.y0, G.year ?? d.y1), sc = G.year != null && G.yearScale ? G.yearScale : data, cols = classColours(sc.breaks, RAMP2);
-    legend4(sc.breaks, sc.max, cols, data.n);
+    if (!G.fineOn) legend4(sc.breaks, sc.max, cols, data.n);
     if (!G.ready || !G.map) return;
     const map2 = G.map, fill = sc.breaks.length ? ["step", ["get", "n"], cols[0], ...sc.breaks.flatMap((b, i) => [b, cols[i + 1]])] : cols[0];
     map2.getSource("cells").setData(data.cells);
@@ -9180,16 +9560,17 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       map2.fitBounds([b.slice(0, 2), b.slice(2)], { padding: padding(), duration: 700 });
     }
   }
-  function legend4(breaks, max, cols, n) {
+  function legend4(breaks, max, cols, n, title = "") {
     if (!n) {
       $("gLeg").innerHTML = `<span class="gLegT">No hotspots ${G.year == null ? "in these years" : "this year"}</span>`;
       return;
     }
     const steps = breaks.length ? cols.map((c, i) => `<span class="gStep"><i style="background:${c}"></i><small>${i ? short(breaks[i - 1]) : ""}</small></span>`).join("") + `<span class="gStep gEnd"><i></i><small>${short(max)}</small></span>` : `<span class="gStep"><i style="background:${cols[0]}"></i><small>${short(max)}</small></span>`;
-    $("gLeg").innerHTML = `<span class="gLegT">${G.year == null ? "Hotspots per square, all years" : "Hotspots per square in a year, same scale for every year"}</span><span class="gKey">${steps}</span>`;
+    $("gLeg").innerHTML = `<span class="gLegT">${title || (G.year == null ? "Hotspots per square, all years" : "Hotspots per square in a year, same scale for every year")}</span><span class="gKey">${steps}</span>`;
   }
   function pick(c) {
     G.sel = c;
+    G.fineSel = null;
     pickCard();
     if (c >= 0) $("gPick").scrollIntoView({ block: "nearest", behavior: "smooth" });
     if (!G.ready || !G.map || !G.d) return;
@@ -9271,13 +9652,14 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   function glanceMarks(marks) {
     if (!G.k) return false;
     G.marks = marks;
+    resolveMarks();
     noteCard();
     if (!G.ready) return false;
-    drawMarks();
+    drawMarks2();
     if (marks.length) $("gNote").scrollIntoView({ block: "nearest" });
     return true;
   }
-  function drawMarks() {
+  function drawMarks2() {
     if (!G.ready || !G.map) return;
     const off = (b) => near((b[0] + b[2]) / 2, G.lon0) - (b[0] + b[2]) / 2;
     const features = G.marks.flatMap((mk, i) => {
@@ -9318,6 +9700,309 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       G.map.getSource("ask").setData(EMPTY2);
     }
   }
+  var TOP = 8;
+  var num3 = (v) => Math.abs(v) >= 1e4 ? short(v) : fmt(v);
+  function loadProv(k) {
+    G.pMsg = "Loading\u2026";
+    provCard();
+    loadProvinces(k).then(
+      (P) => {
+        if (G.k !== k) return;
+        G.P = P;
+        provCard();
+        drawProv();
+        resolveMarks();
+      },
+      () => {
+        if (G.k !== k) return;
+        G.pMsg = "Did not load";
+        provCard();
+      }
+    );
+  }
+  function provValue(p) {
+    const P = G.P;
+    if (G.pMode === "ytd") return soFar(P, p).cur;
+    if (G.pMode === "watch") return p.watch[frameOf(P).next];
+    return G.year == null ? p.total : p.per_year[G.year - P.y0] ?? 0;
+  }
+  var LEVEL_WORD = { high: "High", elevated: "Elevated", low: "Low" };
+  function provSource(P) {
+    const old = $("gProvOld"), note = P?.boundaries?.outdated ? P.boundaries.note : null;
+    old.textContent = note ?? "";
+    old.hidden = !note;
+    $("gProvSrc").textContent = P ? `${outlineCredit(P)} Usual is the median of the same months, ${P.y0}\u2013${frameOf(P).yb}.` : "";
+  }
+  function provCard() {
+    const box2 = $("gProv"), P = G.P;
+    if (!P) {
+      box2.hidden = !G.k;
+      $("gProvBody").innerHTML = `<p class="hint">${G.pMsg === "Did not load" ? "The states and provinces did not load from Hugging Face." : "Loading the states and provinces\u2026"}</p>`;
+      $("gProvSel").hidden = true;
+      provSource(null);
+      return;
+    }
+    box2.hidden = false;
+    provSource(P);
+    const fr = frameOf(P), many = P.provinces.length > 1 && P.provinces.some((p) => p.total > 0);
+    $("gProvTools").hidden = !many;
+    if (!many) {
+      const n = P.provinces.length;
+      $("gProvBody").innerHTML = `<p class="hint">${P.provinces.some((p) => p.total > 0) ? `${outlineName(P)} has one division here, ${esc10(P.provinces[0].name)}, so there is nothing to rank.` : `No hotspots were counted in any of its ${n === 1 ? "one division" : `${n} divisions`}, ${P.y0} to ${lastWords3(P)}.`}</p>`;
+      provSelCard();
+      return;
+    }
+    document.querySelectorAll("#gProvMode button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.m === G.pMode));
+      if (b.dataset.m === "ytd") b.textContent = `${fr.cy} so far`;
+    });
+    const nextName = MONL[fr.next], wy = P.watch_years[fr.next];
+    $("gProvWhat").textContent = G.pMode === "ytd" ? `${fr.cy}, January to ${MONL[fr.cm - 1]}, against the usual for those months (median of ${P.y0}\u2013${fr.yb}).${P.partial ? ` ${MONL[P.partial.m - 1]} so far is not in it.` : ""}` : G.pMode === "watch" ? `Where to watch in ${nextName}: hotspots to expect, from ${nextName} in ${wy ? `${wy[0]}\u2013${wy[1]}` : "the last ten years"} (a weighted median).` : G.year == null ? `Hotspots, ${P.y0} to ${lastWords3(P)}.` : `Hotspots in ${yearWords(G.d ?? { y0: P.y0, y1: fr.cy }, G.year)} (the year on the slider).`;
+    const q = $("gProvQ").value.trim();
+    let list4;
+    if (q) list4 = searchProvinces(P, q, TOP);
+    else {
+      list4 = [...P.provinces].sort((a, b) => provValue(b) - provValue(a) || a.name.localeCompare(b.name));
+      if (!G.pAll) list4 = list4.slice(0, TOP);
+    }
+    const lv = G.pMode === "watch" ? levels(P.provinces, fr.next) : null, top = Math.max(...P.provinces.map(provValue), 0);
+    const rows = list4.map((p) => {
+      const v = provValue(p), i = P.provinces.indexOf(p), extra = G.pMode === "ytd" ? ` <small>usual ${num3(soFar(P, p).usual)}</small>` : lv ? ` <small class="gLv ${lv.get(p)}">${LEVEL_WORD[lv.get(p) ?? "low"]}</small>` : "";
+      return `<li><button type="button" class="gProvRow${p === G.pSel ? " on" : ""}" data-i="${i}"><span class="gProvN">${esc10(p.name)}</span><span class="gProvV">${G.pMode === "watch" ? "about " : ""}${num3(v)}${extra}</span><i style="width:${top > 0 ? Math.max(0, Math.min(100, 100 * v / top)).toFixed(1) : 0}%"></i></button></li>`;
+    });
+    const allBtn = !q && many && P.provinces.length > TOP ? `<button class="link" type="button" id="gProvAll">${G.pAll ? "Show the top " + TOP : `Show all ${P.provinces.length}`}</button>` : "";
+    $("gProvBody").innerHTML = (rows.length ? `<ol class="gProvList">${rows.join("")}</ol>` : `<p class="hint">${q ? "No state or province by that name." : ""}</p>`) + allBtn;
+    $("gProvBody").querySelectorAll(".gProvRow").forEach((b) => {
+      const p = P.provinces[+b.dataset.i];
+      b.onclick = () => selectProv(p === G.pSel ? null : p, true);
+      b.onmouseenter = () => hoverProv(+b.dataset.i);
+      b.onmouseleave = () => hoverProv(null);
+    });
+    const ab = document.getElementById("gProvAll");
+    if (ab)
+      ab.onclick = () => {
+        G.pAll = !G.pAll;
+        provCard();
+      };
+    provSelCard();
+  }
+  var lastWords3 = (P) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(P.last_date);
+    return m ? `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}` : P.last_date;
+  };
+  function provSelCard() {
+    const P = G.P, p = G.pSel, box2 = $("gProvSel");
+    if (!P || !p) {
+      box2.hidden = true;
+      return;
+    }
+    const fr = frameOf(P), sf = soFar(P, p), bm = busiestMonth(P, p), wy = worstYear(P, p), est = (y) => y < (G.d ? G.d.viirs_from[0] : 2012), nov = P.partial ? p.monthly[P.partial.i] ?? 0 : null, nx = fr.next, lv = levels(P.provinces, nx).get(p) ?? "low";
+    const rows = [];
+    rows.push(
+      row(
+        `${sf.y} so far <small>January to ${MONL[sf.months - 1]}</small>`,
+        `${num3(sf.cur)} <small>usual ${num3(sf.usual)}</small>`,
+        `${nHot5(sf.cur)}; usual is the median of the same months in ${P.y0}\u2013${fr.yb}`
+      )
+    );
+    if (nov != null && P.partial)
+      rows.push(
+        row(
+          `${MONL[P.partial.m - 1]} ${P.partial.y} <small>${P.partial.day0}\u2013${P.partial.day1} ${MON[P.partial.m - 1]}, not complete</small>`,
+          `${num3(nov)} <small>usual whole month ${num3(p.usual[P.partial.m - 1])}</small>`
+        )
+      );
+    rows.push(row("Busiest month", bm.sum > 0 ? MONL[bm.m] : "None", `Most hotspots over ${P.y0}\u2013${fr.yb}`));
+    rows.push(
+      row(
+        `Worst complete year${wy.y > 0 && est(wy.y) ? ` <small>${EST}</small>` : ""}`,
+        wy.y > 0 ? `${wy.y}${est(wy.y) ? "*" : ""} \xB7 ${num3(wy.v)}` : "None"
+      )
+    );
+    rows.push(
+      row(
+        `Where to watch in ${MONL[nx]}`,
+        `about ${num3(p.watch[nx])} <small class="gLv ${lv}">${LEVEL_WORD[lv]}</small>`,
+        `Weighted median of ${MONL[nx]} in recent years; the level compares it with the other provinces`
+      )
+    );
+    rows.push(row(`Hotspots, ${P.y0}\u2013${lastWords3(P)}`, num3(p.total), nHot5(p.total)));
+    const kind = [p.type, p.region].filter(Boolean).map((t) => esc10(String(t))).join(" \xB7 ");
+    box2.innerHTML = `<div class="gPickHead"><p class="eyebrow">${kind || "Province"}</p><button class="link" type="button" id="gProvX">Clear</button></div><h3>${esc10(p.name)}</h3><dl class="mini">${rows.join("")}</dl><p class="hint">About ${fmt(p.area_km2)} km\xB2. Each 5.5 km square counts for the province that holds its middle. Outline: ${outlineName(P)}.</p>`;
+    box2.hidden = false;
+    $("gProvX").onclick = () => selectProv(null, false);
+  }
+  function selectProv(p, fit) {
+    const P = G.P;
+    if (G.map && G.ready && P) {
+      if (G.pSel) G.map.setFeatureState({ source: "prov", id: P.provinces.indexOf(G.pSel) }, { sel: false });
+      if (p) G.map.setFeatureState({ source: "prov", id: P.provinces.indexOf(p) }, { sel: true });
+    }
+    G.pSel = p;
+    provCard();
+    if (p) $("gProvSel").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (p && fit && G.map && G.ready) {
+      const b = shapeNear(p, G.lon0).box;
+      G.map.fitBounds([b.slice(0, 2), b.slice(2)], { padding: padding(), duration: 800, maxZoom: 9 });
+    }
+  }
+  var hovered = null;
+  function hoverProv(i) {
+    if (!G.map || !G.ready) return;
+    if (hovered != null) G.map.setFeatureState({ source: "prov", id: hovered }, { hover: false });
+    hovered = i;
+    if (i != null) G.map.setFeatureState({ source: "prov", id: i }, { hover: true });
+  }
+  function drawProv() {
+    if (!G.ready || !G.map || !G.P) return;
+    const features = G.P.provinces.map((p, i) => ({
+      type: "Feature",
+      id: i,
+      properties: { name: p.name },
+      geometry: shapeNear(p, G.lon0).geometry
+    }));
+    G.map.getSource("prov").setData({ type: "FeatureCollection", features });
+    if (G.pSel) G.map.setFeatureState({ source: "prov", id: G.P.provinces.indexOf(G.pSel) }, { sel: true });
+  }
+  var resolved = /* @__PURE__ */ new WeakMap();
+  function resolveMarks() {
+    const P = G.P;
+    if (!P || !G.marks.length) return;
+    let changed = false;
+    G.marks = G.marks.map((mk) => {
+      if (!mk.box || resolved.has(mk)) return mk;
+      const hit = provinceOfMark(P, mk.name, mk.box, G.lon0);
+      if (!hit) return mk;
+      changed = true;
+      const out = { ...mk, geometry: hit.geometry, box: hit.box };
+      resolved.set(out, hit.p);
+      return out;
+    });
+    if (!changed) return;
+    noteCard();
+    drawMarks2();
+  }
+  var FINE_Z = 6.5;
+  var fineTimer = 0;
+  function viewBox() {
+    const b = G.map.getBounds();
+    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+  }
+  function updateFine() {
+    if (!G.map || !G.ready || !G.d || !G.k) return;
+    if (G.map.getZoom() < FINE_Z) {
+      fineStop();
+      if (G.fineOn) fineOff();
+      return;
+    }
+    const k = G.k;
+    wantFine(k, viewBox(), G.lon0, () => {
+      if (G.k !== k) return;
+      clearTimeout(fineTimer);
+      fineTimer = window.setTimeout(drawFine, 150);
+    }).catch(() => {
+    });
+    drawFine();
+  }
+  function fineOff() {
+    fineStop();
+    G.fineOn = false;
+    if (G.fineSel) {
+      G.fineSel = null;
+      pickCard();
+      G.map.getSource("sel").setData(EMPTY2);
+    }
+    G.map.getSource("fine").setData(EMPTY2);
+    G.map.setPaintProperty("cells", "fill-opacity", 0.92);
+    G.map.setPaintProperty("cells-edge", "line-opacity", 1);
+    drawCells(false);
+  }
+  var fineScales = /* @__PURE__ */ new Map();
+  function fineScale() {
+    const key = `${G.k}|${G.year == null ? "all" : "year"}`;
+    let b = fineScales.get(key);
+    if (!b) {
+      const vals = fineValues(G.k, G.year != null);
+      if (!vals.length) return { breaks: [], max: 0 };
+      b = classBreaks(vals);
+      if (vals.length >= 2e3) fineScales.set(key, b);
+    }
+    return b;
+  }
+  function drawFine() {
+    if (!G.map || !G.ready || !G.d || !G.k || G.map.getZoom() < FINE_Z) return;
+    const data = fineFeatures(G.k, viewBox(), G.lon0, G.year);
+    if (!data.features.length && !G.fineOn) return;
+    const { breaks, max } = fineScale(), cols = classColours(breaks, RAMP2), fill = breaks.length ? ["step", ["get", "n"], cols[0], ...breaks.flatMap((b, i) => [b, cols[i + 1]])] : cols[0];
+    G.map.getSource("fine").setData(data);
+    G.map.setPaintProperty("fine", "fill-color", fill);
+    if (!G.fineOn) {
+      G.fineOn = true;
+      G.map.setPaintProperty("cells", "fill-opacity", 0.14);
+      G.map.setPaintProperty("cells-edge", "line-opacity", 0);
+    }
+    legend4(
+      breaks,
+      Math.max(max, data.max),
+      cols,
+      data.features.length || 1,
+      `Squares of about 5.5 km: hotspots per square, ${G.year == null ? "all years" : yearWords(G.d, G.year)}`
+    );
+  }
+  function pickFine(q) {
+    G.fineSel = q;
+    G.sel = -1;
+    pickCard();
+    if (q) $("gPick").scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!G.map || !G.ready) return;
+    const feats = [];
+    if (q) {
+      const c = FINE_CELL, s2 = q.la * c, w = near(q.lo * c + c / 2, G.lon0) - c / 2;
+      feats.push({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [w, s2],
+            [w + c, s2],
+            [w + c, s2 + c],
+            [w, s2 + c],
+            [w, s2]
+          ]
+        }
+      });
+      feats.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [w + c / 2, s2 + c / 2] } });
+    }
+    G.map.getSource("sel").setData({ type: "FeatureCollection", features: feats });
+  }
+  function fineCard(d, q) {
+    const v = G.k ? fineCell(G.k, q.la, q.lo) : null;
+    if (!v) {
+      $("gPick").hidden = true;
+      return;
+    }
+    const p = partOf(d), full = p ? p.y - 1 : d.y1, rows = [];
+    let best = -1, bestN = 0, burned = 0;
+    v.years.forEach((n, i) => {
+      const y = v.y0 + i;
+      if (y > full) return;
+      if (n > 0) burned++;
+      if (n > bestN) {
+        bestN = n;
+        best = y;
+      }
+    });
+    if (G.year != null) rows.push(row(`Hotspots, ${yearWords(d, G.year)}`, fmt(v.years[G.year - v.y0] ?? 0)));
+    rows.push(row(`Hotspots, ${spanWords(d)}`, fmt(v.total)));
+    const est = best > 0 && best < d.viirs_from[0];
+    if (best > 0) rows.push(row(`Worst year here${est ? ` <small>${EST}</small>` : ""}`, `${best}${est ? "*" : ""} \xB7 ${fmt(bestN)}`));
+    rows.push(row("Years with fire", `${burned} of ${full - v.y0 + 1}`, `Complete years ${v.y0}\u2013${full}`));
+    const c = FINE_CELL;
+    $("gPick").innerHTML = `<div class="gPickHead"><p class="eyebrow">Square you picked</p><button class="link" type="button" id="gPickX">Clear</button></div><h3>${deg6((q.la + 0.5) * c, "N", "S")}, ${deg6(near((q.lo + 0.5) * c, 0), "E", "W")}</h3><p class="hint">A ${c}\xB0 square, about 5.5 km across.</p><dl class="mini">${rows.join("")}</dl>`;
+    $("gPick").hidden = false;
+    $("gPickX").onclick = () => pickFine(null);
+  }
   var sheetObs = null;
   function syncSheet() {
     const r = $("gCard").getBoundingClientRect();
@@ -9351,6 +10036,19 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       if (G.k) load4(G.k);
     };
     $("gAll").onclick = () => setYear(null);
+    document.querySelectorAll("#gProvMode button").forEach((b) => {
+      b.onclick = () => {
+        G.pMode = b.dataset.m;
+        provCard();
+      };
+    });
+    const pq = $("gProvQ");
+    pq.oninput = () => provCard();
+    pq.onkeydown = (e) => {
+      if (e.key !== "Enter" || !G.P) return;
+      const first = searchProvinces(G.P, pq.value, 1)[0];
+      if (first) selectProv(first, true);
+    };
     const r = $("gYear");
     let raf = 0;
     r.oninput = () => {
@@ -9609,8 +10307,8 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       $("heroWait").textContent = "Loading every country from Hugging Face\u2026";
       $("heroRetry").hidden = true;
       $("heroKey").hidden = false;
-      Promise.race([loadIndex(), giveUp(15e3)]).then((idx) => {
-        const L2 = buildFireLayer(idx);
+      Promise.race([loadIndex(), giveUp(15e3)]).then((idx2) => {
+        const L2 = buildFireLayer(idx2);
         if (!L2.stats.size) throw new Error("The country index has no fire totals");
         const ft = new T.CanvasTexture(L2.canvas);
         ft.minFilter = T.LinearFilter;
@@ -10011,14 +10709,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
   var isObj3 = (u) => typeof u === "object" && u !== null && !Array.isArray(u);
   var LIMIT = 2e3;
   var text = (u, max = LIMIT) => typeof u === "string" ? u.slice(0, max) : typeof u === "number" && isFinite(u) ? String(u) : "";
-  var num3 = (u) => typeof u === "number" && isFinite(u) ? u : null;
+  var num4 = (u) => typeof u === "number" && isFinite(u) ? u : null;
   var list3 = (u, max = 200) => Array.isArray(u) ? u.slice(0, max) : [];
   var texts = (u, max = 200) => list3(u, max).map((x) => text(x, 300));
-  var nums = (u, max = 400) => list3(u, max).map(num3);
+  var nums = (u, max = 400) => list3(u, max).map(num4);
   var TONES2 = ["high", "up", "flat", "down"];
   var tone = (u) => TONES2.find((t) => t === u) ?? null;
   function box(u) {
-    const a = list3(u, 4).map(num3).filter((v) => v !== null);
+    const a = list3(u, 4).map(num4).filter((v) => v !== null);
     if (a.length !== 4) return null;
     const [w, s2, e, n] = a;
     return s2 <= n && Math.abs(s2) <= 90 && Math.abs(n) <= 90 && Math.abs(w) <= 540 && Math.abs(e) <= 540 ? [w, s2, e, n] : null;
@@ -10031,7 +10729,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (!isObj3(u)) return null;
     const name = text(u.name, 200);
     if (!name) return null;
-    const p = { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num3(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
+    const p = { id: text(u.id, 80), name, label: text(u.label, 300) || name, level: num4(u.level) ?? -1, b: box(u.b), g: geometry(u.g) };
     return p.b && p.b[2] - p.b[0] > 180 ? acrossDateLine(p) : p;
   }
   function eachPoint(c, f) {
@@ -10081,7 +10779,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (!isObj3(u)) return null;
     const labels = texts(u.labels, 60);
     if (u.type === "lines") {
-      const series = list3(u.series, 6).filter(isObj3).map((s2, i) => ({ name: text(s2.name, 120), values: nums(s2.values, 60), ref: s2.tone === "ref", tone: num3(s2.tone) ?? i }));
+      const series = list3(u.series, 6).filter(isObj3).map((s2, i) => ({ name: text(s2.name, 120), values: nums(s2.values, 60), ref: s2.tone === "ref", tone: num4(s2.tone) ?? i }));
       return series.length && labels.length ? { type: "lines", title: text(u.title, 200), labels, series } : null;
     }
     const values = nums(u.values, 60);
@@ -10093,7 +10791,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       labels,
       values,
       ref,
-      refLine: num3(u.refLine),
+      refLine: num4(u.refLine),
       refLabel: text(u.refLabel, 60) || "usual",
       highlight: nums(u.highlight, 60).filter((v) => v !== null)
     };
@@ -11196,8 +11894,8 @@ ${short(f.perYear)} hotspots a year` : c.n;
     $("heroFind").onfocus = () => {
       if (asked) return;
       asked = true;
-      loadIndex().then((idx) => {
-        const have = new Set(WORLD.map((c) => c.k)), extra = idx.filter((c) => !have.has(c.country));
+      loadIndex().then((idx2) => {
+        const have = new Set(WORLD.map((c) => c.k)), extra = idx2.filter((c) => !have.has(c.country));
         if (!extra.length) return;
         list4.push(...extra.map((c) => ({ name: c.name, k: c.country })));
         fill();
