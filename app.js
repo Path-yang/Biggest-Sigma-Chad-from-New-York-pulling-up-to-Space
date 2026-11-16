@@ -114,18 +114,63 @@
   var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   var ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
+  // src/world.ts
+  var WORLD = window.WORLD ? window.WORLD.countries : [];
+  var BY_KEY = new Map(WORLD.map((c) => [c.k, c]));
+  var slugOf = (k) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  var shapeOf = (k) => BY_KEY.get(k);
+  var nameOf = (k) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
+  function theName(name) {
+    return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
+      name
+    ) ? "the " + name : name;
+  }
+  function inRing(r, lon, lat) {
+    let inside = false;
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
+      if (yi > lat !== yj > lat && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  var boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
+  function countryAt(lon, lat) {
+    let best = null;
+    for (const c of WORLD) {
+      const b = c.b;
+      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+      if (best && boxArea(b) >= boxArea(best.b)) continue;
+      if (c.r.some((r) => inRing(r, lon, lat))) best = c;
+    }
+    return best;
+  }
+  var cutEdge = (k, a0, b0, a1, b1) => a0 === a1 && (Math.abs(a0) === 180 || k === "Antarctica" && a0 % 60 === 0) || b0 < -89.9 && b1 < -89.9;
+  var near = (lon, lon02) => lon - 360 * Math.round((lon - lon02) / 360);
+  function lonSpan(c) {
+    let a = Infinity, z = -Infinity;
+    for (const r of c.r) {
+      const off = near(r[0], c.c[0]) - r[0];
+      for (let i = 0; i < r.length; i += 2) {
+        const lon = r[i] + off;
+        if (lon < a) a = lon;
+        if (lon > z) z = lon;
+      }
+    }
+    return Math.min(360, z - a);
+  }
+
   // src/model.ts
   var STATE_EPOCHS = { vi0: VI0, aq0: AQ0, bins: D.meta.bins };
-  function harmWith(s2, e, i, T, A2, V4) {
+  function harmWith(s2, e, i, T, A2, V5) {
     const m = i % 12;
-    if (i >= e.vi0) return { h: V4, lo: V4, hi: V4, src: "VIIRS observed" };
+    if (i >= e.vi0) return { h: V5, lo: V5, hi: V5, src: "VIIRS observed" };
     const terraOnly = i < e.aq0, h2 = terraOnly ? T * s2.r_t[m] : (T + A2) * s2.r_ta[m], src = terraOnly ? "MODIS Terra, converted" : "MODIS Terra+Aqua, converted";
     if (h2 === 0) return { h: 0, lo: 0, hi: s2.zero_hi, src };
     let b = 0;
     while (b < e.bins.length && h2 > e.bins[b]) b++;
     return { h: h2, lo: h2 * s2.pi[b][0], hi: h2 * s2.pi[b][1], src };
   }
-  var harm = (st, i, T, A2, V4) => harmWith(D.states[st], STATE_EPOCHS, i, T, A2, V4);
+  var harm = (st, i, T, A2, V5) => harmWith(D.states[st], STATE_EPOCHS, i, T, A2, V5);
   var HX = {};
   function hexState(st) {
     if (HX[st]) return HX[st];
@@ -197,14 +242,43 @@
     o.roads = dt.roads;
     const pl = D.places[st];
     o.towns = pl.towns.map((t) => ({ n: t[0], lat: t[1], lon: t[2], pop: t[3], X: t[2] * K, Y: t[1] }));
-    const sn = pl.stn.length, stn = o.stn = { n: sn, X: new Float32Array(sn), Y: new Float32Array(sn), c: new Int16Array(sn), names: pl.stn };
+    const sn = pl.stn.length, stn = o.stn = {
+      n: sn,
+      X: new Float32Array(sn),
+      Y: new Float32Array(sn),
+      c: new Int16Array(sn),
+      cp: new Int16Array(sn),
+      names: pl.stn
+    };
     for (let i = 0; i < sn; i++) {
       stn.X[i] = pl.stn_xy[2 * i] * K;
       stn.Y[i] = pl.stn_xy[2 * i + 1];
       const k = o.key.get(hexKey(stn.X[i], stn.Y[i], R));
       stn.c[i] = k === void 0 ? -1 : o.c[k];
     }
+    stn.cp.set(countiesAt(st, o.geo, pl.stn_xy, stn.c));
     return HX[st] = o;
+  }
+  function countiesAt(st, geo, lonLat, fallback) {
+    const ciOf = new Map(D.states[st].counties.map((c, ci) => [c.fips, ci])), shapes = geo.map((g) => {
+      const b = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const r of g.r)
+        for (let i = 0; i < r.length; i += 2) {
+          b[0] = Math.min(b[0], r[i]);
+          b[1] = Math.min(b[1], r[i + 1]);
+          b[2] = Math.max(b[2], r[i]);
+          b[3] = Math.max(b[3], r[i + 1]);
+        }
+      return { ci: ciOf.get(g.f) ?? -1, r: g.r, b };
+    }), out = new Int16Array(fallback.length);
+    for (let i = 0; i < out.length; i++) {
+      const lon = lonLat[2 * i], lat = lonLat[2 * i + 1];
+      const hit = shapes.find(
+        ({ ci, r, b }) => ci >= 0 && lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3] && r.reduce((ins, ring2) => ins !== inRing(ring2, lon, lat), false)
+      );
+      out[i] = hit ? hit.ci : fallback[i];
+    }
+    return out;
   }
   function maskFor(st, sel) {
     const hx = hexState(st), m = new Uint8Array(hx.n);
@@ -223,7 +297,7 @@
   }
   var selMask = () => maskFor(S.st, S.sel);
   function analyseFor(st, sel) {
-    const s2 = D.states[st], T = new Float64Array(NM), A2 = new Float64Array(NM), V4 = new Float64Array(NM);
+    const s2 = D.states[st], T = new Float64Array(NM), A2 = new Float64Array(NM), V5 = new Float64Array(NM);
     const byCounty = sel.type === "state" || sel.type === "county", rows = byCounty ? s2.county_rows : s2.hex_rows, mask = byCounty ? null : maskFor(st, sel);
     for (let p = 0; p < rows.length; p += 5) {
       const k = rows[p];
@@ -231,7 +305,7 @@
         const i = rows[p + 1];
         T[i] += rows[p + 2];
         A2[i] += rows[p + 3];
-        V4[i] += rows[p + 4];
+        V5[i] += rows[p + 4];
       }
     }
     const G3 = new Float64Array(NM), grows = (byCounty ? s2.gap_county_rows : s2.gap_hex_rows) ?? [];
@@ -260,7 +334,7 @@
     const R = analyseSeries({
       T,
       A: A2,
-      V: V4,
+      V: V5,
       y0: Y0,
       yFrom: S.yFrom,
       yTo: S.yTo,
@@ -343,12 +417,12 @@
   }
   var ytdSentence = (t) => `${t.y} so far (${t.span}): ${fmt(t.cur)} ${fmt(t.cur) === "1" ? "hotspot" : "hotspots"}${t.hi - t.lo >= 1 ? `, likely ${fmt(t.lo)} to ${fmt(t.hi)}` : ""}, ${rankWords(t.rank, t.n)} for the same dates (typical ${fmt(t.med)}).`;
   function analyseSeries(o) {
-    const { T, A: A2, V: V4 } = o, partI = o.partI ?? -1, nm = o.nm ?? Infinity, fullEnd = partI >= 0 ? partI : nm;
+    const { T, A: A2, V: V5 } = o, partI = o.partI ?? -1, nm = o.nm ?? Infinity, fullEnd = partI >= 0 ? partI : nm;
     const ser = [];
     for (let i = (o.yFrom - o.y0) * 12, end = Math.min((o.yTo - o.y0 + 1) * 12, nm); i < end; i++) {
       const r = Object.assign(
-        { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A2[i], V: V4[i] },
-        o.harm(i, T[i], A2[i], V4[i])
+        { i, y: o.y0 + Math.floor(i / 12), m: i % 12, T: T[i], A: A2[i], V: V5[i] },
+        o.harm(i, T[i], A2[i], V5[i])
       );
       if (i >= fullEnd) r.part = true;
       ser.push(r);
@@ -1193,6 +1267,48 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     };
   }
 
+  // src/pop.ts
+  var P = () => window.POPULATION?.states ?? null;
+  var popWhen = (short2 = false) => window.POPULATION ? `Census${short2 ? "" : " estimate"}, ${window.POPULATION.label}` : "";
+  function popCounty(st, ci) {
+    const fips = D.states[st].counties[ci]?.fips;
+    return fips ? P()?.[st]?.counties[fips] ?? null : null;
+  }
+  var popState = (st) => P()?.[st]?.total ?? null;
+  function fmtPop(n) {
+    if (n < 1e4) return n.toLocaleString("en-US");
+    const r = Number(n.toPrecision(3));
+    return r >= 1e6 ? Number((r / 1e6).toPrecision(3)) + " million" : r.toLocaleString("en-US");
+  }
+  var peoplePop = (n) => fmtPop(n) + (n === 1 ? " person" : " people");
+  function popSuffix(st, ci) {
+    const p = popCounty(st, ci);
+    return p == null ? "" : ` \xB7 ${fmtPop(p)} ${p === 1 ? "resident" : "residents"}`;
+  }
+  var exactPop = (n) => `${n.toLocaleString("en-US")} people (US Census Bureau estimate for 1 ${window.POPULATION?.label ?? ""})`;
+  function popOf(st, cis) {
+    if (!P()) return null;
+    const seen = [...new Set(cis)].filter((ci) => ci >= 0);
+    let people = 0;
+    for (const ci of seen) {
+      const p = popCounty(st, ci);
+      if (p == null) return null;
+      people += p;
+    }
+    return { counties: seen, people };
+  }
+  function countyNames(st, cis, max = 4) {
+    const names = cis.map((ci) => D.states[st].counties[ci].name);
+    if (names.length > max + 1) return names.slice(0, max).join(", ") + ` and ${names.length - max} more`;
+    return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0] ?? "";
+  }
+  function popSentence(st, cis, lead2, notWho = "not only the people near fire") {
+    const p = popOf(st, cis);
+    if (!p || !p.counties.length) return "";
+    const n = p.counties.length;
+    return `${lead2(n, countyNames(st, p.counties))} ${n === 1 ? "is" : "are"} home to ${peoplePop(p.people)}${n === 1 ? "" : " in all"} (${popWhen()}). That counts everyone living in ${n === 1 ? "the county" : "those counties"}, ${notWho}.`;
+  }
+
   // src/respui.ts
   var GAP_C = "#4fe3ff";
   var STN_C = "#7fd8ff";
@@ -1210,6 +1326,13 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     [0.5, "1 year in 2"]
   ];
   var thrLabel = (t) => (THR.find((x) => Math.abs(x[0] - t) < 1e-6) || THR[1])[1];
+  var inCounties = (n, names) => n === 1 ? `${names} County` : `${n} counties (${names})`;
+  var gapPop = (st, ks) => popSentence(
+    st,
+    ks.map((k) => hexState(st).c[k]),
+    (n, names) => `${ks.length === 1 ? "This place lies" : `The ${ks.length} places lie`} in ${inCounties(n, names)}, which`,
+    ks.length === 1 ? "not the people living in this remote place" : "not the people living in these remote places"
+  );
   var memo = null;
   function cur() {
     const st = S.st, [a, b] = riskYears(), fc = isFc() && fcOn(st) ? S.odds : 0, key = [st, S.rm, a, b, RT.gapMin, fc].join("|");
@@ -1306,7 +1429,8 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     if (!n)
       return `${srcLine(risk, mo)}<p class="big"><b>None</b> in ${when}.</p><p class="hint">No place in ${NAME[st]} has ${rule}. ${gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but ${risk.fc ? `none has that high a forecast chance in ${when}` : `they burn less often than that in ${mo}`}.` : `Every hexagon has a station within ${GAP_KM} km.`}</p>`;
     const rows = gaps.list.slice(0, 6).map((k) => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k])).join("");
-    return `${srcLine(risk, mo)}<p class="big"><b>${n}</b> ${n === 1 ? "place" : "places"} to watch in ${when}</p><p class="hint"><i class="gk"></i>Outlined on the map: hexagons with ${rule}.</p><div class="nl">${rows}</div>` + (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "");
+    const pop2 = gapPop(st, gaps.list);
+    return `${srcLine(risk, mo)}<p class="big"><b>${n}</b> ${n === 1 ? "place" : "places"} to watch in ${when}</p><p class="hint"><i class="gk"></i>Outlined on the map: hexagons with ${rule}.</p><div class="nl">${rows}</div>` + (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "") + (pop2 ? `<p class="hint">${esc(pop2)}</p>` : "");
   }
   var gapRule = (risk, mo) => (risk.fc ? `a forecast chance of fire in ${mo} ${risk.fc} of at least ${Math.round(RT.gapMin * 100)}%` : `fire in ${mo} in at least ${thrLabel(RT.gapMin)} (${risk.a}\u2013${risk.b})`) + ` and every station more than ${GAP_KM} km away in a straight line`;
   function gapRow(st, k, risk, crow, min10, top) {
@@ -1352,10 +1476,14 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     ).join("") : `<p class="note small">${risk.fc ? `No forecast fire risk in ${mo} ${risk.fc}.` : `No hotspots in ${mo}, ${risk.a}\u2013${risk.b}.`}</p>`;
     $("staff").querySelectorAll("[data-stn]").forEach((b) => b.onclick = () => showStation(+b.dataset.stn));
     const top8 = staff.rows.slice(0, 8).reduce((a, w) => a + w.share, 0), oneYear = !risk.fc && staff.rows.slice(0, 8).filter((w) => w.k === 1).length;
-    $("staffNote").textContent = staff.rows.length ? (risk.fc ? `These 8 stations are first by road to ${pct(top8)} of the state's forecast fire risk for ${mo} ${risk.fc}: each hexagon counts by its chance of fire, split among stations the way its ${mo} fire fell since 2012.` : `These 8 stations are first by road to ${pct(top8)} of the state's ${mo} fire; ${fmt(staff.stations)} stations are first to some. Each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire.`) + (oneYear ? ` ${oneYear} of them ${oneYear === 1 ? "rests" : "rest"} on fire in a single year.` : "") + (staff.noneShare > 5e-4 ? ` ${pct(staff.noneShare)} of it falls where no station has a road link.` : "") + " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed." : "";
+    $("staffNote").textContent = staff.rows.length ? (risk.fc ? `These 8 stations are first by road to ${pct(top8)} of the state's forecast fire risk for ${mo} ${risk.fc}: each hexagon counts by its chance of fire, split among stations the way its ${mo} fire fell since 2012.` : `These 8 stations are first by road to ${pct(top8)} of the state's ${mo} fire; ${fmt(staff.stations)} stations are first to some. Each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire.`) + (oneYear ? ` ${oneYear} of them ${oneYear === 1 ? "rests" : "rest"} on fire in a single year.` : "") + (staff.noneShare > 5e-4 ? ` ${pct(staff.noneShare)} of it falls where no station has a road link.` : "") + " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed." + staffPop(
+      st,
+      staff.rows.slice(0, 8).map((w) => w.i)
+    ) : "";
     const n = gaps.list.length, r = respOf(st);
     $("gapTitle").textContent = `Far from a station in ${mo}${risk.fc ? " " + risk.fc : ""}: ${n} ${n === 1 ? "place" : "places"}`;
-    $("gapNote").textContent = `Hexagons with ${gapRule(risk, mo)}. ` + (n ? "Tap one to see it on the map. The drive time is to the fastest station by road." : gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but none of them ${risk.fc ? "has that high a forecast chance" : "burns that often"} in ${mo}.` : "") + " Change the rule under Fire response on the map.";
+    const pop2 = n ? gapPop(st, gaps.list) : "";
+    $("gapNote").textContent = `Hexagons with ${gapRule(risk, mo)}. ` + (n ? "Tap one to see it on the map. The drive time is to the fastest station by road." : gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but none of them ${risk.fc ? "has that high a forecast chance" : "burns that often"} in ${mo}.` : "") + (pop2 ? " " + pop2 : "") + " Change the rule under Fire response on the map.";
     $("gapList").innerHTML = gaps.list.map((k) => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k])).join("");
     $("gapList").querySelectorAll("[data-go]").forEach(
       (b) => b.onclick = () => {
@@ -1365,6 +1493,15 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
       }
     );
     $("respMethod").innerHTML = methodHtml(st);
+  }
+  function staffPop(st, stations) {
+    const c = hexState(st).stn.cp, k = stations.length, p = popSentence(
+      st,
+      stations.map((i) => c[i]),
+      (n, names) => `${k === 1 ? "This station stands" : `These ${k} stations stand`} in ${inCounties(n, names)}, which`,
+      k === 1 ? "not the people this station serves" : "not the people these stations serve"
+    );
+    return p ? " " + p : "";
   }
   function showStation(i) {
     closeSheet();
@@ -1682,10 +1819,10 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
     ];
     const gh = s2.gap_hex_rows ?? [];
     for (let p = 0; p < gh.length; p += 3) gapHex.set(gh[p] * NM + gh[p + 1], gh[p + 2]);
-    const push = (k, i, T, A2, V4) => {
+    const push = (k, i, T, A2, V5) => {
       const y = Y0 + Math.floor(i / 12);
       if (!mask[k] || y < S.yFrom || y > S.yTo) return;
-      const h2 = harm(S.st, i, T, A2, V4), f = fillDates(i, S.st), dh = gapHex.get(k * NM + i) ?? 0;
+      const h2 = harm(S.st, i, T, A2, V5), f = fillDates(i, S.st), dh = gapHex.get(k * NM + i) ?? 0;
       gapHex.delete(k * NM + i);
       rows.push(
         [
@@ -1698,7 +1835,7 @@ From the hexagon's centre: nearest station ${km1(r.crow10[k] / 10)} km in a stra
           i > mt ? "" : T,
           i > mt ? "" : A2,
           /* Suomi NPP as observed; blank on 2026 months with days from NOAA-20, whose per-hexagon split is not kept */
-          f.any && y >= 2026 ? "" : V4,
+          f.any && y >= 2026 ? "" : V5,
           Math.max(0, h2.h + dh).toFixed(2),
           `"${f.any ? FILL_SRC : h2.src}"`,
           f.n20,
@@ -2117,7 +2254,7 @@ Usual for these dates: ${pct2(o.base)}
       $("olTitle").textContent = `Counties to watch in the next 14 days: ${olRange(st)}`;
       $("olNoteS").textContent = `Each county's chance of at least one VIIRS hotspot from ${dayName(r.today)} through ${dayName(r.end)}, from its usual odds for these dates and Open-Meteo's weather forecast. The weather raises the chance in ${up} of ${n} counties and lowers it in ${down}, against the model's chance with no weather. ` + (r.missing ? `${r.missing} ${r.missing === 1 ? "county has" : "counties have"} no forecast this time${r.err ? " (" + r.err.charAt(0).toLowerCase() + r.err.slice(1).replace(/\.$/, "") + ")" : ""}; Retry asks again. ` : "") + (sortBy === "p" ? "Ranked by chance. " : `Ranked by how much the weather raises the chance; counties where fire is usually under ${Math.round(RARE * 100)}% at this time of year are left out, since there the effect is mostly noise. `) + "A hotspot is a satellite detection, often a farm or prescribed burn: this is not a fire-danger rating. Tap a county to see it on the map.";
       $("olList").innerHTML = shown2.map(
-        ({ o, ci }, i) => `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc2(D.states[st].counties[ci].name)}</b><span class="pc">${pct2(o.p)}</span><small>Usual for these dates ${pct2(o.base)}${o.base >= RARE ? ` \xB7 ${weatherCue(o)}` : " \xB7 fire is rare here now"}</small></button>`
+        ({ o, ci }, i) => `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc2(D.states[st].counties[ci].name)}</b><span class="pc">${pct2(o.p)}</span><small>Usual for these dates ${pct2(o.base)}${o.base >= RARE ? ` \xB7 ${weatherCue(o)}` : " \xB7 fire is rare here now"}${popSuffix(st, ci)}</small></button>`
       ).join("");
       $("olMore").textContent = showAll ? "Show the top 9" : `Show all ${list4.length}`;
       $("olMore").hidden = list4.length <= 9;
@@ -2224,21 +2361,28 @@ Usual for these dates: ${pct2(o.base)}
     $("a4").textContent = rk.n ? `${Math.round(rk.p * 100)}%` : "No data";
     $("a4n").textContent = rk.n ? `Fire was detected here in ${rk.k} of the ${rk.n} ${mo}s from ${rk.a} to ${rk.b}.` + (rk.k ? ` When it burns, typically ${fmt(rk.typical)} hotspots; the worst was ${fmt(rk.worst.h)} in ${rk.worst.y}. Most recent: ${rk.last}.` : "") + " History, not a forecast." + notFireNote(S.st, selMask()) + forecastLine(S.st) : "";
     const share2 = (x) => x >= 0.095 ? Math.round(x * 100) + "%" : x >= 1e-3 ? (x * 100).toFixed(1) + "%" : x > 0 ? "<0.1%" : "0%", who = window.RESPONSE ? "Counties, and the stations that reach each place first by road," : "Counties";
+    let watched;
     if (isFc() && fcOn(S.st)) {
       const yr = S.odds;
       $("watchTitle").textContent = `Where to watch in ${mo} ${yr}: forecast`;
       $("watchNote").textContent = `${who} ranked by their share of ${NAME[S.st]}'s forecast fire risk for ${mo} ${yr}: each hexagon counts by its chance of at least one hotspot. The forecast is built from fire history alone, not weather, and says nothing about how each station is staffed. Tap one to see it on the map.`;
-      $("watch").innerHTML = countyRiskFc(S.st, S.rm, yr).slice(0, 8).map(
-        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn</small></button>`
+      const wl = countyRiskFc(S.st, S.rm, yr).slice(0, 8);
+      watched = wl.map((w) => w.ci);
+      $("watch").innerHTML = wl.map(
+        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn${popSuffix(S.st, w.ci)}</small></button>`
       ).join("");
     } else {
       const wl = countyRisk(S.st, S.rm).slice(0, 8);
+      watched = wl.map((w) => w.ci);
       $("watchTitle").textContent = `Where to watch in ${mo}: past odds`;
       $("watchNote").textContent = `${who} ranked by how often fire comes to their hexagons in ${mo}, ${rk.a}\u2013${rk.b}: each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire. The percentage is their share of ${NAME[S.st]}'s. This is the historical pattern, not a forecast for this year. Hotspots are what satellites saw burning, not calls or incidents, and this says nothing about how a station is staffed. Tap one to see it on the map.`;
       $("watch").innerHTML = wl.map(
-        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} \xB7 about ${fmt(w.mean)} hotspots</small></button>`
+        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} \xB7 about ${fmt(w.mean)} hotspots${popSuffix(S.st, w.ci)}</small></button>`
       ).join("");
     }
+    const wp = popSentence(S.st, watched, (n) => n === 1 ? "This county" : `These ${n} counties`), sp = popState(S.st);
+    $("watchPop").hidden = !wp;
+    $("watchPop").textContent = wp + (wp && sp != null ? ` ${NAME[S.st]} as a whole has ${fmtPop(sp)}.` : "");
     renderForecastSheet();
     renderStaff();
     renderOutlookSheet();
@@ -2390,6 +2534,8 @@ Raw counts: ${fmt(fy[i].naive)}`
       ],
       ["Most active county", (c) => c.county, null, (c) => `${Math.round(c.countyShare * 100)}% of the state's hotspots`]
     ];
+    if (STS.every((st) => popState(st) != null))
+      rowsDef.push(["Population", (c) => fmtPop(popState(c.st)), (c) => popState(c.st), () => popWhen()]);
     if (C.every((c) => c.ytd))
       rowsDef.push([
         `${C[0].ytd.y} so far (${C[0].ytd.span})`,
@@ -2735,11 +2881,34 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}` + (v?.same ? ` (${v.same.span})` : "");
     $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : future ? `No data yet` : "Outside these years";
     $("c3").parentElement.title = v?.same ? `${v.same.span} ${S.focus[0]} so far, against the same days of ${v.same.years[0]}\u2013${v.same.years[v.same.years.length - 1]}` : v?.noSame ? `The month is not over: the record runs to ${LAST_WORDS}. Choose the state or a county to compare its first days with the same days of past years.` : "";
+    const pr = popCard(hx.c);
+    $("popRow").hidden = !pr;
+    if (pr) {
+      $("c6q").textContent = pr.q;
+      $("c6").textContent = pr.v;
+      $("popRow").title = pr.title;
+    }
     const cc = olCard() || chanceCard(R);
     $("c4q").textContent = cc.q;
     $("c4").textContent = cc.v;
     $("c4").parentElement.title = cc.title;
     $("openCmp").textContent = "Compare with " + NAME[STS.find((k) => k !== S.st)];
+  }
+  function popCard(hexCounty) {
+    const st = S.st, sl = S.sel, ci = sl.type === "county" ? sl.ci : sl.type === "hex" ? hexCounty[sl.k] : -1, n = sl.type === "state" ? popState(st) : ci >= 0 ? popCounty(st, ci) : null;
+    if (n == null) return null;
+    const county2 = ci >= 0 ? D.states[st].counties[ci].name + " County" : "";
+    if (sl.type === "hex")
+      return {
+        q: `${county2} population`,
+        v: fmtPop(n),
+        title: `Everyone living in ${county2}, which this hexagon is in, not the people in the hexagon: ${exactPop(n)}.`
+      };
+    return {
+      q: `Population (${popWhen(true)})`,
+      v: fmtPop(n),
+      title: `${exactPop(n)}. Everyone living in ${sl.type === "state" ? NAME[st] : county2}, not only the people near fire.`
+    };
   }
   function renderTimeline(R) {
     const ys = R.years, n = ys.length, W = 600, bw = W / n, mx = Math.max(1, ...ys.map((y) => y.h)), cur2 = S.show.t === "year" && S.layer === "count" ? S.show.y : null;
@@ -3556,51 +3725,6 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     return p;
   }
 
-  // src/world.ts
-  var WORLD = window.WORLD ? window.WORLD.countries : [];
-  var BY_KEY = new Map(WORLD.map((c) => [c.k, c]));
-  var slugOf = (k) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  var shapeOf = (k) => BY_KEY.get(k);
-  var nameOf = (k) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
-  function theName(name) {
-    return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
-      name
-    ) ? "the " + name : name;
-  }
-  function inRing(r, lon, lat) {
-    let inside = false;
-    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
-      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
-      if (yi > lat !== yj > lat && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  }
-  var boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
-  function countryAt(lon, lat) {
-    let best = null;
-    for (const c of WORLD) {
-      const b = c.b;
-      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
-      if (best && boxArea(b) >= boxArea(best.b)) continue;
-      if (c.r.some((r) => inRing(r, lon, lat))) best = c;
-    }
-    return best;
-  }
-  var cutEdge = (k, a0, b0, a1, b1) => a0 === a1 && (Math.abs(a0) === 180 || k === "Antarctica" && a0 % 60 === 0) || b0 < -89.9 && b1 < -89.9;
-  var near = (lon, lon02) => lon - 360 * Math.round((lon - lon02) / 360);
-  function lonSpan(c) {
-    let a = Infinity, z = -Infinity;
-    for (const r of c.r) {
-      const off = near(r[0], c.c[0]) - r[0];
-      for (let i = 0; i < r.length; i += 2) {
-        const lon = r[i] + off;
-        if (lon < a) a = lon;
-        if (lon > z) z = lon;
-      }
-    }
-    return Math.min(360, z - a);
-  }
-
   // src/fireglobe.ts
   var FIRE_YEARS = 25;
   var R_KM = 6371.0088;
@@ -3773,11 +3897,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   };
   var isOdd = (r) => r.zMax > ODD_Z;
   function sumUp(cells) {
-    const total2 = cells.reduce((a, c) => a + c.share, 0) || 1, live = cells.filter((c) => c.r && !isOdd(c.r)), sw = live.reduce((a, c) => a + c.share, 0), w = sw || 1, P = live.reduce((a, c) => a + c.share * c.r.p, 0) / w, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / w;
+    const total2 = cells.reduce((a, c) => a + c.share, 0) || 1, live = cells.filter((c) => c.r && !isOdd(c.r)), sw = live.reduce((a, c) => a + c.share, 0), w = sw || 1, P2 = live.reduce((a, c) => a + c.share * c.r.p, 0) / w, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / w;
     return {
-      P,
+      P: P2,
       N,
-      D: P - N,
+      D: P2 - N,
       liveShare: sw / total2,
       nLive: live.length,
       nOdd: cells.filter((c) => c.r && isOdd(c.r)).length,
@@ -4114,7 +4238,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       return;
     }
     state(run.err ? `${run.err} ${run.missing} region${run.missing === 1 ? " has" : "s have"} no outlook and show white.` : "", !!run.err);
-    const L2 = place(O2, k), used = L2.cells.filter((c) => !c.minor), S3 = sumUp(used), live = used.filter((c) => c.r && !c.odd), odd = used.filter((c) => c.r && c.odd), thin = S3.liveShare < MIN_SHARE, { P, N, D: D2 } = S3, sw = live.reduce((a, c) => a + c.share, 0) || 1, up = live.filter((c) => change(c.r) >= REGION_STEP), down = live.filter((c) => change(c.r) <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share2) => {
+    const L2 = place(O2, k), used = L2.cells.filter((c) => !c.minor), S3 = sumUp(used), live = used.filter((c) => c.r && !c.odd), odd = used.filter((c) => c.r && c.odd), thin = S3.liveShare < MIN_SHARE, { P: P2, N, D: D2 } = S3, sw = live.reduce((a, c) => a + c.share, 0) || 1, up = live.filter((c) => change(c.r) >= REGION_STEP), down = live.filter((c) => change(c.r) <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share2) => {
       if (!many) return "";
       if (share2 >= 0.6) return S3.liveShare >= 0.95 ? " across most of the country" : " across most of the regions forecast";
       const w = compass(live, sub);
@@ -4136,7 +4260,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     $("cOlTitle").textContent = head;
     $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span2(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.1 ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012\u20132025 record for the date, so the model would be extrapolating. That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.` : "");
     const m = O2.metrics.by_country[k], verdict2 = D2 >= COUNTRY_STEP ? ["hi", "Busier than usual"] : D2 <= -COUNTRY_STEP ? ["lo", "Quieter than usual"] : ["", "About usual"], regionsWord = live.length === 1 ? "its one forecast region" : live.length === 2 ? "its two forecast regions" : `its ${live.length} forecast regions`;
-    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
+    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P2)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
     legend2(L2);
     drawMap(L2, k, run.missing);
     list(O2, L2, tn, D2);
@@ -4796,11 +4920,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     const ok = drawMarks(marks), mine = ++marksSeq, k = L && L.ready ? L.k : null;
     if (!ok || !k || !marks.some((m) => m.box)) return ok;
     loadProvinces(k).then(
-      (P) => {
+      (P2) => {
         if (mine !== marksSeq || !L || !L.ready || L.k !== k) return;
         let changed = false;
         const out = marks.map((mk) => {
-          const hit = mk.box ? provinceOfMark(P, mk.name, mk.box, lon0()) : null;
+          const hit = mk.box ? provinceOfMark(P2, mk.name, mk.box, lon0()) : null;
           if (!hit) return mk;
           changed = true;
           return { ...mk, geometry: hit.geometry, box: hit.box };
@@ -6481,7 +6605,7 @@ Click to show ${r.y} on the map`
     return { ...a, letter, colour: PIN_COLOURS[LETTERS.indexOf(letter)] };
   }
   var nameOfArea = (a) => a.shape ? describe(a.shape) : `All of ${theName(A.d.name)}`;
-  function setArea(shape, fit = false) {
+  function setArea(shape, fit2 = false) {
     if (shape) shape = decode(encode(shape)) ?? shape;
     if (!A.g) {
       A.want = shape;
@@ -6490,7 +6614,7 @@ Click to show ${r.y} on the map`
     A.cur = makeArea(shape);
     writeHash();
     render2();
-    if (fit && shape) fitTo(shape);
+    if (fit2 && shape) fitTo(shape);
     if (phone2() && shape) showMapArea();
   }
   function pinCurrent() {
@@ -8732,7 +8856,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   }
 
   // src/extras.ts
-  var FILES = ["response.js?v=1", "forecast.js?v=3", "outlook.js?v=1"];
+  var FILES = ["response.js?v=1", "forecast.js?v=3", "outlook.js?v=1", "pop.js?v=1"];
   var loading2 = null;
   var ready = false;
   var extrasReady = () => ready;
@@ -9706,9 +9830,9 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     G.pMsg = "Loading\u2026";
     provCard();
     loadProvinces(k).then(
-      (P) => {
+      (P2) => {
         if (G.k !== k) return;
-        G.P = P;
+        G.P = P2;
         provCard();
         drawProv();
         resolveMarks();
@@ -9721,21 +9845,21 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     );
   }
   function provValue(p) {
-    const P = G.P;
-    if (G.pMode === "ytd") return soFar(P, p).cur;
-    if (G.pMode === "watch") return p.watch[frameOf(P).next];
-    return G.year == null ? p.total : p.per_year[G.year - P.y0] ?? 0;
+    const P2 = G.P;
+    if (G.pMode === "ytd") return soFar(P2, p).cur;
+    if (G.pMode === "watch") return p.watch[frameOf(P2).next];
+    return G.year == null ? p.total : p.per_year[G.year - P2.y0] ?? 0;
   }
   var LEVEL_WORD = { high: "High", elevated: "Elevated", low: "Low" };
-  function provSource(P) {
-    const old = $("gProvOld"), note = P?.boundaries?.outdated ? P.boundaries.note : null;
+  function provSource(P2) {
+    const old = $("gProvOld"), note = P2?.boundaries?.outdated ? P2.boundaries.note : null;
     old.textContent = note ?? "";
     old.hidden = !note;
-    $("gProvSrc").textContent = P ? `${outlineCredit(P)} Usual is the median of the same months, ${P.y0}\u2013${frameOf(P).yb}.` : "";
+    $("gProvSrc").textContent = P2 ? `${outlineCredit(P2)} Usual is the median of the same months, ${P2.y0}\u2013${frameOf(P2).yb}.` : "";
   }
   function provCard() {
-    const box2 = $("gProv"), P = G.P;
-    if (!P) {
+    const box2 = $("gProv"), P2 = G.P;
+    if (!P2) {
       box2.hidden = !G.k;
       $("gProvBody").innerHTML = `<p class="hint">${G.pMsg === "Did not load" ? "The states and provinces did not load from Hugging Face." : "Loading the states and provinces\u2026"}</p>`;
       $("gProvSel").hidden = true;
@@ -9743,12 +9867,12 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       return;
     }
     box2.hidden = false;
-    provSource(P);
-    const fr = frameOf(P), many = P.provinces.length > 1 && P.provinces.some((p) => p.total > 0);
+    provSource(P2);
+    const fr = frameOf(P2), many = P2.provinces.length > 1 && P2.provinces.some((p) => p.total > 0);
     $("gProvTools").hidden = !many;
     if (!many) {
-      const n = P.provinces.length;
-      $("gProvBody").innerHTML = `<p class="hint">${P.provinces.some((p) => p.total > 0) ? `${outlineName(P)} has one division here, ${esc10(P.provinces[0].name)}, so there is nothing to rank.` : `No hotspots were counted in any of its ${n === 1 ? "one division" : `${n} divisions`}, ${P.y0} to ${lastWords3(P)}.`}</p>`;
+      const n = P2.provinces.length;
+      $("gProvBody").innerHTML = `<p class="hint">${P2.provinces.some((p) => p.total > 0) ? `${outlineName(P2)} has one division here, ${esc10(P2.provinces[0].name)}, so there is nothing to rank.` : `No hotspots were counted in any of its ${n === 1 ? "one division" : `${n} divisions`}, ${P2.y0} to ${lastWords3(P2)}.`}</p>`;
       provSelCard();
       return;
     }
@@ -9756,24 +9880,24 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       b.setAttribute("aria-pressed", String(b.dataset.m === G.pMode));
       if (b.dataset.m === "ytd") b.textContent = `${fr.cy} so far`;
     });
-    const nextName = MONL[fr.next], wy = P.watch_years[fr.next];
-    $("gProvWhat").textContent = G.pMode === "ytd" ? `${fr.cy}, January to ${MONL[fr.cm - 1]}, against the usual for those months (median of ${P.y0}\u2013${fr.yb}).${P.partial ? ` ${MONL[P.partial.m - 1]} so far is not in it.` : ""}` : G.pMode === "watch" ? `Where to watch in ${nextName}: hotspots to expect, from ${nextName} in ${wy ? `${wy[0]}\u2013${wy[1]}` : "the last ten years"} (a weighted median).` : G.year == null ? `Hotspots, ${P.y0} to ${lastWords3(P)}.` : `Hotspots in ${yearWords(G.d ?? { y0: P.y0, y1: fr.cy }, G.year)} (the year on the slider).`;
+    const nextName = MONL[fr.next], wy = P2.watch_years[fr.next];
+    $("gProvWhat").textContent = G.pMode === "ytd" ? `${fr.cy}, January to ${MONL[fr.cm - 1]}, against the usual for those months (median of ${P2.y0}\u2013${fr.yb}).${P2.partial ? ` ${MONL[P2.partial.m - 1]} so far is not in it.` : ""}` : G.pMode === "watch" ? `Where to watch in ${nextName}: hotspots to expect, from ${nextName} in ${wy ? `${wy[0]}\u2013${wy[1]}` : "the last ten years"} (a weighted median).` : G.year == null ? `Hotspots, ${P2.y0} to ${lastWords3(P2)}.` : `Hotspots in ${yearWords(G.d ?? { y0: P2.y0, y1: fr.cy }, G.year)} (the year on the slider).`;
     const q = $("gProvQ").value.trim();
     let list4;
-    if (q) list4 = searchProvinces(P, q, TOP);
+    if (q) list4 = searchProvinces(P2, q, TOP);
     else {
-      list4 = [...P.provinces].sort((a, b) => provValue(b) - provValue(a) || a.name.localeCompare(b.name));
+      list4 = [...P2.provinces].sort((a, b) => provValue(b) - provValue(a) || a.name.localeCompare(b.name));
       if (!G.pAll) list4 = list4.slice(0, TOP);
     }
-    const lv = G.pMode === "watch" ? levels(P.provinces, fr.next) : null, top = Math.max(...P.provinces.map(provValue), 0);
+    const lv = G.pMode === "watch" ? levels(P2.provinces, fr.next) : null, top = Math.max(...P2.provinces.map(provValue), 0);
     const rows = list4.map((p) => {
-      const v = provValue(p), i = P.provinces.indexOf(p), extra = G.pMode === "ytd" ? ` <small>usual ${num3(soFar(P, p).usual)}</small>` : lv ? ` <small class="gLv ${lv.get(p)}">${LEVEL_WORD[lv.get(p) ?? "low"]}</small>` : "";
+      const v = provValue(p), i = P2.provinces.indexOf(p), extra = G.pMode === "ytd" ? ` <small>usual ${num3(soFar(P2, p).usual)}</small>` : lv ? ` <small class="gLv ${lv.get(p)}">${LEVEL_WORD[lv.get(p) ?? "low"]}</small>` : "";
       return `<li><button type="button" class="gProvRow${p === G.pSel ? " on" : ""}" data-i="${i}"><span class="gProvN">${esc10(p.name)}</span><span class="gProvV">${G.pMode === "watch" ? "about " : ""}${num3(v)}${extra}</span><i style="width:${top > 0 ? Math.max(0, Math.min(100, 100 * v / top)).toFixed(1) : 0}%"></i></button></li>`;
     });
-    const allBtn = !q && many && P.provinces.length > TOP ? `<button class="link" type="button" id="gProvAll">${G.pAll ? "Show the top " + TOP : `Show all ${P.provinces.length}`}</button>` : "";
+    const allBtn = !q && many && P2.provinces.length > TOP ? `<button class="link" type="button" id="gProvAll">${G.pAll ? "Show the top " + TOP : `Show all ${P2.provinces.length}`}</button>` : "";
     $("gProvBody").innerHTML = (rows.length ? `<ol class="gProvList">${rows.join("")}</ol>` : `<p class="hint">${q ? "No state or province by that name." : ""}</p>`) + allBtn;
     $("gProvBody").querySelectorAll(".gProvRow").forEach((b) => {
-      const p = P.provinces[+b.dataset.i];
+      const p = P2.provinces[+b.dataset.i];
       b.onclick = () => selectProv(p === G.pSel ? null : p, true);
       b.onmouseenter = () => hoverProv(+b.dataset.i);
       b.onmouseleave = () => hoverProv(null);
@@ -9786,33 +9910,33 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
       };
     provSelCard();
   }
-  var lastWords3 = (P) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(P.last_date);
-    return m ? `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}` : P.last_date;
+  var lastWords3 = (P2) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(P2.last_date);
+    return m ? `${+m[3]} ${MON[+m[2] - 1]} ${m[1]}` : P2.last_date;
   };
   function provSelCard() {
-    const P = G.P, p = G.pSel, box2 = $("gProvSel");
-    if (!P || !p) {
+    const P2 = G.P, p = G.pSel, box2 = $("gProvSel");
+    if (!P2 || !p) {
       box2.hidden = true;
       return;
     }
-    const fr = frameOf(P), sf = soFar(P, p), bm = busiestMonth(P, p), wy = worstYear(P, p), est = (y) => y < (G.d ? G.d.viirs_from[0] : 2012), nov = P.partial ? p.monthly[P.partial.i] ?? 0 : null, nx = fr.next, lv = levels(P.provinces, nx).get(p) ?? "low";
+    const fr = frameOf(P2), sf = soFar(P2, p), bm = busiestMonth(P2, p), wy = worstYear(P2, p), est = (y) => y < (G.d ? G.d.viirs_from[0] : 2012), nov = P2.partial ? p.monthly[P2.partial.i] ?? 0 : null, nx = fr.next, lv = levels(P2.provinces, nx).get(p) ?? "low";
     const rows = [];
     rows.push(
       row(
         `${sf.y} so far <small>January to ${MONL[sf.months - 1]}</small>`,
         `${num3(sf.cur)} <small>usual ${num3(sf.usual)}</small>`,
-        `${nHot5(sf.cur)}; usual is the median of the same months in ${P.y0}\u2013${fr.yb}`
+        `${nHot5(sf.cur)}; usual is the median of the same months in ${P2.y0}\u2013${fr.yb}`
       )
     );
-    if (nov != null && P.partial)
+    if (nov != null && P2.partial)
       rows.push(
         row(
-          `${MONL[P.partial.m - 1]} ${P.partial.y} <small>${P.partial.day0}\u2013${P.partial.day1} ${MON[P.partial.m - 1]}, not complete</small>`,
-          `${num3(nov)} <small>usual whole month ${num3(p.usual[P.partial.m - 1])}</small>`
+          `${MONL[P2.partial.m - 1]} ${P2.partial.y} <small>${P2.partial.day0}\u2013${P2.partial.day1} ${MON[P2.partial.m - 1]}, not complete</small>`,
+          `${num3(nov)} <small>usual whole month ${num3(p.usual[P2.partial.m - 1])}</small>`
         )
       );
-    rows.push(row("Busiest month", bm.sum > 0 ? MONL[bm.m] : "None", `Most hotspots over ${P.y0}\u2013${fr.yb}`));
+    rows.push(row("Busiest month", bm.sum > 0 ? MONL[bm.m] : "None", `Most hotspots over ${P2.y0}\u2013${fr.yb}`));
     rows.push(
       row(
         `Worst complete year${wy.y > 0 && est(wy.y) ? ` <small>${EST}</small>` : ""}`,
@@ -9826,22 +9950,22 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
         `Weighted median of ${MONL[nx]} in recent years; the level compares it with the other provinces`
       )
     );
-    rows.push(row(`Hotspots, ${P.y0}\u2013${lastWords3(P)}`, num3(p.total), nHot5(p.total)));
+    rows.push(row(`Hotspots, ${P2.y0}\u2013${lastWords3(P2)}`, num3(p.total), nHot5(p.total)));
     const kind = [p.type, p.region].filter(Boolean).map((t) => esc10(String(t))).join(" \xB7 ");
-    box2.innerHTML = `<div class="gPickHead"><p class="eyebrow">${kind || "Province"}</p><button class="link" type="button" id="gProvX">Clear</button></div><h3>${esc10(p.name)}</h3><dl class="mini">${rows.join("")}</dl><p class="hint">About ${fmt(p.area_km2)} km\xB2. Each 5.5 km square counts for the province that holds its middle. Outline: ${outlineName(P)}.</p>`;
+    box2.innerHTML = `<div class="gPickHead"><p class="eyebrow">${kind || "Province"}</p><button class="link" type="button" id="gProvX">Clear</button></div><h3>${esc10(p.name)}</h3><dl class="mini">${rows.join("")}</dl><p class="hint">About ${fmt(p.area_km2)} km\xB2. Each 5.5 km square counts for the province that holds its middle. Outline: ${outlineName(P2)}.</p>`;
     box2.hidden = false;
     $("gProvX").onclick = () => selectProv(null, false);
   }
-  function selectProv(p, fit) {
-    const P = G.P;
-    if (G.map && G.ready && P) {
-      if (G.pSel) G.map.setFeatureState({ source: "prov", id: P.provinces.indexOf(G.pSel) }, { sel: false });
-      if (p) G.map.setFeatureState({ source: "prov", id: P.provinces.indexOf(p) }, { sel: true });
+  function selectProv(p, fit2) {
+    const P2 = G.P;
+    if (G.map && G.ready && P2) {
+      if (G.pSel) G.map.setFeatureState({ source: "prov", id: P2.provinces.indexOf(G.pSel) }, { sel: false });
+      if (p) G.map.setFeatureState({ source: "prov", id: P2.provinces.indexOf(p) }, { sel: true });
     }
     G.pSel = p;
     provCard();
     if (p) $("gProvSel").scrollIntoView({ block: "nearest", behavior: "smooth" });
-    if (p && fit && G.map && G.ready) {
+    if (p && fit2 && G.map && G.ready) {
       const b = shapeNear(p, G.lon0).box;
       G.map.fitBounds([b.slice(0, 2), b.slice(2)], { padding: padding(), duration: 800, maxZoom: 9 });
     }
@@ -9866,12 +9990,12 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   }
   var resolved = /* @__PURE__ */ new WeakMap();
   function resolveMarks() {
-    const P = G.P;
-    if (!P || !G.marks.length) return;
+    const P2 = G.P;
+    if (!P2 || !G.marks.length) return;
     let changed = false;
     G.marks = G.marks.map((mk) => {
       if (!mk.box || resolved.has(mk)) return mk;
-      const hit = provinceOfMark(P, mk.name, mk.box, G.lon0);
+      const hit = provinceOfMark(P2, mk.name, mk.box, G.lon0);
       if (!hit) return mk;
       changed = true;
       const out = { ...mk, geometry: hit.geometry, box: hit.box };
@@ -10204,7 +10328,13 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     if (!st) {
       closeSheet(true);
       openHero();
-      if (location.hash === "#compare") openSheet("compare");
+      if (location.hash === "#compare") {
+        openSheet("compare");
+        if (!extrasReady())
+          loadExtras().then(() => {
+            if (S.sheet === "compare") render();
+          });
+      }
       return;
     }
     loadExtras();
@@ -11079,6 +11209,392 @@ ${short(f.perYear)} hotspots a year` : c.n;
     }
   }
 
+  // src/voice.ts
+  function recognizer() {
+    const w = window;
+    const C = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    return typeof C === "function" ? C : null;
+  }
+  var canSpeak = () => "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+  var english = () => (navigator.languages ?? []).find((l) => /^en\b/i.test(l));
+  var listenLang = () => english() ?? (navigator.language || "en-US");
+  function speakLang(text2) {
+    const looksEnglish = /\b(the|and|with|were|than|which|there|this|that|hotspots?|fires?|burned)\b/i.test(text2);
+    return looksEnglish ? english() ?? "en-US" : navigator.language || "en-US";
+  }
+  var ALOUD_KEY = "bc-copilot-aloud";
+  var STOP_GRACE = 2e3;
+  var LISTEN_LIMIT = 3e4;
+  var DOUBLE_PRESS = 700;
+  var STARTING = "Starting the microphone\u2026";
+  var LISTENING = "Listening\u2026";
+  var PRIVACY = "Voice uses your browser's speech service; in Chrome that sends audio to Google.";
+  var ERRORS = {
+    "not-allowed": "Microphone access was blocked. Allow it in the browser to talk to the copilot.",
+    "service-not-allowed": "Speech recognition is turned off in this browser. You can type your question instead.",
+    "no-speech": "No speech was heard. Press the mic to try again.",
+    "audio-capture": "No microphone was found. You can type your question instead.",
+    network: "The browser's speech service could not be reached. You can type your question instead.",
+    "language-not-supported": "This browser cannot recognise speech in your language. You can type your question instead."
+  };
+  var OTHER_ERROR = "Voice input stopped. You can type your question instead.";
+  var MIC_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><g class="off"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></g><rect class="on" x="6" y="6" width="8" height="8" rx="1.5"/></svg>';
+  var SPEAKER_SVG = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 8v4h3l4 3.5v-11L6.5 8z"/><path d="M13.5 7.5a3.5 3.5 0 0 1 0 5M15.5 5.5a6.5 6.5 0 0 1 0 9"/></svg>';
+  var V4 = null;
+  var lineKind = null;
+  var session = null;
+  var utter = null;
+  var utterHash = "";
+  var readAloud = true;
+  var lookingAtPage = false;
+  function showLine(kind, text2) {
+    if (!V4) return;
+    lineKind = kind;
+    V4.line.dataset.kind = kind;
+    V4.lineIcon.innerHTML = kind === "speaking" ? SPEAKER_SVG : "";
+    V4.lineText.textContent = text2;
+    V4.lineStop.hidden = kind !== "speaking";
+    V4.sr.textContent = kind === "note" ? text2 : "";
+    if (!V4.line.hidden) return;
+    const log = V4.host.log, atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+    V4.line.hidden = false;
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+  function hideLine() {
+    if (!V4 || V4.line.hidden) return;
+    const hadFocus = V4.line.contains(document.activeElement);
+    lineKind = null;
+    V4.line.hidden = true;
+    V4.sr.textContent = "";
+    if (hadFocus && !V4.mic.disabled) V4.mic.focus();
+  }
+  function fit() {
+    if (!V4) return;
+    const t = V4.host.input;
+    t.style.height = "";
+    t.style.height = Math.min(120, t.scrollHeight + t.offsetHeight - t.clientHeight) + "px";
+  }
+  function setMic(on) {
+    if (!V4) return;
+    V4.mic.setAttribute("aria-pressed", String(on));
+    V4.mic.title = on ? "Stop and send" : "Start talking";
+    V4.host.root.classList.toggle("listening", on);
+    V4.host.send.disabled = on || V4.host.busy();
+  }
+  function listen() {
+    const Ctor = recognizer();
+    if (!V4 || !Ctor || session || V4.host.busy()) return;
+    hush();
+    primeSpeech();
+    const r = new Ctor();
+    r.lang = listenLang();
+    r.interimResults = true;
+    r.continuous = false;
+    r.maxAlternatives = 1;
+    const input = V4.host.input, s2 = { r, before: input.value, placeholder: input.placeholder, heard: "", error: "", started: false, send: false, stopping: 0, limit: 0 };
+    r.onstart = r.onaudiostart = () => began(s2);
+    r.onresult = (e) => heard(s2, e);
+    r.onerror = (e) => {
+      s2.error = e.error;
+    };
+    r.onend = () => ended(s2);
+    try {
+      r.start();
+    } catch {
+      showLine("note", OTHER_ERROR);
+      return;
+    }
+    session = s2;
+    setMic(true);
+    input.placeholder = STARTING;
+    showLine("starting", STARTING);
+  }
+  function began(s2) {
+    if (session !== s2 || !V4 || s2.started) return;
+    s2.started = true;
+    s2.limit = window.setTimeout(() => stopListening(false), LISTEN_LIMIT);
+    if (V4.host.input.placeholder === STARTING) V4.host.input.placeholder = LISTENING;
+    if (lineKind === "starting") showLine("listening", "Listening. Ask your question out loud.");
+  }
+  function heard(s2, e) {
+    if (session !== s2 || !V4) return;
+    began(s2);
+    let words2 = "", final = e.results.length > 0;
+    for (let i = 0; i < e.results.length; i++) {
+      const res = e.results[i];
+      words2 += res[0]?.transcript ?? "";
+      if (!res.isFinal) final = false;
+    }
+    const most = V4.host.input.maxLength > 0 ? V4.host.input.maxLength : 500;
+    words2 = words2.replace(/\s+/g, " ").trim();
+    const full = words2.length >= most;
+    if (full) words2 = words2.slice(0, most).replace(/\s+\S*$/, "");
+    s2.heard = words2;
+    V4.host.input.value = words2;
+    fit();
+    if (final && words2) {
+      release(s2, true);
+      sendHeard(words2);
+    } else if (full) stopListening(true);
+  }
+  function ended(s2) {
+    if (session !== s2 || !V4) return;
+    release(s2, false);
+    const failed = s2.error && s2.error !== "aborted" ? s2.error : "";
+    if (s2.send && s2.heard && !failed) return sendHeard(s2.heard);
+    if (!s2.heard) {
+      V4.host.input.value = s2.before;
+      fit();
+    }
+    if (failed) showLine("note", ERRORS[failed] ?? OTHER_ERROR);
+    else if (s2.heard) showLine("note", "Press send to ask this, or change it first.");
+    else hideLine();
+  }
+  function sendHeard(words2) {
+    if (!V4) return;
+    hideLine();
+    const { host, mic } = V4;
+    if (document.activeElement === mic) host.root.focus();
+    host.ask(words2);
+  }
+  function release(s2, abort) {
+    s2.r.onstart = s2.r.onaudiostart = s2.r.onresult = s2.r.onerror = s2.r.onend = null;
+    clearTimeout(s2.stopping);
+    clearTimeout(s2.limit);
+    if (abort) {
+      try {
+        s2.r.abort();
+      } catch {
+      }
+    }
+    if (session === s2) session = null;
+    setMic(false);
+    const ph = V4?.host.input.placeholder;
+    if (V4 && (ph === STARTING || ph === LISTENING)) V4.host.input.placeholder = s2.placeholder;
+  }
+  function stopListening(send) {
+    const s2 = session;
+    if (!s2) return;
+    if (send) s2.send = true;
+    if (s2.stopping) return;
+    if (!s2.started) return cancelListening(true);
+    try {
+      s2.r.stop();
+    } catch {
+    }
+    s2.stopping = window.setTimeout(() => {
+      if (session !== s2) return;
+      try {
+        s2.r.abort();
+      } catch {
+      }
+      ended(s2);
+    }, STOP_GRACE);
+  }
+  function cancelListening(restore2) {
+    const s2 = session;
+    if (!s2 || !V4) return;
+    release(s2, true);
+    if (lineKind === "listening" || lineKind === "starting") hideLine();
+    if (restore2) {
+      V4.host.input.value = s2.before;
+      fit();
+    }
+  }
+  function spoken(raw) {
+    const lines2 = raw.split("\n").map(
+      (l) => l.trim().replace(/^>\s*/, "").replace(/^#+\s*/, "").replace(/^(?:[-*•]|\d+[.)])\s+/, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\b(see|visit)\s+https?:\/\/\S+/gi, "$1 the link").replace(/\bhttps?:\/\/\S+/gi, "").replace(/\*+|`+|~~|__/g, "").replace(/(?:~|≈)\s*(?=\d)/g, "about ").replace(/\s*→\s*/g, " to ").replace(/\b(\d{4})\s*[–-]\s*(\d{2,4})\b(?![–-]\d)/g, "$1 to $2").replace(/(\d)\s*×/g, "$1 times").replace(/\s+/g, " ").trim()
+    ).filter((l) => /[A-Za-z0-9]/.test(l) && !l.startsWith("|")).map((l) => /[.!?:;。！？]$/.test(l) ? l : l + ".");
+    const all = sentences(lines2.join(" "));
+    let out = all[0] ?? "";
+    if (all[1] && out.length < 110 && out.length + all[1].length < 300) out += " " + all[1];
+    if (out.length > 320) out = out.slice(0, 300).replace(/\s+\S*$/, "") + "\u2026";
+    return out;
+  }
+  var SHORT_FORM = /(?:\b(?:e\.g|i\.e|etc|vs|approx|ca|Mt|St|Dr|Mr|Mrs|Ms|No|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)|\b[A-Z])\.$/;
+  function sentences(text2) {
+    const out = [];
+    let start4 = 0;
+    for (let i = 0; i < text2.length; i++) {
+      const c = text2[i];
+      if (c !== "." && c !== "!" && c !== "?" || i + 1 < text2.length && text2[i + 1] !== " ") continue;
+      const piece = text2.slice(start4, i + 1);
+      if (c === "." && SHORT_FORM.test(piece)) continue;
+      if (piece.trim()) out.push(piece.trim());
+      start4 = i + 1;
+    }
+    const rest = text2.slice(start4).trim();
+    if (rest) out.push(rest);
+    return out;
+  }
+  var primed = false;
+  function primeSpeech() {
+    if (primed || !canSpeak()) return;
+    primed = true;
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  }
+  function say(text2) {
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) synth.cancel();
+    const u = new SpeechSynthesisUtterance(text2);
+    u.lang = speakLang(text2);
+    const watch = window.setInterval(() => {
+      if (utter !== u || !synth.speaking && !synth.pending) over();
+    }, 1500);
+    const over = () => {
+      clearInterval(watch);
+      if (utter !== u) return;
+      utter = null;
+      if (lineKind === "speaking") hideLine();
+    };
+    u.onend = over;
+    u.onerror = over;
+    utter = u;
+    utterHash = location.hash;
+    showLine("speaking", "Reading the answer aloud");
+    synth.speak(u);
+  }
+  function hush() {
+    if (!utter) return;
+    utter = null;
+    window.speechSynthesis.cancel();
+    if (lineKind === "speaking") hideLine();
+  }
+  function voiceAnswer(raw) {
+    if (!V4 || !V4.aloud || !readAloud || V4.host.root.hidden && !lookingAtPage) return;
+    say(spoken(raw) || "The answer is on the screen.");
+  }
+  function voiceBusy(busy3) {
+    if (!V4) return;
+    V4.mic.disabled = busy3;
+    if (!busy3) return;
+    hush();
+    cancelListening(false);
+    if (lineKind === "note") hideLine();
+  }
+  function voiceStop(keepReading = false) {
+    lookingAtPage = keepReading;
+    if (!keepReading) hush();
+    cancelListening(true);
+    if (lineKind !== "speaking") hideLine();
+  }
+  function setAloud(on) {
+    readAloud = on;
+    V4?.aloud?.setAttribute("aria-pressed", String(on));
+    if (!on) hush();
+    try {
+      localStorage.setItem(ALOUD_KEY, on ? "1" : "0");
+    } catch {
+    }
+  }
+  function voiceInit(host) {
+    if (!recognizer()) return;
+    const mic = h("button", "askMic");
+    mic.type = "button";
+    mic.innerHTML = MIC_SVG;
+    mic.setAttribute("aria-label", "Talk to the copilot");
+    mic.onclick = () => session ? stopListening(true) : listen();
+    host.send.before(mic);
+    const line = h("div", "askVoice"), lineIcon = h("span", "askVoiceIcon"), lineText = h("span", "askVoiceText"), lineStop = h("button", "askVoiceStop", "Stop");
+    line.hidden = true;
+    lineIcon.setAttribute("aria-hidden", "true");
+    lineStop.type = "button";
+    lineStop.setAttribute("aria-label", "Stop reading aloud");
+    lineStop.onclick = hush;
+    line.append(lineIcon, lineText, lineStop);
+    host.form.before(line);
+    const sr = h("span", "askVoiceSr");
+    sr.setAttribute("role", "status");
+    host.root.append(sr);
+    const info = h("span", "askVoiceInfo");
+    info.appendChild(h("span", "", PRIVACY));
+    let aloud = null;
+    if (canSpeak()) {
+      aloud = h("button", "askAloud");
+      aloud.type = "button";
+      aloud.append(h("span", "askSw"), "Read answers aloud");
+      aloud.title = "Read the start of each answer to a spoken question aloud";
+      aloud.onclick = () => setAloud(!readAloud);
+      info.appendChild(aloud);
+      try {
+        readAloud = localStorage.getItem(ALOUD_KEY) !== "0";
+      } catch {
+      }
+      aloud.setAttribute("aria-pressed", String(readAloud));
+    }
+    host.note.appendChild(info);
+    const quick = h("button", "askLaunchMic");
+    quick.type = "button";
+    quick.setAttribute("aria-label", "Talk to the fire copilot");
+    quick.title = "Talk to the fire copilot";
+    quick.innerHTML = MIC_SVG;
+    let quickAt = -Infinity;
+    quick.onclick = () => {
+      quickAt = performance.now();
+      host.open();
+      if (host.busy()) return;
+      listen();
+      setTimeout(() => mic.focus(), 90);
+    };
+    host.launch.after(quick);
+    host.root.addEventListener(
+      "click",
+      (e) => {
+        if (performance.now() - quickAt > DOUBLE_PRESS) return;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      true
+    );
+    document.body.classList.add("askVoiceOK");
+    new ResizeObserver(() => {
+      if (host.launch.offsetWidth) document.body.style.setProperty("--askLW", host.launch.offsetWidth + "px");
+    }).observe(host.launch);
+    V4 = { host, mic, line, lineIcon, lineText, lineStop, sr, info, aloud };
+    setMic(false);
+    host.input.addEventListener("input", () => {
+      hush();
+      cancelListening(false);
+      if (lineKind === "note") hideLine();
+    });
+    host.root.addEventListener(
+      "submit",
+      (e) => {
+        if (!session) return;
+        e.preventDefault();
+        e.stopPropagation();
+        stopListening(true);
+      },
+      true
+    );
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "Escape") {
+          if (session) cancelListening(true);
+          else if (utter) {
+            hush();
+            if (host.root.hidden) return;
+          } else return;
+          e.stopPropagation();
+          e.preventDefault();
+        } else if (e.key === "Enter" && session && e.target === host.input && !e.shiftKey && !e.isComposing) {
+          e.stopPropagation();
+          e.preventDefault();
+          stopListening(true);
+        }
+      },
+      true
+    );
+    addEventListener("hashchange", () => {
+      if (utter && location.hash !== utterHash) hush();
+    });
+    addEventListener("pagehide", () => {
+      hush();
+      cancelListening(false);
+    });
+  }
+
   // src/copilot.ts
   var SOCKET = "wss://hotspotters.compare/agents/fire-copilot/";
   var SESSION_KEY = "bc-copilot-session";
@@ -11362,9 +11878,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
     });
     scroll();
   }
-  function userBlock(text2) {
-    const m = h("div", "askMsg user");
-    m.appendChild(h("p", "", text2));
+  function userBlock(text2, said = false) {
+    const m = h("div", "askMsg user"), p = m.appendChild(h("p"));
+    if (said) p.appendChild(h("span", "askVia", "Said"));
+    p.append(text2);
     return m;
   }
   var IDLE_HINT = "Ask about a place, a month or a year";
@@ -11374,8 +11891,9 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (UI.send) UI.send.disabled = b;
     if (UI.fresh) UI.fresh.disabled = b;
     if (UI.input) UI.input.placeholder = b ? "Wait for this answer\u2026" : IDLE_HINT;
+    voiceBusy(b);
   }
-  var seeIt = () => innerWidth <= 600 ? { label: "See it", run: close } : void 0;
+  var seeIt = () => innerWidth <= 600 ? { label: "See it", run: () => close(true) } : void 0;
   function noteDid(text2, button) {
     const target = turn2 ? turn2.box : UI.log?.lastElementChild;
     if (!(target instanceof HTMLElement)) return null;
@@ -11393,14 +11911,14 @@ ${short(f.perYear)} hotspots a year` : c.n;
     const p = noteDid(text2, seeIt());
     if (turn2) turn2.moved = p;
   }
-  function ask(raw) {
+  function ask(raw, said = false) {
     const q = raw.trim().slice(0, 500);
     if (!q || turn2) return;
     const log = UI.log;
     log.querySelector(".askWelcome")?.remove();
     log.querySelectorAll(".askChips.follow,.askOffline,.askConnecting").forEach((x) => x.remove());
     if (UI.said) UI.said.textContent = "";
-    log.appendChild(userBlock(q));
+    log.appendChild(userBlock(q, said));
     const box2 = h("div", "askMsg bot"), status = h("div", "askStatus"), statusText = h("span", "", "Connecting");
     status.append(h("span", "askPulse"), statusText);
     const live = {
@@ -11417,6 +11935,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
       cardCount: 0,
       frame: 0,
       offered: [],
+      said,
       moved: null
     };
     box2.append(status, live.cards, live.text);
@@ -11519,7 +12038,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
         const asked = t.box.previousElementSibling;
         if (asked?.classList.contains("user")) asked.remove();
         t.box.remove();
-        ask(t.question);
+        ask(t.question, t.said);
       };
       box2.appendChild(again);
       t.box.appendChild(box2);
@@ -11528,10 +12047,12 @@ ${short(f.perYear)} hotspots a year` : c.n;
     setBusy(false);
     scroll();
     if (innerWidth > 900 && UI.root && !UI.root.hidden) UI.input?.focus();
+    if (t.said && !error) voiceAnswer(t.raw);
   }
   var UNREACHABLE = "Can't reach the copilot at hotspotters.compare. It may be down, or this network may block it.";
   function newConversation() {
     if (turn2) return;
+    voiceStop();
     pendingMap = null;
     mapMarks([]);
     glanceMarks([]);
@@ -11737,9 +12258,10 @@ ${short(f.perYear)} hotspots a year` : c.n;
       log.appendChild(box2);
     });
   }
-  function close() {
+  function close(keepReading = false) {
     const { root, launch } = UI;
     if (!root || !launch) return;
+    voiceStop(keepReading);
     root.hidden = true;
     launch.hidden = false;
     launch.setAttribute("aria-expanded", "false");
@@ -11795,7 +12317,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     fresh2.onclick = newConversation;
     shut.setAttribute("aria-label", "Close the copilot");
     shut.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>';
-    shut.onclick = close;
+    shut.onclick = () => close();
     head.append(title, fresh2, shut);
     const note = h("p", "askNote", HONESTY), log = h("div", "askLog"), said = h("div", "askSaid");
     said.setAttribute("role", "status");
@@ -11835,6 +12357,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     root.append(head, note, log, form, said);
     document.body.append(launch, root);
     Object.assign(UI, { launch, root, log, input, send, fresh: fresh2, where, said });
+    voiceInit({ root, log, form, input, send, note, launch, open, ask: (q) => ask(q, true), busy: () => turn2 !== null });
     syncPlace();
     addEventListener("hashchange", () => setTimeout(syncPlace, 0));
     const sheet = document.getElementById("sheetWrap");

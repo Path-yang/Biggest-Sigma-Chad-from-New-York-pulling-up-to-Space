@@ -243,8 +243,11 @@ export interface Stations {
   n: number;
   X: Float32Array;
   Y: Float32Array;
-  /** county index of each station, or -1 */
+  /** county index of each station by the hexagon it falls in, or -1 */
   c: Int16Array;
+  /** county index of each station by the county outline that holds it; where no outline does (a station on the
+   *  coast or a border), the hexagon's county, or -1 */
+  cp: Int16Array;
   names: [string, string][];
 }
 export interface HexState extends Bounds {

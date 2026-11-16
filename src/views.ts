@@ -159,7 +159,14 @@ export function route() {
   if (!st) {
     closeSheet(true);
     openHero();
-    if (location.hash === "#compare") openSheet("compare");
+    if (location.hash === "#compare") {
+      openSheet("compare");
+      /* the comparison's population row comes with the state extras: ask for them, and redraw when they arrive */
+      if (!extrasReady())
+        loadExtras().then(() => {
+          if (S.sheet === "compare") render();
+        });
+    }
     return;
   }
   loadExtras();

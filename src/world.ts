@@ -23,7 +23,8 @@ export function theName(name: string) {
     : name;
 }
 
-function inRing(r: Ring, lon: number, lat: number) {
+/** whether a point lies inside a ring of flat lon, lat pairs */
+export function inRing(r: Ring, lon: number, lat: number) {
   let inside = false;
   for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
     const xi = r[i],

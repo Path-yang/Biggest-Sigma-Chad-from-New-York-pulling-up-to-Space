@@ -26,6 +26,7 @@ import { renderStaff } from "./respui";
 import { countyRiskFc, forecastLine, renderForecastSheet } from "./fcui";
 import { olStart, renderOutlookSheet } from "./olui";
 import { fcOn, isFc, pctP } from "./forecast";
+import { fmtPop, popSentence, popState, popSuffix, popWhen } from "./pop";
 
 export function renderArea(R: Analysis) {
   $("shTitle").textContent = placeName();
@@ -103,21 +104,24 @@ export function renderArea(R: Analysis) {
     : "";
   const share = (x: number) => (x >= 0.095 ? Math.round(x * 100) + "%" : x >= 0.001 ? (x * 100).toFixed(1) + "%" : x > 0 ? "<0.1%" : "0%"),
     who = window.RESPONSE ? "Counties, and the stations that reach each place first by road," : "Counties";
+  let watched: number[];
   if (isFc() && fcOn(S.st!)) {
     const yr = S.odds as number;
     $("watchTitle").textContent = `Where to watch in ${mo} ${yr}: forecast`;
     $("watchNote").textContent =
       `${who} ranked by their share of ${NAME[S.st!]}'s forecast fire risk for ${mo} ${yr}: each hexagon counts by its chance of at least one hotspot. ` +
       `The forecast is built from fire history alone, not weather, and says nothing about how each station is staffed. Tap one to see it on the map.`;
-    $("watch").innerHTML = countyRiskFc(S.st!, S.rm, yr)
-      .slice(0, 8)
+    const wl = countyRiskFc(S.st!, S.rm, yr).slice(0, 8);
+    watched = wl.map(w => w.ci);
+    $("watch").innerHTML = wl
       .map(
         (w, i) =>
-          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn</small></button>`,
+          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn${popSuffix(S.st!, w.ci)}</small></button>`,
       )
       .join("");
   } else {
     const wl = countyRisk(S.st!, S.rm).slice(0, 8);
+    watched = wl.map(w => w.ci);
     $("watchTitle").textContent = `Where to watch in ${mo}: past odds`;
     $("watchNote").textContent =
       `${who} ranked by how often fire comes to their hexagons in ${mo}, ${rk.a}–${rk.b}: each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire. ` +
@@ -125,10 +129,14 @@ export function renderArea(R: Analysis) {
     $("watch").innerHTML = wl
       .map(
         (w, i) =>
-          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} · about ${fmt(w.mean)} hotspots</small></button>`,
+          `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s · about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} · about ${fmt(w.mean)} hotspots${popSuffix(S.st!, w.ci)}</small></button>`,
       )
       .join("");
   }
+  const wp = popSentence(S.st!, watched, n => (n === 1 ? "This county" : `These ${n} counties`)),
+    sp = popState(S.st!);
+  $("watchPop").hidden = !wp;
+  $("watchPop").textContent = wp + (wp && sp != null ? ` ${NAME[S.st!]} as a whole has ${fmtPop(sp)}.` : "");
   renderForecastSheet();
   renderStaff();
   renderOutlookSheet();
@@ -323,6 +331,8 @@ export function renderCompare() {
     ],
     ["Most active county", c => c.county, null, c => `${Math.round(c.countyShare * 100)}% of the state's hotspots`],
   ];
+  if (STS.every(st => popState(st) != null))
+    rowsDef.push(["Population", c => fmtPop(popState(c.st)!), c => popState(c.st)!, () => popWhen()]);
   if (C.every(c => c.ytd))
     rowsDef.push([
       `${C[0].ytd!.y} so far (${C[0].ytd!.span})`,

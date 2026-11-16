@@ -1,5 +1,6 @@
 import type {
   Analysis,
+  CountyGeo,
   Epochs,
   Harmonized,
   HexState,
@@ -18,6 +19,7 @@ import type {
 import { AQ0, D, FILL_SRC, FULL_Y1, MON, MONL, NAME, NM, NMD, PART, VI0, Y0, fillDays } from "./data";
 import { S } from "./state";
 import { fmt, times } from "./util";
+import { inRing } from "./world";
 
 /* ---------- harmonization (same rule as the pipeline) ---------- */
 /** the month indexes and size bins of the state data */
@@ -121,14 +123,55 @@ export function hexState(st: StateCode): HexState {
   const pl = D.places[st];
   o.towns = pl.towns.map(t => ({ n: t[0], lat: t[1], lon: t[2], pop: t[3], X: t[2] * K, Y: t[1] }));
   const sn = pl.stn.length,
-    stn = (o.stn = { n: sn, X: new Float32Array(sn), Y: new Float32Array(sn), c: new Int16Array(sn), names: pl.stn });
+    stn = (o.stn = {
+      n: sn,
+      X: new Float32Array(sn),
+      Y: new Float32Array(sn),
+      c: new Int16Array(sn),
+      cp: new Int16Array(sn),
+      names: pl.stn,
+    });
   for (let i = 0; i < sn; i++) {
     stn.X[i] = pl.stn_xy[2 * i] * K;
     stn.Y[i] = pl.stn_xy[2 * i + 1];
     const k = o.key.get(hexKey(stn.X[i], stn.Y[i], R));
     stn.c[i] = k === undefined ? -1 : o.c[k];
   }
+  stn.cp.set(countiesAt(st, o.geo, pl.stn_xy, stn.c));
   return (HX[st] = o);
+}
+/** the county (index into data.js counties) whose outline holds each point of `lonLat` (flat lon, lat pairs); where no
+ *  outline does, `fallback`'s county. A hexagon can straddle a county line, so this is the county a point is really in. */
+function countiesAt(st: StateCode, geo: CountyGeo[], lonLat: ArrayLike<number>, fallback: Int16Array) {
+  const ciOf = new Map(D.states[st].counties.map((c, ci) => [c.fips, ci])),
+    shapes = geo.map(g => {
+      const b = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const r of g.r)
+        for (let i = 0; i < r.length; i += 2) {
+          b[0] = Math.min(b[0], r[i]);
+          b[1] = Math.min(b[1], r[i + 1]);
+          b[2] = Math.max(b[2], r[i]);
+          b[3] = Math.max(b[3], r[i + 1]);
+        }
+      return { ci: ciOf.get(g.f) ?? -1, r: g.r, b };
+    }),
+    out = new Int16Array(fallback.length);
+  for (let i = 0; i < out.length; i++) {
+    const lon = lonLat[2 * i],
+      lat = lonLat[2 * i + 1];
+    /* even-odd over all of a county's rings, so a hole (a county inside another) counts as outside */
+    const hit = shapes.find(
+      ({ ci, r, b }) =>
+        ci >= 0 &&
+        lon >= b[0] &&
+        lon <= b[2] &&
+        lat >= b[1] &&
+        lat <= b[3] &&
+        r.reduce((ins, ring) => ins !== inRing(ring, lon, lat), false),
+    );
+    out[i] = hit ? hit.ci : fallback[i];
+  }
+  return out;
 }
 export function maskFor(st: StateCode, sel: Sel) {
   const hx = hexState(st),

@@ -6,6 +6,7 @@ import { hexState, leadText, placeName, sameDaysFor, stationsFor, verdict, ytdFo
 import { setCounty, showLabel } from "./map";
 import { chanceCard } from "./fcui";
 import { olCard } from "./olui";
+import { exactPop, fmtPop, popCounty, popState, popWhen } from "./pop";
 
 /* =====================================================================
    CARD, SHEET, COMPARE
@@ -57,11 +58,39 @@ export function renderCard(R: Analysis) {
     : v?.noSame
       ? `The month is not over: the record runs to ${LAST_WORDS}. Choose the state or a county to compare its first days with the same days of past years.`
       : "";
+  const pr = popCard(hx.c);
+  $("popRow").hidden = !pr;
+  if (pr) {
+    $("c6q").textContent = pr.q;
+    $("c6").textContent = pr.v;
+    $("popRow").title = pr.title;
+  }
   const cc = olCard() || chanceCard(R);
   $("c4q").textContent = cc.q;
   $("c4").textContent = cc.v;
   $("c4").parentElement!.title = cc.title;
   $("openCmp").textContent = "Compare with " + NAME[STS.find(k => k !== S.st)!];
+}
+/** the card's population row: the state's or the county's people, or for a hexagon its county's; null for a drawn
+ *  area or circle, or before pop.js arrives */
+function popCard(hexCounty: ArrayLike<number>): { q: string; v: string; title: string } | null {
+  const st = S.st!,
+    sl = S.sel,
+    ci = sl.type === "county" ? sl.ci : sl.type === "hex" ? hexCounty[sl.k] : -1,
+    n = sl.type === "state" ? popState(st) : ci >= 0 ? popCounty(st, ci) : null;
+  if (n == null) return null;
+  const county = ci >= 0 ? D.states[st].counties[ci].name + " County" : "";
+  if (sl.type === "hex")
+    return {
+      q: `${county} population`,
+      v: fmtPop(n),
+      title: `Everyone living in ${county}, which this hexagon is in, not the people in the hexagon: ${exactPop(n)}.`,
+    };
+  return {
+    q: `Population (${popWhen(true)})`,
+    v: fmtPop(n),
+    title: `${exactPop(n)}. Everyone living in ${sl.type === "state" ? NAME[st] : county}, not only the people near fire.`,
+  };
 }
 export function renderTimeline(R: Analysis) {
   const ys = R.years,

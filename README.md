@@ -39,6 +39,7 @@ The page fetches five things from the network: its fonts (Google Fonts), three.j
   - **Add crews.** Choose a month, 1 to 20 extra crews and a drive-time limit, and see where each crew would reach the most fire.
   - When the places a tool points to are mostly off screen, the map flies to them.
 - In the full data, see the counties to watch and the stations first to the most fire for the chosen month, side by side, and the full list of places far from a station. These lists, the 15 km gaps and the crew planner use past odds, or the forecast when Forecast 2026 or 2027 is picked; the page says which.
+- See how many people live in the state or county you picked (on the map card), in each county to watch, and in all the counties behind a list together ("These 8 counties are home to 6.43 million people"): the counties to watch, the counties the top stations stand in, and the counties of the 15 km gaps. The figures are the US Census Bureau's estimates for 1 July 2025. They count everyone living in the county, not the people near any fire.
 
 ## Files
 
@@ -48,11 +49,12 @@ The page fetches five things from the network: its fonts (Google Fonts), three.j
 | `world.js` | Country outlines for the globe and the country maps (Natural Earth, simplified), keyed by FIRMS country name. Built by `scripts/build_world_shapes.py`. |
 | `response.js` | Drive times from fire and EMS stations to every hexagon, and a rule for estimating drive time from straight-line distance. Built by `scripts/build_response.py` from OpenStreetMap. |
 | `forecast.js` | The chance of fire in every hexagon and county for each month of 2026 and 2027, the backtest against past odds, and California's large-fire layer (history and forecast). Built by `scripts/build_forecast.py`; the large-fire layer comes from `scripts/build_large_fires.py` and `scripts/build_large_layer.py` through `forecast_inputs/large.json`. |
+| `pop.js` | The US Census Bureau's population estimate for 1 July 2025 (Vintage 2025) for New York, California and each of their 120 counties, keyed by FIPS code (2.5 KB). Built by `scripts/build_population.py` from `co-est2025-alldata.csv`, matched to `data.js` by FIPS code and name; the build stops on any mismatch. |
 | `outlook.js` | For the 14-day outlook: each county's usual chance of a hotspot for every day of the year, its weather point, the weather model's coefficients and the backtest. Built by `scripts/build_outlook.py`. The page fetches the weather itself. |
 | `world_outlook.js` | For the global 14-day outlook: about 2,100 regions on a 2.5° grid, each one's usual chance for every half-month, its weather climate, its weather point and the per-region correction for Open-Meteo, the model's coefficients and the backtest. Built by `scripts/build_world_outlook.py`. The country page loads it (0.34 MB compressed) when a country first opens and fetches the weather itself. |
 | `world_outlook_today.json` | The daily snapshot of the global outlook: every region's chance from that day's Open-Meteo forecast, and each country's summary for the globe. Written by `scripts/world_outlook_today.ts`, run twice a day by `.github/workflows/world-outlook-today.yml`. |
 | `data.js` | The data, about 3.7 MB: monthly counts per county and per hexagon, the 2 km hexagon detail, county outlines, roads, towns, fire and EMS stations, the globe's outlines and Earth texture, exchange rates and validation results. |
-| `app.js` | The page's logic, built from `src/`. It is committed so that the site needs no build step. It loads `response.js`, `forecast.js` and `outlook.js` itself when a state view first opens (`src/extras.ts`), so the globe does not wait for them. |
+| `app.js` | The page's logic, built from `src/`. It is committed so that the site needs no build step. It loads `response.js`, `forecast.js`, `outlook.js` and `pop.js` itself when a state view first opens (`src/extras.ts`), so the globe does not wait for them. |
 | `src/` | The TypeScript source for `app.js`. |
 | `package.json`, `tsconfig.json` | Build and type-check settings. |
 
@@ -67,7 +69,7 @@ npm run check
 
 `npm run check` type-checks `src/` and rebuilds `app.js`. `npm run watch` rebuilds `app.js` each time you save.
 
-GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=27`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3` and `outlook.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. It loads `world_outlook.js?v=2` when a country page first opens; that number is in `src/wol.ts`. Raise the number when a file changes (for the last four, in `src/extras.ts` or `src/wol.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
+GitHub Pages serves this repository as it is, so commit the rebuilt `app.js` together with your source change. `index.html` loads `app.js?v=28`, `data.js?v=4` and `world.js?v=1`. `app.js` loads `response.js?v=1`, `forecast.js?v=3`, `outlook.js?v=1` and `pop.js?v=1` when New York or California first opens; their numbers are in `src/extras.ts`. It loads `world_outlook.js?v=2` when a country page first opens; that number is in `src/wol.ts`. Raise the number when a file changes (for the last five, in `src/extras.ts` or `src/wol.ts`, then rebuild `app.js` and raise its number too), so that returning visitors do not get a stale cached copy.
 
 ## Method
 
@@ -116,7 +118,7 @@ The scripts that built the 2026 data are `scripts/extend_data_2026.py` (New York
 - A hotspot is a detection, not a fire count or burned area.
 - The industrial filter (step 2) misses heat seen by day. The Ivanpah solar power plant in San Bernardino County shows up as hotspots in most months since 2014 (its three solar towers). Its two hexagons still show those hotspots on the Past hotspots map and in the counts, but the chance of fire, the fire response tools and the forecast treat them as having no fire, and their tooltip says why.
 
-Data: NASA FIRMS active fire archive. Street map tiles © OpenStreetMap contributors.
+Data: NASA FIRMS active fire archive. Population: US Census Bureau, Vintage 2025 county population estimates. Street map tiles © OpenStreetMap contributors.
 
 ## Fire response tools: how they work
 
