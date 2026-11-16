@@ -1,17 +1,21 @@
 import type { CountrySummary } from "./types";
 import { MONL } from "./data";
 import { $, fmt } from "./util";
-import { HF_DATASET, HF_PAGE, fileUrl, isNums, isObj, loadChecked, stationsPath } from "./hf";
+import { HF_DATASET, HF_PAGE, STATIONS_FALLBACK_DIR, fileUrl, isNums, isObj, loadChecked, stationsPath } from "./hf";
 import { theName } from "./world";
-import { cellCentre, drawMini, type MiniLayer, type MiniMark } from "./minimap";
+import { DENSE, cellCentre, drawMini, type MiniLayer, type MiniMark } from "./minimap";
 
 /* =====================================================================
-   "FIRE STATIONS" ON THE COUNTRY PAGE: stations/v2/<Country>.json (scripts/build_world_stations.py). How many fire
-   stations OpenStreetMap maps in the country, and the places with regular fire but no station mapped within 15 km.
-   OpenStreetMap is uneven: where the file rates the mapping patchy the gaps sit behind a button, and where it is
-   thin they are not shown as findings at all. Wording follows the stations contract (v1 rules, v2 additions).
+   "FIRE STATIONS" ON THE COUNTRY PAGE: stations/v3/<Country>.json (scripts/build_world_stations.py), or v2 when v3
+   does not arrive. How many fire stations OpenStreetMap maps and Overture Maps lists in the country (v2: OpenStreetMap
+   alone), and the places with regular fire but no station mapped within 15 km. Both maps are uneven: where the file
+   rates the mapping patchy the gaps sit behind a button, and where it is thin they are not shown as findings at all.
+   Wording follows the stations contract (v1 rules, v2 and v3 additions).
    ===================================================================== */
 type Level = "fair" | "patchy" | "thin" | "unpopulated" | "no_data";
+/** v3: OpenStreetMap only, OpenStreetMap and also listed in Overture (the OSM record kept), Overture only */
+type Source = "osm" | "both" | "overture";
+const SOURCES: readonly unknown[] = ["osm", "both", "overture"];
 interface Completeness {
   stations: number;
   population: number | null;
@@ -23,7 +27,7 @@ interface Completeness {
   thin: boolean;
 }
 export interface CountryStations {
-  v: 2;
+  v: 2 | 3;
   country: string;
   name: string;
   attribution: string;
@@ -31,8 +35,10 @@ export interface CountryStations {
   cell: number;
   stations_total: number;
   stations_subset: boolean;
-  /** lon, lat, name ("" = untagged), operator index (-1 = none) */
-  stations: [number, number, string, number][];
+  /** lon, lat, name ("" = untagged), operator index (-1 = none), and in v3 where the station comes from */
+  stations: [number, number, string, number, Source?][];
+  /** v3: stations by source, over all of them, not just the listed ones */
+  station_sources?: Record<Source, number>;
   operators: string[];
   /** rows of eight per summary cell: c, s1, s2, s3, km1, km2, km3, burn_years (Suomi NPP, 2012-2025) */
   cell_rows: number[];
@@ -50,8 +56,22 @@ export interface CountryStations {
 const LEVELS = ["fair", "patchy", "thin", "unpopulated", "no_data"];
 const numOrNull = (x: unknown) => x === null || typeof x === "number";
 export function isStations(x: unknown, k: string): x is CountryStations {
-  if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
-  const co = x.completeness;
+  if (!isObj(x) || (x.v !== 2 && x.v !== 3) || x.country !== k || typeof x.name !== "string") return false;
+  const co = x.completeness,
+    ss = x.station_sources;
+  /* v3 says where each station comes from, and the counts by source add up to the total */
+  if (
+    x.v === 3 &&
+    !(
+      typeof x.attribution === "string" &&
+      isObj(ss) &&
+      SOURCES.every(s => typeof ss[s as string] === "number") &&
+      (ss.osm as number) + (ss.both as number) + (ss.overture as number) === x.stations_total &&
+      Array.isArray(x.stations) &&
+      x.stations.every(s => Array.isArray(s) && SOURCES.includes(s[4]))
+    )
+  )
+    return false;
   return (
     typeof x.cell === "number" &&
     typeof x.stations_total === "number" &&
@@ -120,15 +140,99 @@ const pc = (p: number) => (p > 0 && p < 0.01 ? "under 1%" : Math.round(p * 100) 
 const km = (v: number) => (v < 10 ? v.toFixed(1) : fmt(v)) + " km";
 const deg = (v: number, p: string, n: string, dp: number) => `${Math.abs(v).toFixed(dp)}°${v < 0 ? n : p}`;
 const perYear = (v: number) => (v < 0.1 ? "under 0.1 hotspots a year" : `about ${fmt(v)} hotspot${fmt(v) === "1" ? "" : "s"} a year`);
-const NO_STATION = "no fire station mapped in OpenStreetMap within 15 km";
+/* ---------- naming the sources: v3 counts OpenStreetMap and Overture Maps together, v2 OpenStreetMap alone ---------- */
+/** the colour of a station only Overture Maps lists: the country page's blue, apart from the fire ramp */
+const OVERTURE = "#2166ac";
+const maps = (S: CountryStations) => (S.v === 3 ? "OpenStreetMap or Overture Maps" : "OpenStreetMap");
+/** stations contract v3, rule 1: never "OpenStreetMap" alone for the count */
+const mappedIn = (S: CountryStations) => (S.v === 3 ? "mapped in OpenStreetMap or listed in Overture Maps" : "mapped in OpenStreetMap");
+const noStation = (S: CountryStations) => `no fire station mapped in ${maps(S)} within 15 km`;
+/** stations contract v3, rule 2: where one station comes from */
+const FROM: Record<Source, string> = {
+  osm: "OpenStreetMap",
+  both: "OpenStreetMap and Overture",
+  overture: "Overture Maps, from business listings; may be wrong or out of date",
+};
+/** stations contract v3, rule 5: "fair" here rests on this many stations above the line, some of them Overture listings */
+const FRAGILE: Record<string, number> = { Kuwait: 1, Qatar: 1, Guatemala: 2, Jamaica: 2 };
+const fragile = (S: CountryStations) => (S.v === 3 && S.completeness.level === "fair" ? FRAGILE[S.country] : undefined);
+const FRAGILE_NOTE = (n: number) =>
+  `Stations here only just reach this page's bar for listing gaps (by ${n === 1 ? "one station" : n === 2 ? "two stations" : `${n} stations`}), ` +
+  "and some Overture Maps listings may be wrong, so the gaps are drawn in muted colours, as places to check rather than findings.";
+/** stations contract v3: Italy falls from fair to patchy only because Overture lifts the median of the other rich
+    countries; its OpenStreetMap stations are unchanged, so the page treats it as v2 did */
+const AS_V2: Record<string, Level> = { Italy: "fair" };
+const asV2 = (S: CountryStations) => (S.v === 3 && S.completeness.level === "patchy" ? AS_V2[S.country] : undefined);
+const AS_V2_NOTE = (tn: string) =>
+  `The file rates the stations in ${tn} as patchy only because Overture Maps adds many listings in other rich countries, ` +
+  "which raises their median per person. The OpenStreetMap stations here are unchanged and were rated fair before, so the gaps are still listed.";
+/** v3 counts listings as well as mapped stations (contract v3, rule 1) */
+const mapped = (S: CountryStations) => (S.v === 3 ? "mapped or listed" : "mapped");
+/** a place whose stations within 15 km are all Overture-only listings: "only" when the file names every station
+    within 15 km (fewer than its three nearest), "three" when its three nearest are all that close and all Overture */
+function onlyListed(S: CountryStations, c: number): "only" | "three" | "" {
+  if (S.v !== 3) return "";
+  const near: number[] = [];
+  for (let j = 1; j <= 3; j++) {
+    const s = S.cell_rows[8 * c + j],
+      k = S.cell_rows[8 * c + 3 + j];
+    if (s >= 0 && k >= 0 && k <= 15) near.push(s);
+  }
+  if (!near.length || !near.every(s => S.stations[s]?.[4] === "overture")) return "";
+  return near.length < 3 ? "only" : "three";
+}
+const ONLY_LISTED = {
+  only: "Only Overture Maps lists a station this close; none is mapped in OpenStreetMap within 15 km.",
+  three: "Its three nearest stations are all Overture Maps listings.",
+};
+const listedOverture = (S: CountryStations) => S.stations.filter(s => s[4] === "overture");
+/** the count split by source: "33,615 stations: 30,100 from OpenStreetMap, 3,515 more from Overture Maps." */
+function split(S: CountryStations) {
+  const ss = S.station_sources;
+  if (!ss) return "";
+  const n = S.stations_total,
+    osm = ss.osm + ss.both,
+    ov = ss.overture,
+    st = `${fmt(n)} station${n === 1 ? "" : "s"}`;
+  if (!n) return "None in OpenStreetMap or Overture Maps.";
+  if (!ov) return `${st}, ${n === 1 ? "" : "all "}from OpenStreetMap; Overture Maps adds none.`;
+  if (!osm) return `${st}, ${n === 1 ? "" : "all "}from Overture Maps; none in OpenStreetMap.`;
+  return `${st}: ${fmt(osm)} from OpenStreetMap, ${fmt(ov)} more from Overture Maps.`;
+}
+/** the file's attribution, word for word, with its two credits linked */
+const credit = (S: CountryStations) =>
+  esc(S.attribution)
+    .replace(
+      "© OpenStreetMap contributors, ODbL",
+      `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors, ODbL</a>`,
+    )
+    .replace(
+      "Overture Maps Foundation, overturemaps.org",
+      `<a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps Foundation, overturemaps.org</a>`,
+    );
 /** a square's size: cells are square in degrees, so only the north-south size is fixed */
 const across = (d: CountrySummary) => `about ${Math.round(d.cell * 111)} km north to south`;
 /** the file's note on how far to trust the gaps, without the sentence addressed to whoever builds the page */
-const noteOf = (S: CountryStations) => S.gap_note.replace(/\s*(Show them as|Do not present)[\s\S]*$/, "");
+const noteOf = (S: CountryStations) =>
+  asV2(S)
+    ? "Neither OpenStreetMap nor Overture Maps is complete: a gap means no station is mapped or listed within 15 km, not that none exists."
+    : S.gap_note.replace(/\s*(Show them as|Do not present)[\s\S]*$/, "");
 /** "2026-09-21" inside the source text, as "21 September 2026" */
 function snapshot(src: string) {
   const m = /(\d{4})-(\d{2})-(\d{2})/.exec(src);
   return m ? `${Number(m[3])} ${MONL[Number(m[2]) - 1]} ${m[1]}` : "";
+}
+
+/** the licence texts that sit with the v3 files (contract v3, Attribution) */
+const LICENCES = [
+  ["LICENSE-CDLA-Permissive-2.0.txt", "CDLA Permissive 2.0"],
+  ["LICENSE-Apache-2.0.txt", "Apache 2.0"],
+  ["NOTICE-Foursquare.txt", "Foursquare notice"],
+];
+/** "Overture Maps Places release 2026-10-21.0" inside the source text, as "October 2026" */
+function release(src: string) {
+  const m = /Overture Maps Places release (\d{4})-(\d{2})/.exec(src);
+  return m ? `${MONL[Number(m[2]) - 1]} ${m[1]}` : "";
 }
 
 /* ---------- the open country ---------- */
@@ -168,18 +272,18 @@ function load() {
   const k = V.k;
   if (!k) return;
   state("Loading the fire stations…");
-  loadChecked(stationsPath(k), (x): x is CountryStations => isStations(x, k)).then(
-    S => {
-      if (V.k !== k || !V.d) return;
-      V.S = S;
-      state("");
-      render();
-    },
-    (e: unknown) => {
-      if (V.k !== k) return;
-      state(`The fire stations did not load${e instanceof Error ? ` (${e.message})` : ""}. The rest of this page is unaffected.`, true);
-    },
-  );
+  stLoad(k).then(
+      S => {
+        if (V.k !== k || !V.d) return;
+        V.S = S;
+        state("");
+        render();
+      },
+      (e: unknown) => {
+        if (V.k !== k) return;
+        state(`The fire stations did not load${e instanceof Error ? ` (${e.message})` : ""}. The rest of this page is unaffected.`, true);
+      },
+    );
 }
 function state(msg: string, retry = false) {
   $("cStState").hidden = !msg;
@@ -221,7 +325,7 @@ function facts(S: CountryStations, d: CountrySummary): Facts {
   const all = new Set(S.persistent),
     burn: Place[] = [];
   for (let c = 0; c < n; c++) if (S.cell_rows[8 * c + 7] >= 4 && !all.has(c)) burn.push(place(c));
-  const lv = S.completeness.level,
+  const lv = asV2(S) ?? S.completeness.level,
     gaps = S.gaps.filter(c => c < n).map(place);
   return {
     n,
@@ -245,9 +349,15 @@ function stationName(S: CountryStations, i: number) {
 }
 /** the nearest station; a gap's distance is over 15 km even where the file rounds it to 15.0 */
 function nearest(S: CountryStations, p: Place, isGap: boolean) {
-  if (p.km1 < 0 || p.s1 < 0) return "No fire station is mapped in OpenStreetMap anywhere in the country.";
-  const nm = stationName(S, p.s1);
-  return `Nearest mapped station: ${isGap && p.km1 < 15.5 ? "just over 15 km" : km(p.km1)}${nm ? `, <bdi>${esc(nm)}</bdi>` : ""}.`;
+  if (p.km1 < 0 || p.s1 < 0) return `No fire station is ${mappedIn(S)} anywhere in the country.`;
+  /* a name that ends in a full stop would end the sentence twice */
+  const nm = stationName(S, p.s1).replace(/\.+$/, ""),
+    src = S.stations[p.s1]?.[4];
+  return (
+    `Nearest ${S.v === 3 ? "" : "mapped "}station: ${isGap && p.km1 < 15.5 ? "just over 15 km" : km(p.km1)}${nm ? `, <bdi>${esc(nm)}</bdi>` : ""}` +
+    (src ? ` (${FROM[src]})` : "") +
+    "."
+  );
 }
 const anyDesert = (S: CountryStations, d: CountrySummary, ps: Place[]) =>
   ps.some(p => {
@@ -263,30 +373,45 @@ function render() {
     F = facts(S, d),
     lv = S.completeness.level,
     snap = snapshot(S.source);
+  const dir = `stations/v${S.v}`,
+    path = stationsPath(S.country, dir),
+    rel = release(S.source);
   $("cStSrc").innerHTML =
-    `Fire stations © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors, ODbL</a>. ` +
-    `Data: <a href="${esc(fileUrl(stationsPath(S.country)))}" target="_blank" rel="noopener">${esc(stationsPath(S.country))}</a> from the Hugging Face dataset ` +
-    `<a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built by scripts/build_world_stations.py from the OpenStreetMap planet file of ${esc(snap || S.source)}. ` +
-    `Fire: NASA FIRMS, ${esc(S.fire)}.`;
+    (S.v === 3
+      ? `Fire stations: ${credit(S)}. `
+      : `Fire stations © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors, ODbL</a>. `) +
+    `Data: <a href="${esc(fileUrl(path))}" target="_blank" rel="noopener">${esc(path)}</a> from the Hugging Face dataset ` +
+    `<a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>` +
+    (S.v === 3
+      ? ` (licence texts in the same folder: ${LICENCES.map(([f, t]) => `<a href="${esc(fileUrl(`${dir}/${f}`))}" target="_blank" rel="noopener">${t}</a>`).join(", ")})`
+      : "") +
+    `, built by scripts/build_world_stations.py from the OpenStreetMap planet file of ${esc(snap || S.source)}` +
+    (S.v === 3 ? ` and Overture Maps Places${rel ? ` (${rel} release)` : ""}` : "") +
+    `. Fire: NASA FIRMS, ${esc(S.fire)}.`;
   const nb = F.burn.length,
     ng = F.gaps.length;
   $("cStTitle").textContent =
     lv === "unpopulated"
-      ? `${fmt(S.stations_total)} fire station${S.stations_total === 1 ? "" : "s"} mapped in OpenStreetMap`
+      ? `${fmt(S.stations_total)} fire station${S.stations_total === 1 ? "" : "s"} ${mappedIn(S)}`
       : nb === 0
         ? `No place in ${tn} burned in 4 or more of the 14 years 2012–2025`
         : F.show === "no"
-          ? `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing`
+          ? `Too few fire stations are ${mappedIn(S)} in ${tn} to judge where they are missing`
           : F.show === "ask"
-            ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain`
+            ? S.v === 3
+              ? `The fire stations in OpenStreetMap and Overture Maps look patchy in ${tn}, so the gaps are uncertain`
+              : `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain`
             : ng === 0
-              ? `Every place in ${tn} with regular fire has a fire station mapped in OpenStreetMap within 15 km`
-              : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${NO_STATION}` +
+              ? `Every place in ${tn} with regular fire has a fire station mapped in ${maps(S)} within 15 km`
+              : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${noStation(S)}` +
                 (anyDesert(S, d, F.gaps.slice(0, 10)) ? ", though in the desert some may be industrial heat" : "");
   $("cStSub").textContent =
-    `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012–2025. ` +
+    `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}` +
+    (S.v === 3 ? ` or listed in Overture Maps${rel ? ` (${rel} release)` : ""}, a station in both counted once` : "") +
+    `, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012–2025. ` +
     `Distances are straight lines from the middle of each ${d.cell}° square, not drive times.` +
-    (d.cell >= 0.5 ? ` Squares here are ${across(d)}, so the 15 km test is rough.` : "");
+    (d.cell >= 0.5 ? ` Squares here are ${across(d)}, so the 15 km test is rough.` : "") +
+    (S.v === 2 ? " The Overture Maps listings did not load, so these are OpenStreetMap's stations alone." : "");
   figures(S, d, F);
   $("cStMethod").textContent = S.method;
   $("cStMain").hidden = false;
@@ -303,12 +428,13 @@ function figures(S: CountryStations, d: CountrySummary, F: Facts) {
     mid = kms.length ? kms[Math.floor((kms.length - 1) / 2)] : NaN,
     ns = F.steady.size;
   const t1 = item(
-    "Fire stations mapped",
+    `Fire stations ${mapped(S)}`,
     fmt(S.stations_total),
     co.per_million != null ? `${fmt(co.per_million)} per million people` : "",
-    co.peer_median_per_million != null
-      ? `Countries in the same income group have a median of ${fmt(co.peer_median_per_million)} per million.`
-      : "There is no population figure to compare with.",
+    (S.v === 3 ? `${split(S)} ` : "") +
+      (co.peer_median_per_million != null
+        ? `Countries in the same income group have a median of ${fmt(co.peer_median_per_million)} per million.`
+        : "There is no population figure to compare with."),
   );
   const t2 = item(
     "Places with regular fire",
@@ -320,17 +446,24 @@ function figures(S: CountryStations, d: CountrySummary, F: Facts) {
   let t3: string;
   if (nb === 0) t3 = item("Gaps", "None", "", "No place burned often enough to count.");
   else if (F.show === "yes")
-    t3 = item("No fire station mapped in OpenStreetMap within 15 km", fmt(ng), `${pc(ng / nb)} of those places`, "A gap means none is mapped, not that none exists.");
+    t3 = item(
+      `No fire station mapped in ${maps(S)} within 15 km`,
+      fmt(ng),
+      `${pc(ng / nb)} of those places`,
+      `A gap means none is ${mapped(S)}, not that none exists.`,
+    );
   else
     t3 = item(
-      "Median distance to a mapped station",
-      Number.isFinite(mid) ? km(mid) : "None mapped",
+      `Median distance to a ${mapped(S)} station`,
+      Number.isFinite(mid) ? km(mid) : `None ${mapped(S)}`,
       "from places with regular fire",
       co.level === "unpopulated"
         ? "Few people live here."
         : F.show === "ask"
-          ? "Many of these places may have a station that OpenStreetMap is missing, so the distance partly measures the map."
-          : "With this little mapped, the distance mostly measures the map, not the fire service.",
+          ? S.v === 3
+            ? "Many of these places may have a station that neither map shows, so the distance partly measures the maps."
+            : "Many of these places may have a station that OpenStreetMap is missing, so the distance partly measures the map."
+          : `With this little ${mapped(S)}, the distance mostly measures the ${S.v === 3 ? "maps" : "map"}, not the fire service.`,
     );
   $("cStFigs").innerHTML = t1 + t2 + t3;
 }
@@ -343,36 +476,55 @@ function draw() {
     tn = theName(S.name),
     lv = S.completeness.level,
     gapsOn = F.show === "yes" || (F.show === "ask" && V.reveal),
+    /* gaps in full colour only where they are findings: not where they are asked for, nor where "fair" is fragile */
+    strong = F.show === "yes" && !fragile(S),
     byCell = new Map(F.burn.map(p => [p.c, p])),
     top = gapsOn ? F.gaps.slice(0, 10) : [],
     marks: MiniMark[] = top.map((p, i) => {
       const pos = posOf(d, p.c);
-      return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: F.show !== "yes", keep: solarCell(pos.lat, pos.lon) };
+      return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: !strong, keep: solarCell(pos.lat, pos.lon) };
     }),
     /* fire squares all drawn alike, at their true size where there are many (no layer outlined over another), and
        over the station dots where those are dense */
     layers: MiniLayer[] = [
       { fill: STEADY, cells: [...F.steady.keys()] },
       { fill: REG, cells: F.burn.filter(p => !(gapsOn && F.gapSet.has(p.c))).map(p => p.c), over: true },
-      { fill: F.show === "yes" ? GAP : GAP_MUTED, cells: gapsOn ? F.gaps.map(p => p.c) : [], over: true },
+      { fill: strong ? GAP : GAP_MUTED, cells: gapsOn ? F.gaps.map(p => p.c) : [], over: true },
     ].map(l => ({ ...l, edge: F.n < 400 }));
-  const note = $("cStNote");
-  note.hidden = F.show === "yes";
+  const note = $("cStNote"),
+    fr = fragile(S);
+  note.hidden = F.show === "yes" && !fr && !asV2(S);
   note.textContent =
-    noteOf(S) +
-    (F.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") +
-    (F.show === "ask" && !V.reveal ? " The places are hidden until you ask for them." : "") +
-    (F.show === "ask" && V.reveal ? " They are shown below in muted colours, as places to check, not findings." : "");
+    F.show === "yes"
+      ? fr
+        ? FRAGILE_NOTE(fr)
+        : asV2(S)
+          ? AS_V2_NOTE(tn)
+          : ""
+      : noteOf(S) +
+        (F.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") +
+        (F.show === "ask" && !V.reveal ? " The places are hidden until you ask for them." : "") +
+        (F.show === "ask" && V.reveal ? " They are shown below in muted colours, as places to check, not findings." : "");
   /* nothing burned regularly and nothing was masked: a map of the outline alone says nothing */
   let empty = F.burn.length === 0 && F.steady.size === 0;
   const box = $("cStMap"),
     fig = box.closest<HTMLElement>(".cpOlFig")!,
     grid = box.closest<HTMLElement>(".cpOlGrid")!;
-  const sw = (c: string, t: string, cls = "") => `<span class="cpNone"><i class="${cls}" style="background:${c}"></i>${t}</span>`;
+  /* stations only Overture lists are drawn in their own colour, under OpenStreetMap's */
+  const ovPts = listedOverture(S).map(s => [s[0], s[1]]),
+    osmPts = S.stations.filter(s => s[4] !== "overture").map(s => [s[0], s[1]]);
+  const sw = (c: string, t: string, cls = "") => `<span class="cpNone"><i class="${cls}" style="background:${c}"></i>${t}</span>`,
+    /* where stations are dense the map draws them as small see-through dots, so the key does too */
+    dense = osmPts.length + ovPts.length > DENSE;
   $("cStLegend").innerHTML =
-    sw("#1b1b1b", "fire station mapped in OpenStreetMap", "stDot") +
-    (F.burn.length ? sw(REG, gapsOn ? "regular fire, station within 15 km" : "regular fire (4 or more of 14 years)") : "") +
-    (gapsOn && F.gaps.length ? sw(F.show === "yes" ? GAP : GAP_MUTED, `regular fire, ${NO_STATION}`) : "") +
+    (osmPts.length ? sw("#1b1b1b", "fire station mapped in OpenStreetMap", dense ? "stSmall" : "stDot") : "") +
+    (ovPts.length
+      ? dense
+        ? sw(OVERTURE, "listed only in Overture Maps: may be wrong or closed", "stSmall")
+        : sw("#fffefa", "listed only in Overture Maps: may be wrong or closed", "stRing")
+      : "") +
+    (F.burn.length ? sw(REG, gapsOn ? `regular fire, station ${mapped(S)} within 15 km` : "regular fire (4 or more of 14 years)") : "") +
+    (gapsOn && F.gaps.length ? sw(strong ? GAP : GAP_MUTED, `regular fire, ${noStation(S)}`) : "") +
     (F.steady.size ? sw(STEADY, "heat that looks like flares or industry: left out") : "");
   let folded: string[] = [],
     cut: string[] = [];
@@ -383,13 +535,14 @@ function draw() {
       coarse = matchMedia("(pointer: coarse)").matches,
       idle =
         `${coarse ? "Tap" : "Point at"} a square for its numbers.` +
-        (S.stations_subset ? ` The dots are the ${fmt(listed)} stations nearest to some square, of ${fmt(S.stations_total)} mapped.` : ""),
+        (S.stations_subset ? ` The dots are the ${fmt(listed)} stations nearest to some square, of ${fmt(S.stations_total)} ${mapped(S)}.` : ""),
       paint = () =>
         drawMini(box, d, {
           layers,
-          points: S.stations.map(s => [s[0], s[1]]),
+          points: osmPts,
+          others: ovPts.length ? { points: ovPts, color: OVERTURE } : undefined,
           marks,
-          label: `Map of ${tn}: fire stations mapped in OpenStreetMap and the squares with regular fire`,
+          label: `Map of ${tn}: fire stations ${mappedIn(S)} and the squares with regular fire`,
           caption: $("cStPick"),
           idle,
           pick: c => {
@@ -402,9 +555,11 @@ function draw() {
               flag =
                 (isGap && desert(S.country, pos.lat, pos.lon) ? ` ${DESERT_FLAG}` : "") +
                 (solarCell(pos.lat, pos.lon) ? ` ${SOLAR_FLAG}` : "");
+            const only = F.gapSet.has(c) ? "" : onlyListed(S, c);
             return (
               `<b>${pos.text}</b>: fire in ${p.by} of the 14 years 2012–2025 (VIIRS), ${perYear(p.fpy)}. ${nearest(S, p, F.gapSet.has(c))}` +
-              (isGap ? ` That is beyond 15 km: ${NO_STATION}.` : "") +
+              (isGap ? ` That is beyond 15 km: ${noStation(S)}.` : "") +
+              (only ? ` ${ONLY_LISTED[only]}` : "") +
               flag
             );
           },
@@ -427,12 +582,22 @@ function draw() {
     grid.classList.add("wide");
     folded = cut = [];
   }
-  list(S, d, F, top, gapsOn, folded, cut, empty);
+  list(S, d, F, top, gapsOn, strong, folded, cut, empty);
   caveats(S, d, F, top, gapsOn);
 }
 
 const words = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
-function list(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], gapsOn: boolean, folded: string[], cut: string[], noMap: boolean) {
+function list(
+  S: CountryStations,
+  d: CountrySummary,
+  F: Facts,
+  top: Place[],
+  gapsOn: boolean,
+  strong: boolean,
+  folded: string[],
+  cut: string[],
+  noMap: boolean,
+) {
   const show = $("cStShow");
   show.hidden = F.show !== "ask" || F.gaps.length === 0;
   show.textContent = V.reveal
@@ -447,7 +612,7 @@ function list(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], gap
         return desert(S.country, pos.lat, pos.lon);
       }),
       allDesert = dz.every(Boolean);
-    $("cStListT").textContent = `Places with regular fire and ${NO_STATION}`;
+    $("cStListT").textContent = `Places with regular fire and ${noStation(S)}`;
     $("cStListS").innerHTML =
       (top[0].by >= 7
         ? "Among places that burned in at least 7 of the 14 years, the most fire first."
@@ -468,7 +633,7 @@ function list(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], gap
           osm = `https://www.openstreetmap.org/?mlat=${pos.lat.toFixed(3)}&mlon=${pos.lon.toFixed(3)}#map=11/${pos.lat.toFixed(3)}/${pos.lon.toFixed(3)}`;
         return (
           head +
-          `<li><span class="stN${F.show === "yes" ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b>` +
+          `<li><span class="stN${strong ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b>` +
           `<small>Burned in ${p.by} of the 14 years 2012–2025 (VIIRS) · ${perYear(p.fpy)}</small>` +
           `<small>${nearest(S, p, true)}</small>${flags}` +
           `<small><a href="${osm}" target="_blank" rel="noopener">Check the place on OpenStreetMap</a></small></span></li>`
@@ -489,27 +654,35 @@ function list(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], gap
      the distance to 15.0, so the table adds up to the gap count */
   const nb = F.burn.length,
     beyond = (p: Place) => F.gapSet.has(p.c) || p.km1 > 15,
+    none = `No station ${mapped(S)} in the country`,
+    within = (p: Place) => p.km1 >= 0 && !beyond(p),
     bands: [string, (p: Place) => boolean][] = [
-      ["Within 15 km", p => p.km1 >= 0 && !beyond(p)],
+      ["Within 15 km", within],
       ["15 to 50 km", p => p.km1 >= 0 && beyond(p) && p.km1 <= 50],
       ["50 to 100 km", p => p.km1 > 50 && p.km1 <= 100],
       ["Over 100 km", p => p.km1 > 100],
-      ["No station mapped in the country", p => p.km1 < 0],
+      [none, p => p.km1 < 0],
     ];
   $("cStDistBox").hidden = nb === 0;
   $("cStDist").innerHTML = nb
-    ? `<tr><th>Nearest mapped station</th><th>Places</th><th>Share</th></tr>` +
+    ? `<tr><th>Nearest ${mapped(S)} station</th><th>Places</th><th>Share</th></tr>` +
       bands
         .map(([label, f]) => {
           const k = F.burn.filter(f).length;
-          return k || label !== "No station mapped in the country" ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc(k / nb)}</td></tr>` : "";
+          return k || label !== none ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc(k / nb)}</td></tr>` : "";
         })
         .join("")
     : "";
+  /* places counted within 15 km only thanks to an Overture listing ("three": maybe an OpenStreetMap station fourth) */
+  const ol = { only: 0, three: 0, "": 0 };
+  for (const p of F.burn) if (within(p)) ol[onlyListed(S, p.c)]++;
   $("cStDistNote").textContent =
-    F.show === "no" && S.completeness.level !== "unpopulated"
-      ? "With so few stations mapped, these distances mostly show how much of the map is missing."
-      : "Places with fire in at least 4 of the 14 years; heat that looks like flares or industry is left out.";
+    (F.show === "no" && S.completeness.level !== "unpopulated"
+      ? `With so few stations ${mapped(S)}, these distances mostly show how much of the ${S.v === 3 ? "maps are" : "map is"} missing.`
+      : "Places with fire in at least 4 of the 14 years; heat that looks like flares or industry is left out.") +
+    (ol.only
+      ? ` For ${ol.three ? "at least " : ""}${fmt(ol.only)} of the places within 15 km, the only stations that close are Overture Maps listings.`
+      : "");
 }
 
 function caveats(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], gapsOn: boolean) {
@@ -525,7 +698,9 @@ function caveats(S: CountryStations, d: CountrySummary, F: Facts, top: Place[], 
       return solarCell(pos.lat, pos.lon);
     });
   let t =
-    `<b>Read with care.</b> A gap means ${NO_STATION}, not that no station exists: OpenStreetMap is never complete. ` +
+    `<b>Read with care.</b> A gap means ${noStation(S)}, not that no station exists: ` +
+    (S.v === 3 ? "neither OpenStreetMap nor Overture Maps is complete. " : "OpenStreetMap is never complete. ") +
+    (S.station_sources?.overture ? "Overture Maps' places come partly from business listings, so some may be wrong or closed. " : "") +
     `Stations across a border are not counted, so near a border a distance can be too long. `;
   if (steady.length)
     t += `Squares whose heat looks like flares or industry are left out (${steady.join("; ")}); the filter can also catch some real burning. `;
@@ -554,7 +729,12 @@ export function stEvents() {
 }
 
 /* ---------- a few words for the country view's side card (src/glance.ts) ---------- */
-export const stLoad = (k: string) => loadChecked(stationsPath(k), (x): x is CountryStations => isStations(x, k));
+/** OpenStreetMap and Overture Maps (v3); if that file fails or stalls, OpenStreetMap alone (v2). The page and the side
+    card share the files (loadChecked keeps them). */
+export function stLoad(k: string) {
+  const ok = (x: unknown): x is CountryStations => isStations(x, k);
+  return loadChecked(stationsPath(k), ok, 20000).catch(() => loadChecked(stationsPath(k, STATIONS_FALLBACK_DIR), ok));
+}
 /** stations mapped, and the places with regular fire and none within 15 km where the mapping is good enough to say */
 export function stGlance(S: CountryStations, d: CountrySummary) {
   const F = facts(S, d),
@@ -564,27 +744,36 @@ export function stGlance(S: CountryStations, d: CountrySummary) {
     tn = theName(S.name);
   return {
     stations: fmt(S.stations_total),
+    label: `Fire stations ${mapped(S)}`,
+    title: `Fire stations ${mappedIn(S)}. ${S.v === 3 ? S.attribution : "© OpenStreetMap contributors, ODbL"}`,
     gaps:
       nb === 0
         ? "No regular fire"
         : F.show === "yes"
           ? `${fmt(ng)} of ${fmt(nb)} places`
           : F.show === "ask"
-            ? "Map patchy"
+            ? S.v === 3
+              ? "Maps patchy"
+              : "Map patchy"
             : lv === "unpopulated"
               ? "Few people live here"
-              : "Map too thin",
+              : S.v === 3
+                ? "Maps too thin"
+                : "Map too thin",
     gapsTitle:
       nb === 0
         ? "No place burned in 4 or more of the 14 years."
         : F.show === "yes"
-          ? `Places with fire in 4 or more of 2012–2025 and no fire station mapped in OpenStreetMap within 15 km. A gap means none is mapped, not that none exists.` +
+          ? `Places with fire in 4 or more of 2012–2025 and ${noStation(S)}. A gap means none is ${mapped(S)}, not that none exists.` +
+            (fragile(S) ? " Stations here only just reach the bar for listing gaps, so treat them as places to check." : "") +
             (anyDesert(S, d, F.gaps.slice(0, 10)) ? " In the desert some may be industrial heat." : "")
           : F.show === "ask"
-            ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain; the full record lists them on request.`
+            ? (S.v === 3
+                ? `The fire stations in OpenStreetMap and Overture Maps look patchy in ${tn}, so the gaps are uncertain`
+                : `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain`) + "; the full record lists them on request."
             : lv === "unpopulated"
               ? "Few people live here, so the full record does not look for gaps."
-              : `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing.`,
+              : `Too few fire stations are ${mappedIn(S)} in ${tn} to judge where they are missing.`,
     facts: F,
   };
 }
@@ -597,20 +786,30 @@ export function stCell(S: CountryStations, d: CountrySummary, c: number, F = fac
     gap = F.show === "yes" && F.gapSet.has(c),
     has = km1 >= 0 && s1 >= 0,
     pos = posOf(d, c),
-    lv = S.completeness.level;
+    lv = S.completeness.level,
+    src = has ? S.stations[s1]?.[4] : undefined,
+    only = has && !F.gapSet.has(c) && !F.steady.has(c) ? onlyListed(S, c) : "";
   return {
     burnYears: S.cell_rows[8 * c + 7],
     km: has ? (gap && km1 < 15.5 ? "just over 15 km" : km(km1)) : null,
-    station: has ? stationName(S, s1) : "",
+    /* the name, and where the station comes from (contract v3, rule 2) */
+    station: has ? stationName(S, s1) + (src ? ` (${FROM[src]})` : "") : "",
+    label: `Nearest ${mapped(S)} fire station`,
+    /* the sentence after the name for a gap */
+    gapText: `${noStation(S)[0].toUpperCase()}${noStation(S).slice(1)}; that does not mean none exists.`,
     gap,
     steady: F.steady.has(c),
     note: !has
       ? ""
       : F.show === "ask"
-        ? "OpenStreetMap's stations look patchy here, so this distance partly measures the map."
+        ? S.v === 3
+          ? "The stations in OpenStreetMap and Overture Maps look patchy here, so this distance partly measures the maps."
+          : "OpenStreetMap's stations look patchy here, so this distance partly measures the map."
         : F.show === "no" && lv !== "unpopulated"
-          ? "With this little mapped, the distance mostly measures the map, not the fire service."
-          : "",
+          ? `With this little ${mapped(S)}, the distance mostly measures the ${S.v === 3 ? "maps" : "map"}, not the fire service.`
+          : only
+            ? ONLY_LISTED[only]
+            : "",
     flag: gap && desert(S.country, pos.lat, pos.lon) ? DESERT_FLAG : solarCell(pos.lat, pos.lon) ? SOLAR_FLAG : "",
   };
 }

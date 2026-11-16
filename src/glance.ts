@@ -320,7 +320,7 @@ function renderCard() {
   } else rows.push(row("Forecast for 2026", G.fcMsg || "Loading…"));
   if (G.S) {
     const s = stGlance(G.S, d);
-    rows.push(row("Fire stations mapped", s.stations, "Fire stations in OpenStreetMap"));
+    rows.push(row(s.label, s.stations, s.title));
     rows.push(row("No station within 15 km", s.gaps, s.gapsTitle));
   } else rows.push(row("Fire stations", G.stMsg || "Loading…"));
   $("gRows").innerHTML = rows.join("");
@@ -395,10 +395,10 @@ function pickCard() {
   if (st)
     rows.push(
       row(
-        "Nearest mapped fire station",
+        st.label,
         st.km ? `${st.km}${st.gap ? ' <span class="gGap">gap</span>' : ""}` : "None mapped",
         st.station
-          ? `Nearest: ${st.station}${st.gap ? ". No station is mapped in OpenStreetMap within 15 km; that does not mean none exists." : ""}`
+          ? `Nearest: ${st.station}${st.gap ? `. ${st.gapText}` : ""}`
           : "",
       ),
     );

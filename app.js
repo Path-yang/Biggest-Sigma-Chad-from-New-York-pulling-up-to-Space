@@ -3677,9 +3677,10 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     return index;
   }
   var FORECAST_DIR = "forecast/v1";
-  var STATIONS_DIR = "stations/v2";
+  var STATIONS_DIR = "stations/v3";
+  var STATIONS_FALLBACK_DIR = "stations/v2";
   var forecastPath = (k) => `${FORECAST_DIR}/${encodeURIComponent(k)}.json`;
-  var stationsPath = (k) => `${STATIONS_DIR}/${encodeURIComponent(k)}.json`;
+  var stationsPath = (k, dir = STATIONS_DIR) => `${dir}/${encodeURIComponent(k)}.json`;
   async function jsonWithin(url, ms) {
     const ctl = new AbortController();
     let phase = "answer", timer = setTimeout(() => ctl.abort(), ms);
@@ -7469,13 +7470,16 @@ Click to show ${r.y} on the map`
         }
       }
     const maxW = Math.max(160, Math.round(MAX_H * vw / vh)), boxW = Math.min(maxW, host.clientWidth > 40 ? host.clientWidth - 16 : maxW), boxH = boxW * vh / vw;
-    const cw = r1(cell * F2.kx * S2), ch = r1(cell * S2), cellPx = cell * F2.kx * S2 * boxW / vw, pts2 = o.points || [], dense = pts2.length > DENSE, paint = (ls) => ls.filter((l) => l.cells.length).map((l) => {
+    const cw = r1(cell * F2.kx * S2), ch = r1(cell * S2), cellPx = cell * F2.kx * S2 * boxW / vw, pts2 = o.points || [], oth = o.others?.points || [], dense = pts2.length + oth.length > DENSE, paint = (ls) => ls.filter((l) => l.cells.length).map((l) => {
       let p = "";
       for (const c of l.cells) p += `M${r1(X(west(c)))},${r1(Y(F2.la[c] * cell + cell))}h${cw}v${ch}h${-cw}z`;
       return `<path d="${p}" fill="${l.fill}"${l.edge ? ` stroke="${l.fill}" stroke-width="1.6" vector-effect="non-scaling-stroke"` : ""}/>`;
     }).join("");
-    let dots = "";
-    for (const [lon, lat] of pts2) dots += `M${r1(X(near(lon, F2.lon0)))},${r1(Y(lat))}h0`;
+    const dotPath = (ps) => {
+      let p = "";
+      for (const [lon, lat] of ps) p += `M${r1(X(near(lon, F2.lon0)))},${r1(Y(lat))}h0`;
+      return p;
+    }, line = (p, color, w, op = "") => `<path d="${p}" fill="none" stroke="${color}"${op ? ` stroke-opacity="${op}"` : ""} stroke-width="${w}" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`, dots = (p, color, ring2 = false) => !p ? "" : dense ? line(p, color, ring2 ? 2 : 1.6, ring2 ? ".75" : ".6") : ring2 ? line(p, "#fffefa", 6.6) + line(p, color, 4.8) + line(p, "#fffefa", 1.8) : line(p, "#fffefa", 4.6) + line(p, color, 2.6);
     const narrow = innerWidth < NARROW, placed = [], folded = [], cut = [];
     for (const [i, m] of (o.marks || []).entries()) {
       const x = (X(west(m.c) + cell / 2) - x0) / vw, y = (Y(F2.la[m.c] * cell + cell / 2) - y0) / vh;
@@ -7489,7 +7493,7 @@ Click to show ${r.y} on the map`
         folded.push(m.label);
       } else placed.push({ x, y, m, more: [] });
     }
-    host.innerHTML = `<div class="cpMiniBox" style="max-width:min(100%,${maxW}px)"><svg viewBox="${r1(x0)} ${r1(y0)} ${r1(vw)} ${r1(vh)}" role="img" aria-label="${esc6(o.label)}"><path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` + paint(o.layers.filter((l) => !(dense && l.over))) + `<path d="${lines2}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` + (dots ? dense ? `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-opacity=".6" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/><path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` : "") + (dense ? paint(o.layers.filter((l) => l.over)) : "") + `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/></svg>` + /* the first mark last, so it is drawn on top */
+    host.innerHTML = `<div class="cpMiniBox" style="max-width:min(100%,${maxW}px)"><svg viewBox="${r1(x0)} ${r1(y0)} ${r1(vw)} ${r1(vh)}" role="img" aria-label="${esc6(o.label)}"><path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` + paint(o.layers.filter((l) => !(dense && l.over))) + `<path d="${lines2}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` + (o.others ? dots(dotPath(oth), o.others.color, true) : "") + dots(dotPath(pts2), "#1b1b1b") + (dense ? paint(o.layers.filter((l) => l.over)) : "") + `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/></svg>` + /* the first mark last, so it is drawn on top */
     placed.slice().reverse().map(
       ({ x, y, m, more }) => `<span class="cpMiniMark${m.muted ? " muted" : ""}" style="left:${(x * 100).toFixed(2)}%;top:${(y * 100).toFixed(2)}%" title="${esc6(m.title + (more.length ? `; also here: ${more.join(", ")}` : ""))}">${esc6(m.label)}${more.length ? `<i>+${more.length}</i>` : ""}</span>`
     ).join("") + `</div>`;
@@ -7977,11 +7981,14 @@ Click to show ${r.y} on the map`
   var fcPc = pc;
 
   // src/cstn.ts
+  var SOURCES = ["osm", "both", "overture"];
   var LEVELS = ["fair", "patchy", "thin", "unpopulated", "no_data"];
   var numOrNull2 = (x) => x === null || typeof x === "number";
   function isStations(x, k) {
-    if (!isObj(x) || x.v !== 2 || x.country !== k || typeof x.name !== "string") return false;
-    const co = x.completeness;
+    if (!isObj(x) || x.v !== 2 && x.v !== 3 || x.country !== k || typeof x.name !== "string") return false;
+    const co = x.completeness, ss = x.station_sources;
+    if (x.v === 3 && !(typeof x.attribution === "string" && isObj(ss) && SOURCES.every((s2) => typeof ss[s2] === "number") && ss.osm + ss.both + ss.overture === x.stations_total && Array.isArray(x.stations) && x.stations.every((s2) => Array.isArray(s2) && SOURCES.includes(s2[4]))))
+      return false;
     return typeof x.cell === "number" && typeof x.stations_total === "number" && Array.isArray(x.stations) && x.stations.every((s2) => Array.isArray(s2) && typeof s2[0] === "number" && typeof s2[1] === "number" && typeof s2[2] === "string") && Array.isArray(x.operators) && isNums(x.cell_rows) && x.cell_rows.length % 8 === 0 && isNums(x.gaps) && isNums(x.persistent) && isNums(x.persistent_why, x.persistent.length) && isObj(x.why_codes) && isNums(x.fire_per_year) && isObj(co) && typeof co.level === "string" && LEVELS.includes(co.level) && numOrNull2(co.per_million) && numOrNull2(co.peer_median_per_million) && typeof x.gap_note === "string" && typeof x.method === "string" && typeof x.source === "string";
   }
   var ARABIA = /* @__PURE__ */ new Set(["Saudi_Arabia", "Yemen", "Oman", "United_Arab_Emirates", "Qatar", "Kuwait", "Bahrain"]);
@@ -8016,12 +8023,67 @@ Click to show ${r.y} on the map`
   var km2 = (v) => (v < 10 ? v.toFixed(1) : fmt(v)) + " km";
   var deg5 = (v, p, n, dp) => `${Math.abs(v).toFixed(dp)}\xB0${v < 0 ? n : p}`;
   var perYear = (v) => v < 0.1 ? "under 0.1 hotspots a year" : `about ${fmt(v)} hotspot${fmt(v) === "1" ? "" : "s"} a year`;
-  var NO_STATION = "no fire station mapped in OpenStreetMap within 15 km";
+  var OVERTURE = "#2166ac";
+  var maps = (S3) => S3.v === 3 ? "OpenStreetMap or Overture Maps" : "OpenStreetMap";
+  var mappedIn = (S3) => S3.v === 3 ? "mapped in OpenStreetMap or listed in Overture Maps" : "mapped in OpenStreetMap";
+  var noStation = (S3) => `no fire station mapped in ${maps(S3)} within 15 km`;
+  var FROM = {
+    osm: "OpenStreetMap",
+    both: "OpenStreetMap and Overture",
+    overture: "Overture Maps, from business listings; may be wrong or out of date"
+  };
+  var FRAGILE = { Kuwait: 1, Qatar: 1, Guatemala: 2, Jamaica: 2 };
+  var fragile = (S3) => S3.v === 3 && S3.completeness.level === "fair" ? FRAGILE[S3.country] : void 0;
+  var FRAGILE_NOTE = (n) => `Stations here only just reach this page's bar for listing gaps (by ${n === 1 ? "one station" : n === 2 ? "two stations" : `${n} stations`}), and some Overture Maps listings may be wrong, so the gaps are drawn in muted colours, as places to check rather than findings.`;
+  var AS_V2 = { Italy: "fair" };
+  var asV2 = (S3) => S3.v === 3 && S3.completeness.level === "patchy" ? AS_V2[S3.country] : void 0;
+  var AS_V2_NOTE = (tn) => `The file rates the stations in ${tn} as patchy only because Overture Maps adds many listings in other rich countries, which raises their median per person. The OpenStreetMap stations here are unchanged and were rated fair before, so the gaps are still listed.`;
+  var mapped = (S3) => S3.v === 3 ? "mapped or listed" : "mapped";
+  function onlyListed(S3, c) {
+    if (S3.v !== 3) return "";
+    const near2 = [];
+    for (let j = 1; j <= 3; j++) {
+      const s2 = S3.cell_rows[8 * c + j], k = S3.cell_rows[8 * c + 3 + j];
+      if (s2 >= 0 && k >= 0 && k <= 15) near2.push(s2);
+    }
+    if (!near2.length || !near2.every((s2) => S3.stations[s2]?.[4] === "overture")) return "";
+    return near2.length < 3 ? "only" : "three";
+  }
+  var ONLY_LISTED = {
+    only: "Only Overture Maps lists a station this close; none is mapped in OpenStreetMap within 15 km.",
+    three: "Its three nearest stations are all Overture Maps listings."
+  };
+  var listedOverture = (S3) => S3.stations.filter((s2) => s2[4] === "overture");
+  function split(S3) {
+    const ss = S3.station_sources;
+    if (!ss) return "";
+    const n = S3.stations_total, osm = ss.osm + ss.both, ov = ss.overture, st = `${fmt(n)} station${n === 1 ? "" : "s"}`;
+    if (!n) return "None in OpenStreetMap or Overture Maps.";
+    if (!ov) return `${st}, ${n === 1 ? "" : "all "}from OpenStreetMap; Overture Maps adds none.`;
+    if (!osm) return `${st}, ${n === 1 ? "" : "all "}from Overture Maps; none in OpenStreetMap.`;
+    return `${st}: ${fmt(osm)} from OpenStreetMap, ${fmt(ov)} more from Overture Maps.`;
+  }
+  var credit = (S3) => esc8(S3.attribution).replace(
+    "\xA9 OpenStreetMap contributors, ODbL",
+    `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">\xA9 OpenStreetMap contributors, ODbL</a>`
+  ).replace(
+    "Overture Maps Foundation, overturemaps.org",
+    `<a href="https://overturemaps.org" target="_blank" rel="noopener">Overture Maps Foundation, overturemaps.org</a>`
+  );
   var across = (d) => `about ${Math.round(d.cell * 111)} km north to south`;
-  var noteOf = (S3) => S3.gap_note.replace(/\s*(Show them as|Do not present)[\s\S]*$/, "");
+  var noteOf = (S3) => asV2(S3) ? "Neither OpenStreetMap nor Overture Maps is complete: a gap means no station is mapped or listed within 15 km, not that none exists." : S3.gap_note.replace(/\s*(Show them as|Do not present)[\s\S]*$/, "");
   function snapshot(src) {
     const m = /(\d{4})-(\d{2})-(\d{2})/.exec(src);
     return m ? `${Number(m[3])} ${MONL[Number(m[2]) - 1]} ${m[1]}` : "";
+  }
+  var LICENCES = [
+    ["LICENSE-CDLA-Permissive-2.0.txt", "CDLA Permissive 2.0"],
+    ["LICENSE-Apache-2.0.txt", "Apache 2.0"],
+    ["NOTICE-Foursquare.txt", "Foursquare notice"]
+  ];
+  function release(src) {
+    const m = /Overture Maps Places release (\d{4})-(\d{2})/.exec(src);
+    return m ? `${MONL[Number(m[2]) - 1]} ${m[1]}` : "";
   }
   var V3 = { k: null, d: null, S: null, reveal: false };
   function stOpen(k) {
@@ -8061,7 +8123,7 @@ Click to show ${r.y} on the map`
     const k = V3.k;
     if (!k) return;
     state3("Loading the fire stations\u2026");
-    loadChecked(stationsPath(k), (x) => isStations(x, k)).then(
+    stLoad(k).then(
       (S3) => {
         if (V3.k !== k || !V3.d) return;
         V3.S = S3;
@@ -8092,7 +8154,7 @@ Click to show ${r.y} on the map`
     });
     const all = new Set(S3.persistent), burn = [];
     for (let c = 0; c < n; c++) if (S3.cell_rows[8 * c + 7] >= 4 && !all.has(c)) burn.push(place3(c));
-    const lv = S3.completeness.level, gaps = S3.gaps.filter((c) => c < n).map(place3);
+    const lv = asV2(S3) ?? S3.completeness.level, gaps = S3.gaps.filter((c) => c < n).map(place3);
     return {
       n,
       burn,
@@ -8113,9 +8175,9 @@ Click to show ${r.y} on the map`
     return s2[2] || (op ? `an unnamed station of ${op}` : "an unnamed station");
   }
   function nearest(S3, p, isGap) {
-    if (p.km1 < 0 || p.s1 < 0) return "No fire station is mapped in OpenStreetMap anywhere in the country.";
-    const nm = stationName(S3, p.s1);
-    return `Nearest mapped station: ${isGap && p.km1 < 15.5 ? "just over 15 km" : km2(p.km1)}${nm ? `, <bdi>${esc8(nm)}</bdi>` : ""}.`;
+    if (p.km1 < 0 || p.s1 < 0) return `No fire station is ${mappedIn(S3)} anywhere in the country.`;
+    const nm = stationName(S3, p.s1).replace(/\.+$/, ""), src = S3.stations[p.s1]?.[4];
+    return `Nearest ${S3.v === 3 ? "" : "mapped "}station: ${isGap && p.km1 < 15.5 ? "just over 15 km" : km2(p.km1)}${nm ? `, <bdi>${esc8(nm)}</bdi>` : ""}` + (src ? ` (${FROM[src]})` : "") + ".";
   }
   var anyDesert = (S3, d, ps) => ps.some((p) => {
     const pos = posOf(d, p.c);
@@ -8123,10 +8185,11 @@ Click to show ${r.y} on the map`
   });
   function render4() {
     const S3 = V3.S, d = V3.d, tn = theName(S3.name), F2 = facts(S3, d), lv = S3.completeness.level, snap = snapshot(S3.source);
-    $("cStSrc").innerHTML = `Fire stations \xA9 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors, ODbL</a>. Data: <a href="${esc8(fileUrl(stationsPath(S3.country)))}" target="_blank" rel="noopener">${esc8(stationsPath(S3.country))}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>, built by scripts/build_world_stations.py from the OpenStreetMap planet file of ${esc8(snap || S3.source)}. Fire: NASA FIRMS, ${esc8(S3.fire)}.`;
+    const dir = `stations/v${S3.v}`, path = stationsPath(S3.country, dir), rel2 = release(S3.source);
+    $("cStSrc").innerHTML = (S3.v === 3 ? `Fire stations: ${credit(S3)}. ` : `Fire stations \xA9 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors, ODbL</a>. `) + `Data: <a href="${esc8(fileUrl(path))}" target="_blank" rel="noopener">${esc8(path)}</a> from the Hugging Face dataset <a href="${HF_PAGE}" target="_blank" rel="noopener">${HF_DATASET}</a>` + (S3.v === 3 ? ` (licence texts in the same folder: ${LICENCES.map(([f, t]) => `<a href="${esc8(fileUrl(`${dir}/${f}`))}" target="_blank" rel="noopener">${t}</a>`).join(", ")})` : "") + `, built by scripts/build_world_stations.py from the OpenStreetMap planet file of ${esc8(snap || S3.source)}` + (S3.v === 3 ? ` and Overture Maps Places${rel2 ? ` (${rel2} release)` : ""}` : "") + `. Fire: NASA FIRMS, ${esc8(S3.fire)}.`;
     const nb = F2.burn.length, ng = F2.gaps.length;
-    $("cStTitle").textContent = lv === "unpopulated" ? `${fmt(S3.stations_total)} fire station${S3.stations_total === 1 ? "" : "s"} mapped in OpenStreetMap` : nb === 0 ? `No place in ${tn} burned in 4 or more of the 14 years 2012\u20132025` : F2.show === "no" ? `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing` : F2.show === "ask" ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain` : ng === 0 ? `Every place in ${tn} with regular fire has a fire station mapped in OpenStreetMap within 15 km` : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${NO_STATION}` + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? ", though in the desert some may be industrial heat" : "");
-    $("cStSub").textContent = `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012\u20132025. Distances are straight lines from the middle of each ${d.cell}\xB0 square, not drive times.` + (d.cell >= 0.5 ? ` Squares here are ${across(d)}, so the 15 km test is rough.` : "");
+    $("cStTitle").textContent = lv === "unpopulated" ? `${fmt(S3.stations_total)} fire station${S3.stations_total === 1 ? "" : "s"} ${mappedIn(S3)}` : nb === 0 ? `No place in ${tn} burned in 4 or more of the 14 years 2012\u20132025` : F2.show === "no" ? `Too few fire stations are ${mappedIn(S3)} in ${tn} to judge where they are missing` : F2.show === "ask" ? S3.v === 3 ? `The fire stations in OpenStreetMap and Overture Maps look patchy in ${tn}, so the gaps are uncertain` : `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain` : ng === 0 ? `Every place in ${tn} with regular fire has a fire station mapped in ${maps(S3)} within 15 km` : `${fmt(ng)} place${ng === 1 ? "" : "s"} with regular fire ${ng === 1 ? "has" : "have"} ${noStation(S3)}` + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? ", though in the desert some may be industrial heat" : "");
+    $("cStSub").textContent = `Fire stations tagged in OpenStreetMap${snap ? ` (as of ${snap})` : ""}` + (S3.v === 3 ? ` or listed in Overture Maps${rel2 ? ` (${rel2} release)` : ""}, a station in both counted once` : "") + `, set against the places where NASA's VIIRS satellite saw fire in at least 4 of the 14 years 2012\u20132025. Distances are straight lines from the middle of each ${d.cell}\xB0 square, not drive times.` + (d.cell >= 0.5 ? ` Squares here are ${across(d)}, so the 15 km test is rough.` : "") + (S3.v === 2 ? " The Overture Maps listings did not load, so these are OpenStreetMap's stations alone." : "");
     figures2(S3, d, F2);
     $("cStMethod").textContent = S3.method;
     $("cStMain").hidden = false;
@@ -8135,10 +8198,10 @@ Click to show ${r.y} on the map`
   function figures2(S3, d, F2) {
     const co = S3.completeness, item2 = (h2, fig, small, p) => `<div class="cpAns"><h2>${h2}</h2><p class="cpFig">${fig}${small ? `<small>${small}</small>` : ""}</p><p>${p}</p></div>`, nb = F2.burn.length, ng = F2.gaps.length, kms = F2.burn.map((p) => p.km1 < 0 ? Infinity : p.km1).sort((a, b) => a - b), mid = kms.length ? kms[Math.floor((kms.length - 1) / 2)] : NaN, ns = F2.steady.size;
     const t1 = item2(
-      "Fire stations mapped",
+      `Fire stations ${mapped(S3)}`,
       fmt(S3.stations_total),
       co.per_million != null ? `${fmt(co.per_million)} per million people` : "",
-      co.peer_median_per_million != null ? `Countries in the same income group have a median of ${fmt(co.peer_median_per_million)} per million.` : "There is no population figure to compare with."
+      (S3.v === 3 ? `${split(S3)} ` : "") + (co.peer_median_per_million != null ? `Countries in the same income group have a median of ${fmt(co.peer_median_per_million)} per million.` : "There is no population figure to compare with.")
     );
     const t2 = item2(
       "Places with regular fire",
@@ -8149,40 +8212,47 @@ Click to show ${r.y} on the map`
     let t3;
     if (nb === 0) t3 = item2("Gaps", "None", "", "No place burned often enough to count.");
     else if (F2.show === "yes")
-      t3 = item2("No fire station mapped in OpenStreetMap within 15 km", fmt(ng), `${pc2(ng / nb)} of those places`, "A gap means none is mapped, not that none exists.");
+      t3 = item2(
+        `No fire station mapped in ${maps(S3)} within 15 km`,
+        fmt(ng),
+        `${pc2(ng / nb)} of those places`,
+        `A gap means none is ${mapped(S3)}, not that none exists.`
+      );
     else
       t3 = item2(
-        "Median distance to a mapped station",
-        Number.isFinite(mid) ? km2(mid) : "None mapped",
+        `Median distance to a ${mapped(S3)} station`,
+        Number.isFinite(mid) ? km2(mid) : `None ${mapped(S3)}`,
         "from places with regular fire",
-        co.level === "unpopulated" ? "Few people live here." : F2.show === "ask" ? "Many of these places may have a station that OpenStreetMap is missing, so the distance partly measures the map." : "With this little mapped, the distance mostly measures the map, not the fire service."
+        co.level === "unpopulated" ? "Few people live here." : F2.show === "ask" ? S3.v === 3 ? "Many of these places may have a station that neither map shows, so the distance partly measures the maps." : "Many of these places may have a station that OpenStreetMap is missing, so the distance partly measures the map." : `With this little ${mapped(S3)}, the distance mostly measures the ${S3.v === 3 ? "maps" : "map"}, not the fire service.`
       );
     $("cStFigs").innerHTML = t1 + t2 + t3;
   }
   function draw2() {
-    const S3 = V3.S, d = V3.d, F2 = facts(S3, d), tn = theName(S3.name), lv = S3.completeness.level, gapsOn = F2.show === "yes" || F2.show === "ask" && V3.reveal, byCell = new Map(F2.burn.map((p) => [p.c, p])), top = gapsOn ? F2.gaps.slice(0, 10) : [], marks = top.map((p, i) => {
+    const S3 = V3.S, d = V3.d, F2 = facts(S3, d), tn = theName(S3.name), lv = S3.completeness.level, gapsOn = F2.show === "yes" || F2.show === "ask" && V3.reveal, strong = F2.show === "yes" && !fragile(S3), byCell = new Map(F2.burn.map((p) => [p.c, p])), top = gapsOn ? F2.gaps.slice(0, 10) : [], marks = top.map((p, i) => {
       const pos = posOf(d, p.c);
-      return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: F2.show !== "yes", keep: solarCell(pos.lat, pos.lon) };
+      return { c: p.c, label: String(i + 1), title: `Gap ${i + 1}: ${pos.text}`, muted: !strong, keep: solarCell(pos.lat, pos.lon) };
     }), layers2 = [
       { fill: STEADY, cells: [...F2.steady.keys()] },
       { fill: REG, cells: F2.burn.filter((p) => !(gapsOn && F2.gapSet.has(p.c))).map((p) => p.c), over: true },
-      { fill: F2.show === "yes" ? GAP : GAP_MUTED, cells: gapsOn ? F2.gaps.map((p) => p.c) : [], over: true }
+      { fill: strong ? GAP : GAP_MUTED, cells: gapsOn ? F2.gaps.map((p) => p.c) : [], over: true }
     ].map((l) => ({ ...l, edge: F2.n < 400 }));
-    const note = $("cStNote");
-    note.hidden = F2.show === "yes";
-    note.textContent = noteOf(S3) + (F2.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") + (F2.show === "ask" && !V3.reveal ? " The places are hidden until you ask for them." : "") + (F2.show === "ask" && V3.reveal ? " They are shown below in muted colours, as places to check, not findings." : "");
+    const note = $("cStNote"), fr = fragile(S3);
+    note.hidden = F2.show === "yes" && !fr && !asV2(S3);
+    note.textContent = F2.show === "yes" ? fr ? FRAGILE_NOTE(fr) : asV2(S3) ? AS_V2_NOTE(tn) : "" : noteOf(S3) + (F2.show === "no" && lv !== "unpopulated" ? " So this page does not list places without a station here." : "") + (F2.show === "ask" && !V3.reveal ? " The places are hidden until you ask for them." : "") + (F2.show === "ask" && V3.reveal ? " They are shown below in muted colours, as places to check, not findings." : "");
     let empty = F2.burn.length === 0 && F2.steady.size === 0;
     const box2 = $("cStMap"), fig = box2.closest(".cpOlFig"), grid2 = box2.closest(".cpOlGrid");
-    const sw = (c, t, cls = "") => `<span class="cpNone"><i class="${cls}" style="background:${c}"></i>${t}</span>`;
-    $("cStLegend").innerHTML = sw("#1b1b1b", "fire station mapped in OpenStreetMap", "stDot") + (F2.burn.length ? sw(REG, gapsOn ? "regular fire, station within 15 km" : "regular fire (4 or more of 14 years)") : "") + (gapsOn && F2.gaps.length ? sw(F2.show === "yes" ? GAP : GAP_MUTED, `regular fire, ${NO_STATION}`) : "") + (F2.steady.size ? sw(STEADY, "heat that looks like flares or industry: left out") : "");
+    const ovPts = listedOverture(S3).map((s2) => [s2[0], s2[1]]), osmPts = S3.stations.filter((s2) => s2[4] !== "overture").map((s2) => [s2[0], s2[1]]);
+    const sw = (c, t, cls = "") => `<span class="cpNone"><i class="${cls}" style="background:${c}"></i>${t}</span>`, dense = osmPts.length + ovPts.length > DENSE;
+    $("cStLegend").innerHTML = (osmPts.length ? sw("#1b1b1b", "fire station mapped in OpenStreetMap", dense ? "stSmall" : "stDot") : "") + (ovPts.length ? dense ? sw(OVERTURE, "listed only in Overture Maps: may be wrong or closed", "stSmall") : sw("#fffefa", "listed only in Overture Maps: may be wrong or closed", "stRing") : "") + (F2.burn.length ? sw(REG, gapsOn ? `regular fire, station ${mapped(S3)} within 15 km` : "regular fire (4 or more of 14 years)") : "") + (gapsOn && F2.gaps.length ? sw(strong ? GAP : GAP_MUTED, `regular fire, ${noStation(S3)}`) : "") + (F2.steady.size ? sw(STEADY, "heat that looks like flares or industry: left out") : "");
     let folded = [], cut = [];
     fig.hidden = $("cStLegend").hidden = empty;
     if (!empty) {
-      const listed2 = S3.stations.length, coarse3 = matchMedia("(pointer: coarse)").matches, idle = `${coarse3 ? "Tap" : "Point at"} a square for its numbers.` + (S3.stations_subset ? ` The dots are the ${fmt(listed2)} stations nearest to some square, of ${fmt(S3.stations_total)} mapped.` : ""), paint = () => drawMini(box2, d, {
+      const listed2 = S3.stations.length, coarse3 = matchMedia("(pointer: coarse)").matches, idle = `${coarse3 ? "Tap" : "Point at"} a square for its numbers.` + (S3.stations_subset ? ` The dots are the ${fmt(listed2)} stations nearest to some square, of ${fmt(S3.stations_total)} ${mapped(S3)}.` : ""), paint = () => drawMini(box2, d, {
         layers: layers2,
-        points: S3.stations.map((s2) => [s2[0], s2[1]]),
+        points: osmPts,
+        others: ovPts.length ? { points: ovPts, color: OVERTURE } : void 0,
         marks,
-        label: `Map of ${tn}: fire stations mapped in OpenStreetMap and the squares with regular fire`,
+        label: `Map of ${tn}: fire stations ${mappedIn(S3)} and the squares with regular fire`,
         caption: $("cStPick"),
         idle,
         pick: (c) => {
@@ -8191,7 +8261,8 @@ Click to show ${r.y} on the map`
           const p = byCell.get(c);
           if (!p) return null;
           const isGap = gapsOn && F2.gapSet.has(c), flag = (isGap && desert(S3.country, pos.lat, pos.lon) ? ` ${DESERT_FLAG}` : "") + (solarCell(pos.lat, pos.lon) ? ` ${SOLAR_FLAG}` : "");
-          return `<b>${pos.text}</b>: fire in ${p.by} of the 14 years 2012\u20132025 (VIIRS), ${perYear(p.fpy)}. ${nearest(S3, p, F2.gapSet.has(c))}` + (isGap ? ` That is beyond 15 km: ${NO_STATION}.` : "") + flag;
+          const only = F2.gapSet.has(c) ? "" : onlyListed(S3, c);
+          return `<b>${pos.text}</b>: fire in ${p.by} of the 14 years 2012\u20132025 (VIIRS), ${perYear(p.fpy)}. ${nearest(S3, p, F2.gapSet.has(c))}` + (isGap ? ` That is beyond 15 km: ${noStation(S3)}.` : "") + (only ? ` ${ONLY_LISTED[only]}` : "") + flag;
         }
       });
       let r = paint();
@@ -8210,11 +8281,11 @@ Click to show ${r.y} on the map`
       grid2.classList.add("wide");
       folded = cut = [];
     }
-    list2(S3, d, F2, top, gapsOn, folded, cut, empty);
+    list2(S3, d, F2, top, gapsOn, strong, folded, cut, empty);
     caveats(S3, d, F2, top, gapsOn);
   }
   var words = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
-  function list2(S3, d, F2, top, gapsOn, folded, cut, noMap) {
+  function list2(S3, d, F2, top, gapsOn, strong, folded, cut, noMap) {
     const show = $("cStShow");
     show.hidden = F2.show !== "ask" || F2.gaps.length === 0;
     show.textContent = V3.reveal ? "Hide the uncertain gaps" : `Show the ${fmt(F2.gaps.length)} uncertain gap${F2.gaps.length === 1 ? "" : "s"} anyway`;
@@ -8225,28 +8296,30 @@ Click to show ${r.y} on the map`
         const pos = posOf(d, p.c);
         return desert(S3.country, pos.lat, pos.lon);
       }), allDesert = dz.every(Boolean);
-      $("cStListT").textContent = `Places with regular fire and ${NO_STATION}`;
+      $("cStListT").textContent = `Places with regular fire and ${noStation(S3)}`;
       $("cStListS").innerHTML = (top[0].by >= 7 ? "Among places that burned in at least 7 of the 14 years, the most fire first." : "These burned in 4 to 6 of the 14 years; the most fire first.") + (allDesert ? ` <span class="stFlag">${DESERT_FLAG}</span>` : dz.some(Boolean) ? ` <span class="stFlag">Places marked \u201Cin the desert\u201D are unverified: their detections may be gas flares or industrial heat that FIRMS did not flag.</span>` : "");
       let group2 = top[0].by < 7;
       $("cStList").innerHTML = top.map((p, i) => {
         const pos = posOf(d, p.c), head = !group2 && p.by < 7 ? (group2 = true, `<li class="stGrp">Then places that burned in 4 to 6 of the 14 years</li>`) : "", flags = (dz[i] && !allDesert ? `<small class="stFlag">In the desert: unverified</small>` : "") + (solarCell(pos.lat, pos.lon) ? `<small class="stFlag">${SOLAR_FLAG}</small>` : ""), osm = `https://www.openstreetmap.org/?mlat=${pos.lat.toFixed(3)}&mlon=${pos.lon.toFixed(3)}#map=11/${pos.lat.toFixed(3)}/${pos.lon.toFixed(3)}`;
-        return head + `<li><span class="stN${F2.show === "yes" ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b><small>Burned in ${p.by} of the 14 years 2012\u20132025 (VIIRS) \xB7 ${perYear(p.fpy)}</small><small>${nearest(S3, p, true)}</small>${flags}<small><a href="${osm}" target="_blank" rel="noopener">Check the place on OpenStreetMap</a></small></span></li>`;
+        return head + `<li><span class="stN${strong ? "" : " muted"}">${i + 1}</span><span class="stW"><b>${pos.text}</b><small>Burned in ${p.by} of the 14 years 2012\u20132025 (VIIRS) \xB7 ${perYear(p.fpy)}</small><small>${nearest(S3, p, true)}</small>${flags}<small><a href="${osm}" target="_blank" rel="noopener">Check the place on OpenStreetMap</a></small></span></li>`;
       }).join("");
       $("cStListNote").textContent = (F2.gaps.length > top.length ? `The ${fmt(top.length)} at the top of ${fmt(F2.gaps.length)}. ` : "") + (noMap ? "" : (folded.length ? `On the map, ${folded.length === 1 ? "number" : "numbers"} ${words(folded)} ${folded.length === 1 ? "sits" : "sit"} under a nearby mark, counted in its \u201C+n\u201D. ` : "") + (cut.length ? `${cut.length === 1 ? "Number" : "Numbers"} ${words(cut)} ${cut.length === 1 ? "is" : "are"} not marked on a narrow screen. ` : "")) + (F2.show === "yes" ? noteOf(S3) : "");
     }
-    const nb = F2.burn.length, beyond = (p) => F2.gapSet.has(p.c) || p.km1 > 15, bands = [
-      ["Within 15 km", (p) => p.km1 >= 0 && !beyond(p)],
+    const nb = F2.burn.length, beyond = (p) => F2.gapSet.has(p.c) || p.km1 > 15, none = `No station ${mapped(S3)} in the country`, within = (p) => p.km1 >= 0 && !beyond(p), bands = [
+      ["Within 15 km", within],
       ["15 to 50 km", (p) => p.km1 >= 0 && beyond(p) && p.km1 <= 50],
       ["50 to 100 km", (p) => p.km1 > 50 && p.km1 <= 100],
       ["Over 100 km", (p) => p.km1 > 100],
-      ["No station mapped in the country", (p) => p.km1 < 0]
+      [none, (p) => p.km1 < 0]
     ];
     $("cStDistBox").hidden = nb === 0;
-    $("cStDist").innerHTML = nb ? `<tr><th>Nearest mapped station</th><th>Places</th><th>Share</th></tr>` + bands.map(([label, f]) => {
+    $("cStDist").innerHTML = nb ? `<tr><th>Nearest ${mapped(S3)} station</th><th>Places</th><th>Share</th></tr>` + bands.map(([label, f]) => {
       const k = F2.burn.filter(f).length;
-      return k || label !== "No station mapped in the country" ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc2(k / nb)}</td></tr>` : "";
+      return k || label !== none ? `<tr><td>${label}</td><td>${fmt(k)}</td><td>${pc2(k / nb)}</td></tr>` : "";
     }).join("") : "";
-    $("cStDistNote").textContent = F2.show === "no" && S3.completeness.level !== "unpopulated" ? "With so few stations mapped, these distances mostly show how much of the map is missing." : "Places with fire in at least 4 of the 14 years; heat that looks like flares or industry is left out.";
+    const ol = { only: 0, three: 0, "": 0 };
+    for (const p of F2.burn) if (within(p)) ol[onlyListed(S3, p.c)]++;
+    $("cStDistNote").textContent = (F2.show === "no" && S3.completeness.level !== "unpopulated" ? `With so few stations ${mapped(S3)}, these distances mostly show how much of the ${S3.v === 3 ? "maps are" : "map is"} missing.` : "Places with fire in at least 4 of the 14 years; heat that looks like flares or industry is left out.") + (ol.only ? ` For ${ol.three ? "at least " : ""}${fmt(ol.only)} of the places within 15 km, the only stations that close are Overture Maps listings.` : "");
   }
   function caveats(S3, d, F2, top, gapsOn) {
     const counts = /* @__PURE__ */ new Map();
@@ -8258,7 +8331,7 @@ Click to show ${r.y} on the map`
       const pos = posOf(d, p.c);
       return solarCell(pos.lat, pos.lon);
     });
-    let t = `<b>Read with care.</b> A gap means ${NO_STATION}, not that no station exists: OpenStreetMap is never complete. Stations across a border are not counted, so near a border a distance can be too long. `;
+    let t = `<b>Read with care.</b> A gap means ${noStation(S3)}, not that no station exists: ` + (S3.v === 3 ? "neither OpenStreetMap nor Overture Maps is complete. " : "OpenStreetMap is never complete. ") + (S3.station_sources?.overture ? "Overture Maps' places come partly from business listings, so some may be wrong or closed. " : "") + `Stations across a border are not counted, so near a border a distance can be too long. `;
     if (steady.length)
       t += `Squares whose heat looks like flares or industry are left out (${steady.join("; ")}); the filter can also catch some real burning. `;
     if (deserts)
@@ -8280,26 +8353,35 @@ Click to show ${r.y} on the map`
       draw2();
     };
   }
-  var stLoad = (k) => loadChecked(stationsPath(k), (x) => isStations(x, k));
+  function stLoad(k) {
+    const ok = (x) => isStations(x, k);
+    return loadChecked(stationsPath(k), ok, 2e4).catch(() => loadChecked(stationsPath(k, STATIONS_FALLBACK_DIR), ok));
+  }
   function stGlance(S3, d) {
     const F2 = facts(S3, d), nb = F2.burn.length, ng = F2.gaps.length, lv = S3.completeness.level, tn = theName(S3.name);
     return {
       stations: fmt(S3.stations_total),
-      gaps: nb === 0 ? "No regular fire" : F2.show === "yes" ? `${fmt(ng)} of ${fmt(nb)} places` : F2.show === "ask" ? "Map patchy" : lv === "unpopulated" ? "Few people live here" : "Map too thin",
-      gapsTitle: nb === 0 ? "No place burned in 4 or more of the 14 years." : F2.show === "yes" ? `Places with fire in 4 or more of 2012\u20132025 and no fire station mapped in OpenStreetMap within 15 km. A gap means none is mapped, not that none exists.` + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? " In the desert some may be industrial heat." : "") : F2.show === "ask" ? `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain; the full record lists them on request.` : lv === "unpopulated" ? "Few people live here, so the full record does not look for gaps." : `Too few fire stations are mapped in OpenStreetMap in ${tn} to judge where they are missing.`,
+      label: `Fire stations ${mapped(S3)}`,
+      title: `Fire stations ${mappedIn(S3)}. ${S3.v === 3 ? S3.attribution : "\xA9 OpenStreetMap contributors, ODbL"}`,
+      gaps: nb === 0 ? "No regular fire" : F2.show === "yes" ? `${fmt(ng)} of ${fmt(nb)} places` : F2.show === "ask" ? S3.v === 3 ? "Maps patchy" : "Map patchy" : lv === "unpopulated" ? "Few people live here" : S3.v === 3 ? "Maps too thin" : "Map too thin",
+      gapsTitle: nb === 0 ? "No place burned in 4 or more of the 14 years." : F2.show === "yes" ? `Places with fire in 4 or more of 2012\u20132025 and ${noStation(S3)}. A gap means none is ${mapped(S3)}, not that none exists.` + (fragile(S3) ? " Stations here only just reach the bar for listing gaps, so treat them as places to check." : "") + (anyDesert(S3, d, F2.gaps.slice(0, 10)) ? " In the desert some may be industrial heat." : "") : F2.show === "ask" ? (S3.v === 3 ? `The fire stations in OpenStreetMap and Overture Maps look patchy in ${tn}, so the gaps are uncertain` : `OpenStreetMap's fire stations look patchy in ${tn}, so its gaps are uncertain`) + "; the full record lists them on request." : lv === "unpopulated" ? "Few people live here, so the full record does not look for gaps." : `Too few fire stations are ${mappedIn(S3)} in ${tn} to judge where they are missing.`,
       facts: F2
     };
   }
   function stCell(S3, d, c, F2 = facts(S3, d)) {
     if (c >= F2.n) return null;
-    const km12 = S3.cell_rows[8 * c + 4], s1 = S3.cell_rows[8 * c + 1], gap = F2.show === "yes" && F2.gapSet.has(c), has = km12 >= 0 && s1 >= 0, pos = posOf(d, c), lv = S3.completeness.level;
+    const km12 = S3.cell_rows[8 * c + 4], s1 = S3.cell_rows[8 * c + 1], gap = F2.show === "yes" && F2.gapSet.has(c), has = km12 >= 0 && s1 >= 0, pos = posOf(d, c), lv = S3.completeness.level, src = has ? S3.stations[s1]?.[4] : void 0, only = has && !F2.gapSet.has(c) && !F2.steady.has(c) ? onlyListed(S3, c) : "";
     return {
       burnYears: S3.cell_rows[8 * c + 7],
       km: has ? gap && km12 < 15.5 ? "just over 15 km" : km2(km12) : null,
-      station: has ? stationName(S3, s1) : "",
+      /* the name, and where the station comes from (contract v3, rule 2) */
+      station: has ? stationName(S3, s1) + (src ? ` (${FROM[src]})` : "") : "",
+      label: `Nearest ${mapped(S3)} fire station`,
+      /* the sentence after the name for a gap */
+      gapText: `${noStation(S3)[0].toUpperCase()}${noStation(S3).slice(1)}; that does not mean none exists.`,
       gap,
       steady: F2.steady.has(c),
-      note: !has ? "" : F2.show === "ask" ? "OpenStreetMap's stations look patchy here, so this distance partly measures the map." : F2.show === "no" && lv !== "unpopulated" ? "With this little mapped, the distance mostly measures the map, not the fire service." : "",
+      note: !has ? "" : F2.show === "ask" ? S3.v === 3 ? "The stations in OpenStreetMap and Overture Maps look patchy here, so this distance partly measures the maps." : "OpenStreetMap's stations look patchy here, so this distance partly measures the map." : F2.show === "no" && lv !== "unpopulated" ? `With this little ${mapped(S3)}, the distance mostly measures the ${S3.v === 3 ? "maps" : "map"}, not the fire service.` : only ? ONLY_LISTED[only] : "",
       flag: gap && desert(S3.country, pos.lat, pos.lon) ? DESERT_FLAG : solarCell(pos.lat, pos.lon) ? SOLAR_FLAG : ""
     };
   }
@@ -9264,7 +9346,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     } else rows.push(row("Forecast for 2026", G.fcMsg || "Loading\u2026"));
     if (G.S) {
       const s2 = stGlance(G.S, d);
-      rows.push(row("Fire stations mapped", s2.stations, "Fire stations in OpenStreetMap"));
+      rows.push(row(s2.label, s2.stations, s2.title));
       rows.push(row("No station within 15 km", s2.gaps, s2.gapsTitle));
     } else rows.push(row("Fire stations", G.stMsg || "Loading\u2026"));
     $("gRows").innerHTML = rows.join("");
@@ -9324,9 +9406,9 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     if (st)
       rows.push(
         row(
-          "Nearest mapped fire station",
+          st.label,
           st.km ? `${st.km}${st.gap ? ' <span class="gGap">gap</span>' : ""}` : "None mapped",
-          st.station ? `Nearest: ${st.station}${st.gap ? ". No station is mapped in OpenStreetMap within 15 km; that does not mean none exists." : ""}` : ""
+          st.station ? `Nearest: ${st.station}${st.gap ? `. ${st.gapText}` : ""}` : ""
         )
       );
     const notes = [st?.note, st?.flag].filter(Boolean).join(" ");
@@ -11333,13 +11415,13 @@ ${short(f.perYear)} hotspots a year` : c.n;
     V4.host.input.value = words2;
     fit();
     if (final && words2) {
-      release(s2, true);
+      release2(s2, true);
       sendHeard(words2);
     } else if (full) stopListening(true);
   }
   function ended(s2) {
     if (session !== s2 || !V4) return;
-    release(s2, false);
+    release2(s2, false);
     const failed = s2.error && s2.error !== "aborted" ? s2.error : "";
     if (s2.send && s2.heard && !failed) return sendHeard(s2.heard);
     if (!s2.heard) {
@@ -11357,7 +11439,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
     if (document.activeElement === mic) host.root.focus();
     host.ask(words2);
   }
-  function release(s2, abort) {
+  function release2(s2, abort) {
     s2.r.onstart = s2.r.onaudiostart = s2.r.onresult = s2.r.onerror = s2.r.onend = null;
     clearTimeout(s2.stopping);
     clearTimeout(s2.limit);
@@ -11394,7 +11476,7 @@ ${short(f.perYear)} hotspots a year` : c.n;
   function cancelListening(restore2) {
     const s2 = session;
     if (!s2 || !V4) return;
-    release(s2, true);
+    release2(s2, true);
     if (lineKind === "listening" || lineKind === "starting") hideLine();
     if (restore2) {
       V4.host.input.value = s2.before;

@@ -29,6 +29,8 @@ export interface MiniOptions {
   layers: MiniLayer[];
   /** [lon, lat] dots drawn over the squares (fire stations) */
   points?: number[][];
+  /** [lon, lat] dots of a second, less sure kind, drawn as rings in their own colour under `points` */
+  others?: { points: number[][]; color: string };
   /** numbered markers on cells */
   marks?: MiniMark[];
   label: string;
@@ -51,7 +53,7 @@ const S = 10;
 /** the tallest a map is drawn, in CSS pixels */
 const MAX_H = 440;
 /** more station dots than this are drawn small and see-through, or they bury the squares */
-const DENSE = 800;
+export const DENSE = 800;
 /** numbered markers closer than this, in CSS pixels, would hide each other */
 const MARK_GAP = 16;
 /** a phone: only the first five marks are drawn */
@@ -141,7 +143,8 @@ export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): 
     ch = r1(cell * S),
     cellPx = (cell * F.kx * S * boxW) / vw,
     pts = o.points || [],
-    dense = pts.length > DENSE,
+    oth = o.others?.points || [],
+    dense = pts.length + oth.length > DENSE,
     paint = (ls: MiniLayer[]) =>
       ls
         .filter(l => l.cells.length)
@@ -151,8 +154,23 @@ export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): 
           return `<path d="${p}" fill="${l.fill}"${l.edge ? ` stroke="${l.fill}" stroke-width="1.6" vector-effect="non-scaling-stroke"` : ""}/>`;
         })
         .join("");
-  let dots = "";
-  for (const [lon, lat] of pts) dots += `M${r1(X(near(lon, F.lon0)))},${r1(Y(lat))}h0`;
+  const dotPath = (ps: number[][]) => {
+      let p = "";
+      for (const [lon, lat] of ps) p += `M${r1(X(near(lon, F.lon0)))},${r1(Y(lat))}h0`;
+      return p;
+    },
+    line = (p: string, color: string, w: number, op = "") =>
+      `<path d="${p}" fill="none" stroke="${color}"${op ? ` stroke-opacity="${op}"` : ""} stroke-width="${w}" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`,
+    /* stations: a dark dot with a pale halo; the second kind a ring in its own colour, so the two differ in shape
+       as well as colour; where they are dense, small see-through dots of each colour */
+    dots = (p: string, color: string, ring = false) =>
+      !p
+        ? ""
+        : dense
+          ? line(p, color, ring ? 2 : 1.6, ring ? ".75" : ".6")
+          : ring
+            ? line(p, "#fffefa", 6.6) + line(p, color, 4.8) + line(p, "#fffefa", 1.8)
+            : line(p, "#fffefa", 4.6) + line(p, color, 2.6);
   /* marks: on a phone only the first five (and any that carry a warning); a mark on top of an earlier one is
      folded into that one's "+n" */
   const narrow = innerWidth < NARROW,
@@ -178,12 +196,8 @@ export function drawMini(host: HTMLElement, d: CountrySummary, o: MiniOptions): 
     `<path d="${land}" fill="#ebe8e1" fill-rule="evenodd"/>` +
     paint(o.layers.filter(l => !(dense && l.over))) +
     `<path d="${lines}" fill="none" stroke="#1b1b1b" stroke-opacity=".7" stroke-width="1" vector-effect="non-scaling-stroke"/>` +
-    (dots
-      ? dense
-        ? `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-opacity=".6" stroke-width="1.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
-        : `<path d="${dots}" fill="none" stroke="#fffefa" stroke-width="4.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
-          `<path d="${dots}" fill="none" stroke="#1b1b1b" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`
-      : "") +
+    (o.others ? dots(dotPath(oth), o.others.color, true) : "") +
+    dots(dotPath(pts), "#1b1b1b") +
     (dense ? paint(o.layers.filter(l => l.over)) : "") +
     `<rect class="cpMiniOn" width="${cw}" height="${ch}" fill="none" stroke="#1b1b1b" stroke-width="2" vector-effect="non-scaling-stroke" visibility="hidden"/>` +
     `</svg>` +

@@ -243,6 +243,8 @@ input[type=number]{width:84px}
 #cStLegend[hidden]{display:none}
 @media (min-width:701px){#cSt .cpOlGrid:not(.wide) .cpOlFig{position:sticky;top:64px}}
 .cpNone i.stDot{width:8px;height:8px;border-radius:4px;box-shadow:0 0 0 1px #fffefa}
+.cpNone i.stRing{width:9px;height:9px;border-radius:50%;box-shadow:inset 0 0 0 2.5px var(--cblue),0 0 0 1px #fffefa}
+.cpNone i.stSmall{width:5px;height:5px;border-radius:50%;opacity:.7;margin:0 2px}
 @media (max-width:860px){
   .cpCharts{grid-template-columns:minmax(0,1fr)}
   .cpTrust{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -1056,7 +1058,7 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
             <div class="cpOlList">
               <button class="cpText cpStShow" id="cStShow" type="button" hidden></button>
               <div id="cStGapBox" hidden><h3 class="cpH3" id="cStListT"></h3><p class="cpCap" id="cStListS"></p><ol class="cpStList" id="cStList"></ol><p class="cpCap" id="cStListNote"></p></div>
-              <div id="cStDistBox"><h3 class="cpH3">How far regular fire is from a mapped station</h3><div class="cpScroll"><table id="cStDist"></table></div><p class="cpCap" id="cStDistNote"></p></div>
+              <div id="cStDistBox"><h3 class="cpH3">How far regular fire is from the nearest station</h3><div class="cpScroll"><table id="cStDist"></table></div><p class="cpCap" id="cStDistNote"></p></div>
             </div>
           </div>
           <p class="cpProse cpOlHow" id="cStCaveats"></p>
@@ -1324,6 +1326,6 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

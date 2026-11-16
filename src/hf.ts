@@ -170,14 +170,16 @@ export function loadIndex(): Promise<CountryIndexEntry[]> {
 }
 
 /* =====================================================================
-   SMALL EXTRA FILES FOR THE COUNTRY PAGE: the 2026-2027 forecast (forecast/v1) and the OpenStreetMap fire
-   stations (stations/v2). Fetched only after the country's summary has arrived, so they never hold up the page,
-   and given up on after a timeout so a slow answer ends in a quiet message instead of a spinner.
+   SMALL EXTRA FILES FOR THE COUNTRY PAGE: the 2026-2027 forecast (forecast/v1) and the fire stations
+   (stations/v3: OpenStreetMap and Overture Maps; stations/v2, OpenStreetMap alone, when v3 does not arrive).
+   Fetched only after the country's summary has arrived, so they never hold up the page, and given up on after a
+   timeout so a slow answer ends in a quiet message instead of a spinner.
    ===================================================================== */
 export const FORECAST_DIR = "forecast/v1";
-export const STATIONS_DIR = "stations/v2";
+export const STATIONS_DIR = "stations/v3";
+export const STATIONS_FALLBACK_DIR = "stations/v2";
 export const forecastPath = (k: string) => `${FORECAST_DIR}/${encodeURIComponent(k)}.json`;
-export const stationsPath = (k: string) => `${STATIONS_DIR}/${encodeURIComponent(k)}.json`;
+export const stationsPath = (k: string, dir = STATIONS_DIR) => `${dir}/${encodeURIComponent(k)}.json`;
 export { isObj, isNums };
 
 /** the answer must start within `ms`; the body then gets three times as long, so a large file on a slow link
