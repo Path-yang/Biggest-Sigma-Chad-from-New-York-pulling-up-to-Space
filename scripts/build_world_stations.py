@@ -113,11 +113,40 @@ what counts as fire (v1 is kept as published; run with --version 1 to rebuild it
     the list.
   * Ranking: remaining mean yearly detections of unmasked cells credited to the nearest station.
 
+--version 3 (stations/v3) is v2 (same fire, mask, gap rule and completeness thresholds) with a second station
+source, Overture Maps Places (release OVERTURE_RELEASE), because OpenStreetMap maps no or few stations in many
+countries:
+
+  * Overture stations: every place whose taxonomy.primary is OVERTURE_CATEGORY ("fire_station"), read remotely from
+    the release on S3 with DuckDB (only the matching rows and a few columns; cached as a 6 MB parquet), with
+    confidence >= OVERTURE_MIN_CONF and operating_status not closed. "fire_protection_service" is left out: most of
+    it is extinguisher, alarm and sprinkler firms (5-22% within 250 m of an OSM station, against 60-71% for
+    fire_station).
+  * Not every fire_station place is a station, and confidence does not sort them out (Foursquare, AllThePlaces
+    and Microsoft places all score 0.77 or more). A name filter drops: names that are never a station
+    (NOT_STATION: extinguisher, sprinkler and equipment firms, shops, union locals, schools, academies and training
+    grounds, museums, ...); security firms, police, Red Cross posts, churches and the like unless the name also
+    names a fire service (FIRE_WORDS, in many languages); places that only business directories list
+    (OVERTURE_DIRECTORIES: Foursquare, Microsoft, BrightQuery, PinMeTo) unless the name names a fire service;
+    places at whole-degree coordinates (geocoded to the middle of a region); and, among the Overture-only stations,
+    a name repeated OVERTURE_REPEAT or more times without a fire word (a chain: tyre shops, convenience stores).
+  * Same station: Overture places within SAME_M of each other, within SAME_NAME_M with similar names (the
+    distinctive words of one name, generic fire words and abbreviations aside, all in the other, or one name inside
+    the other, and no different station numbers), or within SAME_EXACT_M with the same name, are merged first,
+    keeping the most confident; a merged place that close to an OSM site, by the same three tests, is that OSM
+    station, which is kept and marked "both". The rest are added as Overture-only stations, assigned to countries
+    exactly like the OSM ones.
+  * Each station row gets a fifth element, its source: "osm", "both" or "overture"; "osm" is "" for an
+    Overture-only station and a parallel "overture" list holds the Overture id ("" for OSM-only stations).
+  * Completeness levels use the merged count, with the same thresholds; the income-group medians are recomputed.
+  * Overture Places is under CDLA-Permissive-2.0, its Foursquare-sourced places under Apache-2.0: their licence
+    texts and Foursquare's NOTICE are written next to the files (OVERTURE_LICENCE_FILES).
+
 OpenStreetMap data (c) OpenStreetMap contributors, available under the Open Database License (ODbL)
 1.0, https://www.openstreetmap.org/copyright. The output files are a derived database under the ODbL.
 
 Usage:
-    .venv/bin/python scripts/build_world_stations.py [--version 1|2] [--cache DIR]
+    .venv/bin/python scripts/build_world_stations.py [--version 1|2|3] [--cache DIR]
         [--source qlever|overpass] [--ne DIR] [--out build/hf/stations/v<version>]
 
 Needs numpy, scipy, shapely and duckdb (through scripts/build_world_shapes.py).
@@ -125,6 +154,7 @@ Needs numpy, scipy, shapely and duckdb (through scripts/build_world_shapes.py).
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import json
 import math
@@ -132,6 +162,7 @@ import re
 import statistics
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -215,12 +246,53 @@ FLARE_WIDE_TOP6 = 0.9                        # no short season (Saharan oil fiel
 FLARE_WIDE_MAX_CELL = 0.25                   # in cells up to 0.25 degrees (a 0.5-1 degree cell is wider than the ring)
 GAP_OFTEN_YEARS = 7  # v2 gaps: cells burned in at least half the years first, then the rest; by fire a year in each
 MASK_WHY = {1: "static", 2: "flare_field", 3: "night_all_season", 4: "night_weak"}
-ATTRIBUTION = "© OpenStreetMap contributors, ODbL"
+# v3: Overture Maps Places fire stations added to OpenStreetMap's (see the module docstring)
+OVERTURE_RELEASE = "2026-10-21.0"
+OVERTURE_PLACES = f"s3://overturemaps-us-west-2/release/{OVERTURE_RELEASE}/theme=places/type=place/*"
+OVERTURE_CATEGORY = "fire_station"  # taxonomy.primary; fire_protection_service is extinguisher and alarm firms
+OVERTURE_MIN_CONF = 0.5  # Overture's existence confidence; below it most fire_station places are not stations
+OVERTURE_DROP_STATUS = ("permanently_closed", "temporarily_closed")
+SAME_M, SAME_NAME_M = 250, 1000  # this close to an OSM station (or with a similar name, this close): the same station
+SAME_EXACT_M = 2000  # ... or with the very same name (with a distinctive word), this close
+OVERTURE_DIRECTORIES = {"Foursquare", "Microsoft", "BrightQuery", "PinMeTo"}  # business directories among the sources
+OVERTURE_REPEAT = 5  # a name this frequent among Overture-only stations, with no fire word, is a chain (shops, offices)
+ATTRIBUTION ="© OpenStreetMap contributors, ODbL"
 LICENCE = ("Fire station locations, names and operators are from OpenStreetMap, © OpenStreetMap contributors, "
            "available under the Open Database License (ODbL) 1.0: https://www.openstreetmap.org/copyright. "
            "This file is a derived database and is shared under the ODbL 1.0; if you publicly use or adapt it you "
            "must credit OpenStreetMap contributors and keep the result open under the ODbL. Fire grid cells are "
            "derived from NASA FIRMS (see the dataset card).")
+SOURCE_CODES = {"osm": "OpenStreetMap only", "both": "OpenStreetMap, also listed in Overture (OSM record kept)",
+                "overture": "Overture Maps Places only"}
+ATTRIBUTION_V3 = ("© OpenStreetMap contributors, ODbL; Overture Maps Foundation, overturemaps.org, "
+                  "CDLA Permissive 2.0 (includes data from Meta, Microsoft, Foursquare (Apache 2.0) and others)")
+OVERTURE_LICENCE_FILES = {  # shipped next to the data: CDLA-Permissive-2.0 s. 2.1 and Apache-2.0 s. 4 ask for them
+    "LICENSE-CDLA-Permissive-2.0.txt": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/"
+                                       "CDLA-Permissive-2.0.txt",
+    "LICENSE-Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+    "NOTICE-Foursquare.txt": "https://opensource.foursquare.com/places-notice-txt/",
+}
+LICENCE_V3 = (
+    "Fire station locations, names and operators are from OpenStreetMap, © OpenStreetMap contributors, available "
+    "under the Open Database License (ODbL) 1.0: https://www.openstreetmap.org/copyright; and from Overture Maps "
+    f"Places (release {OVERTURE_RELEASE}), Overture Maps Foundation, overturemaps.org, available under the "
+    "Community Data License Agreement Permissive 2.0 (https://cdla.dev/permissive-2-0/; text in "
+    "LICENSE-CDLA-Permissive-2.0.txt beside this file). Overture places sourced from Foursquare are Copyright "
+    "Foursquare Labs, Inc., available under the Apache License 2.0 (LICENSE-Apache-2.0.txt, NOTICE-Foursquare.txt), "
+    "transformed to the Overture schema by Overture and reduced to a point, a name and an id here. This file is a "
+    "derived database and is shared under the ODbL 1.0; if you publicly use or adapt it you must credit "
+    "OpenStreetMap contributors and the Overture Maps Foundation and keep the result open under the ODbL. Fire grid "
+    "cells are derived from NASA FIRMS (see the dataset card).")
+GAP_NOTE_V3 = {
+    "fair": "OpenStreetMap and Overture together map about as many stations here as in peer countries, but neither "
+            "is complete: a gap means no station is mapped within %g km, not that none exists." % GAP_KM,
+    "patchy": "Fire stations look patchy in OpenStreetMap and Overture here (fewer than peer countries per person): "
+              "many gaps may be unmapped stations. Show them as 'no mapped station within %g km'." % GAP_KM,
+    "thin": "Fire stations look thin in OpenStreetMap and Overture here: distances and gaps mostly reflect the "
+            "maps, not real fire cover. Do not present gaps as places without a station.",
+    "unpopulated": "Few or no people live here; station distances are shown for completeness only.",
+    "no_data": "No population figure to judge how completely stations are mapped; treat gaps as unverified.",
+}
 
 
 # ---------------------------------------------------------------- download
@@ -348,6 +420,318 @@ def merge_sites(rows):
     rank = {"n": 0, "w": 1, "r": 2}
     out = [rows[min(g, key=lambda i: (not rows[i][4], rank[rows[i][0]], rows[i][1]))] for g in groups.values()]
     return out, len(rows) - len(out)
+
+
+# ---------------------------------------------------------------- v3: Overture Maps Places
+def fetch_overture(cache: Path):
+    """Every Overture place whose primary category is OVERTURE_CATEGORY, any confidence, read remotely from the
+    release's GeoParquet on S3 (anonymous, us-west-2): only these rows and columns are fetched, about 87,000 rows
+    and 10 MB. Returns rows (id, lat, lon, name, confidence, operating_status, [source datasets])."""
+    import duckdb
+    f = cache / f"overture_{OVERTURE_CATEGORY}_{OVERTURE_RELEASE}.parquet"
+    con = duckdb.connect()
+    if not f.exists():
+        con.execute("INSTALL httpfs; LOAD httpfs; SET s3_region = 'us-west-2'")
+        con.execute(f"""COPY (SELECT id, names.primary AS name, confidence, operating_status AS status,
+                (bbox.xmin + bbox.xmax) / 2 AS lon, (bbox.ymin + bbox.ymax) / 2 AS lat,
+                addresses[1].country AS cc, list_transform(sources, lambda s: s.dataset) AS datasets,
+                list_transform(sources, lambda s: s.license) AS licenses
+            FROM read_parquet('{OVERTURE_PLACES}', hive_partitioning = 1)
+            WHERE taxonomy.primary = '{OVERTURE_CATEGORY}' ORDER BY id) TO '{f}' (FORMAT parquet)""")
+    r = con.execute(f"SELECT id, lat, lon, coalesce(name, ''), confidence, coalesce(status, ''), datasets "
+                    f"FROM '{f}' ORDER BY id").fetchall()
+    return [(i, float(la), float(lo), " ".join(nm.split()), float(c), s, list(ds or [])) for i, la, lo, nm, c, s, ds in r]
+
+
+def page_text(body):
+    """A licence text: plain text as is; an HTML page (Foursquare's NOTICE) reduced to the text of its <main>."""
+    if "<html" not in body[:2000].lower():
+        return body
+    import html
+    m = re.search(r"<main.*?</main>", body, flags=re.S)
+    t = re.sub(r"<script.*?</script>|<style.*?</style>", "", m.group(0) if m else body, flags=re.S)
+    t = html.unescape(re.sub(r"<[^>]+>", "", re.sub(r"<br\s*/?>|</p>|</h\d>|</li>", "\n", t)))
+    return "\n\n".join(" ".join(p.split()) for p in re.split(r"\n\s*\n", t) if p.strip()) + "\n"
+
+
+def fold(s):
+    """A name casefolded, then again without accents: Latin patterns are written without accents, and other scripts
+    (where dropping combining marks would damage the word) match the first form."""
+    s = " ".join((s or "").split()).casefold()
+    return s + " | " + "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))
+
+
+# a name that says fire service, in the languages Overture's fire_station places use
+FIRE_WORDS = re.compile("|".join([
+    # English and its abbreviations (VFD, FD, FPD, CFS, RFS, CFA, BFP, ...)
+    r"\bfire(?!stone|place|works|arm|wood|ball|fly|side)", r"\bv?fd\b", r"\bfdny\b", r"\bfpd\b", r"\bv?f\.?d\.",
+    r"\bvfc\b", r"\bv?frs?\b", r"\bcfs\b", r"\brfs\b", r"\bcfa\b", r"\bqfes\b", r"\bdfes\b", r"\bfenz\b", r"\brfb\b",
+    r"\bvfb\b", r"\bbfp\b", r"\bhose\b", r"\bladder\b", r"\bengine (co|company|house)\b",
+    r"\b(engine|truck|squad|battalion|medic|tower|station|estacion|wache|kazerne|caserne) ?(no\.? ?)?#? ?\d",
+    r"\brescue\b", r"\bcivil (defen[cs]e|protection)\b",
+    # German, Dutch, Nordic, Baltic
+    r"feuerwehr", r"feuerwache", r"\bffw?\b", r"\bbfw?\b", r"geratehaus", r"\blosch", r"brandweer", r"brandwacht",
+    r"brann", r"brandst", r"brandk[ao]", r"brandv", r"raddningstj", r"raddningsvarn", r"beredskab", r"paloasema",
+    r"palokunta", r"\bvpk\b", r"redning", r"\bfbk\b", r"pelastus", r"priesgaisr", r"ugniagesi", r"ugunsdzes",
+    r"paastekomando", r"paasteamet", r"tuletorje", r"slokkvi",
+    # Romance languages
+    r"pompier", r"sapeurs?\b", r"\bsdis\b", r"\bcis\b", r"centre de secours", r"incendi", r"\bcaserne", r"bomber",
+    r"bombeir", r"\bcbv?m?\b", r"defensa civil", r"defesa civil", r"proteccion civil", r"protezione civile",
+    r"protection civile", r"securite civile", r"civil security", r"\bdgsc\b", r"vigili del fuoco", r"\bvv\.?ff?\b",
+    r"distaccamento", r"\bisu\b", r"situatii de urgenta", r"\bsvsu\b", r"extincion", r"extincio", r"\bsei\b",
+    r"\bspeis\b",
+    # Central and Eastern Europe, Turkey, the Caucasus, Central Asia
+    r"straz", r"\bosp\b", r"\bpsp\b", r"\bjrg\b", r"pozarn", r"poziarn", r"hasic", r"\bsdh\b", r"\bhzs\b", r"\bdhz\b",
+    r"tuzolto", r"\bote\b", r"katasztrofavedelem", r"vatrogas", r"\bdvd\b", r"\bjvp\b", r"gasil", r"\bpgd\b",
+    r"zjarrfik", r"itfaiye", r"yangin", r"suhiltzaile", r"doitea", r"gorsaf [dt]an", r"пожар", r"пожеж", r"пажар",
+    r"ватрогас", r"\bмчс\b", r"\bдснс\b", r"\bпч\b", r"\bпсч\b", r"\bдпрч\b", r"\bдпрп\b", r"рятувальн", r"спасат",
+    r"пбзн", r"өрт", r"гал унтраах", r"სახანძრო", r"მაშველ", r"հրշեջ", r"փրկարար",
+    # Greek, the Middle East, South Asia
+    r"πυροσβεστ", r"دفاع مدني", r"الدفاع المدني", r"الدفاع المدنى", r"إطفاء", r"اطفاء", r"مطافئ", r"مطافي",
+    r"الحماية المدنية", r"الوقاية المدنية", r"حماية مدنية", r"تش[\s\u200c]*نشان", r"כבאות", r"כיבוי", r"מכבי אש",
+    r"فائر", r"ریسکیو", r"अग्नि", r"दमकल", r"फायर", r"অগ্নি", r"দমকল", r"ফায়ার", r"தீயணை", r"అగ్ని", r"ఫైర్", r"ಅಗ್ನಿ",
+    r"ಫೈರ್", r"അഗ്നി", r"ഫയർ", r"ફાયર", r"અગ્નિ", r"ਫਾਇਰ", r"ଅଗ୍ନି", r"ගිනි",
+    # East and Southeast Asia, Africa
+    r"消防", r"分団", r"소방", r"119", r"안전센터", r"ดับเพลิง", r"สาธารณภัย", r"ດັບເພີງ", r"ກູ້ໄພ", r"ពន្លត់",
+    r"អគ្គិភ័យ", r"မီးသတ်", r"chua chay", r"\bpccc\b", r"cuu nan", r"cuu ho", r"pemadam", r"damkar", r"kebakaran",
+    r"\bbomba\b", r"\bpbk\b", r"bumbero", r"zimamoto", r"እሳት",
+]))
+# never a fire station, whatever else the name says: extinguisher, sprinkler and equipment firms, shops, union
+# locals, research and quarantine offices, companies
+NOT_STATION = re.compile("|".join([
+    r"\bequip", r"\bextin(?!c)", r"extincteur", r"extinguish", r"estintor", r"feuerloscher", r"sprinkler",
+    r"\bsuppl(y|ies)\b(?! v?fd| fire)", r"suministro", r"fornitur", r"fourniture", r"ingrosso", r"wholesale",
+    r"\bsales\b", r"\bventas?\b", r"\bvendas?\b", r"materia(l|is|le|les)\b", r"\bmateriel", r"\blocal (no\.? ?)?#? ?\d",
+    r"\biaff\b", r"firefighters? union", r"polytechni", r"poly techni", r"instituto?\b", r"quarantin", r"karantin",
+    r"\bafad\b", r"research", r"supermar", r"minimar", r"minimerc", r"магазин", r"\btires?\b", r"\btyres?\b",
+    r"llanta", r"\bpneu", r"\breifen", r"boutique", r"\bcafeteria", r"kaffee", r"restaurant", r"\bpizz", r"\bgrill\b",
+    r"\bsubs\b", r"\bbbq\b", r"\bbrew(ery|ing|pub)", r"saloon", r"\bpub\b", r"telecom", r"leasing", r"insurance",
+    r"seguros\b", r"assurance", r"versicherung", r"\bshop\b", r"tienda", r"\bloja\b", r"\bltda?\b", r"\bllc\b",
+    r"\bgmbh\b", r"\bs\.? ?r\.? ?l\b", r"\bpvt\b", r"sdn\.? bhd", r"\bs\.? ?a\.? de c\.? ?v\b", r"\bco\.?,? ltd",
+    r"\bplc\b", r"\bkft\b", r"engineering", r"consult", r"solution", r"\bsystems?\b", r"sistema", r"sistemi",
+    r"technolog", r"tecnolog", r"impiant", r"installat", r"\bhotel", r"\bmotel", r"hostel", r"apartment", r"\blofts?\b",
+    r"pharmac", r"farmacia", r"\bsalon", r"\bfitness", r"crossfit", r"\bgym\b", r"fotocop", r"photocop", r"\bprinting",
+    r"post office", r"desentup", r"plumb", r"car wash", r"auto (repair|parts|care)", r"\brental", r"real estate",
+    r"realty", r"inmobiliar", r"hagyomanyorzo", r"make ?up\b", r"cosmetic", r"beauty", r"private limited",
+    r"\blimited\b", r"有限公司", r"工程", r"hidraulic", r"terceiriz", r"vistoria", r"\blaudo", r"fire ?(&|and) ?security",
+    r"\btrading\b", r"festival", r"negozio", r"مقهى", r"كافيه", r"مطعم", r"ศักดิ์สยาม", r"saksiam",
+]))
+# schools, academies, training grounds and museums, unless the name also numbers a station ("Station 6 & Training
+# Center")
+NOT_STATION_UNLESS_NUMBERED = re.compile("|".join([
+    r"academ", r"akadem", r"training", r"treinamento", r"entrenamiento", r"formacion\b", r"capacitacion",
+    r"ausbildung", r"\bschools?\b", r"schule", r"escuela", r"escola", r"\becole", r"museum", r"\bmuseo", r"\bmusee",
+    r"muzeum", r"музей", r"\bcolegio", r"تدريب", r"مركز اعداد",
+]))
+NUMBERED = re.compile(r"\b(station|estacion|estacao|wache|kazerne|caserne|compan(y|ia)|cia) ?(no\.? ?)?#? ?\d")
+# firms ("Triangle Fire Inc", "Phoenix Fire Apparatus"), unless the name says department, station, district, ...
+NOT_STATION_UNLESS_SERVICE = re.compile(
+    r"\binc\b|\bcorp(oration)?\b|logistic|\btools?\b|apparatus|\baware\b|\bstop\b")
+SERVICE = re.compile(
+    r"depart|\bdept|station|district|\bdist\b|compan|\bco\b|\bv?fd\b|brigade|rescue|squad|\bhall\b|house|authority|"
+    r"bureau|feuerwehr|bomber|bombeir|pompier|vigili|civil|\bv?fc\b|\bass(oc|n)|battalion|emergency|township|\btwp\b|"
+    r"county|rural|\bcity\b|\btown\b|village|borough")
+# security firms, police, hospitals, Red Cross posts, churches, shops in a place name ..., unless the name also says
+# fire service ("Market Drayton Fire Station", "Coffee City Fire Department")
+NOT_STATION_UNLESS_FIRE = re.compile("|".join([
+    r"securit", r"seguridad", r"sicurezza", r"seguranca", r"sicherheit",
+    r"(?<!public )safety(?! cent| build| complex| bldg| facilit)", r"\bpower\b", r"\bpolic", r"policia", r"polizia",
+    r"polizei", r"hospital", r"clinic", r"ambulanc", r"red cross", r"cruz roja", r"croix.rouge", r"cruz vermelha",
+    r"croce rossa", r"rotes kreuz", r"crveni kri", r"красн\w* крест", r"الهلال الأحمر", r"\bafet\b", r"church",
+    r"iglesia", r"igreja", r"chiesa", r"\bkirche", r"mosque", r"masjid", r"temple", r"\bwind\b", r"\bsolar\b",
+    r"electric", r"\bradio\b", r"pack shack", r"market", r"маркет", r"mercado", r"college", r"universit", r"\bbank\b",
+    r"coffee", r"burger", r"\balarm", r"\banimal", r"polgaror", r"\bcafe\b", r"tavern", r"\bstore\b", r"\bstudio",
+    r"florist", r"\bpets?\b", r"\bvet(erinar|s)?\b",
+]))
+# in business directories, mostly sprinkler and extinguisher contractors ("Superior Fire Protection")
+DIRECTORY_FIRM = re.compile(r"fire protection(?=\s*(\||$))|fire safety|\bsafety\b")
+
+
+def fire_word(name):
+    return bool(FIRE_WORDS.search(fold(name)))
+
+
+def not_station(name, directory_only=False):
+    """True when an Overture fire_station place's name says it is not a fire station. directory_only: the place
+    comes only from business directories, so its name must say fire service."""
+    f = fold(name)
+    if directory_only and (not FIRE_WORDS.search(f) or (DIRECTORY_FIRM.search(f) and not SERVICE.search(f))):
+        return True
+    return bool(NOT_STATION.search(f) or (NOT_STATION_UNLESS_NUMBERED.search(f) and not NUMBERED.search(f))
+                or (NOT_STATION_UNLESS_SERVICE.search(f) and not SERVICE.search(f))
+                or (NOT_STATION_UNLESS_FIRE.search(f) and not FIRE_WORDS.search(f)))
+
+
+def overture_drop(r, min_conf=OVERTURE_MIN_CONF):
+    """Why an Overture place (a fetch_overture row) is not taken as a fire station; '' if it is."""
+    _, lat, lon, name, conf, status, datasets = r
+    if conf < min_conf:
+        return "low_confidence"
+    if status in OVERTURE_DROP_STATUS:
+        return "closed"
+    if lat == round(lat) and lon == round(lon):
+        return "whole_degree"  # geocoded to the middle of a region ("Glencoe CFS" at -30, 135)
+    src = set(datasets) - {"Overture", "Overture-signals"}
+    if not_station(name, bool(src) and src <= OVERTURE_DIRECTORIES):
+        return "name"
+    return ""
+
+
+def name_key(s):
+    """Names compared for 'the same station': accents, case, punctuation and spacing ignored (any script)."""
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch)).casefold()
+    return " ".join(re.sub(r"[\W_]+", " ", s).split())
+
+
+# words that do not tell two stations apart, and abbreviations expanded before comparing
+GENERIC_WORDS = set("""
+fire fires station stations department volunteer volunteers company rescue service services district protection
+emergency brigade brigades hall house engine ladder truck no number of the and at for on in de del la le les des du di
+da do dos das el los las en et y e i a und der die das im am an zu city town township county village municipal
+municipality regional region area central main sub substation headquarters office satellite unit post feuerwehr
+freiwillige ff ffw feuerwache geratehaus feuerwehrgeratehaus feuerwehrhaus loschzug loschgruppe wache bf bomberos
+bombeiros bombeiro bombero cuerpo corpo voluntarios voluntaria estacion estacao compania companhia cia pompiers sapeurs
+pompier caserne centre secours incendie sdis cis vigili fuoco distaccamento comando straz pozarna osp ochotnicza
+panstwowa psp jrg itfaiye itfaiyesi mudurlugu tuzolto tuzoltosag onkentes egyesulet egyesulete ote cfs rfs vfb rfb cfa
+vfc vfr frs amt brandweer kazerne pompieri stazione volontari civil defense defence civile proteccion proteccao
+protezione defensa defesa firehouse firestation firefighters ems rural metro metropolitan national state provincial
+general base sector zone zona sous cuartel division divisao ortsfeuerwehr berufsfeuerwehr stadt gemeinde abteilung abt
+firemen firemens fireman community ambulance corps marshal marshals prevention bureau police public safety admin
+administration administrative""".split())
+NAME_ABBREV = {"dept": "department", "twp": "township", "fd": "fire department", "vfd": "volunteer fire department",
+               "co": "company", "vol": "volunteer", "sta": "station", "stn": "station", "mt": "mount", "ft": "fort",
+               "st": "saint", "ste": "sainte", "hq": "headquarters", "cs": "centre secours"}
+NAME_ORDINAL = {w: i % 12 + 1 for i, w in enumerate(
+    "first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth "
+    "primera segunda tercera cuarta quinta sexta septima octava novena decima undecima duodecima "
+    "primer segundo tercero cuarto quinto sexto septimo octavo noveno decimo undecimo duodecimo".split())}
+
+
+def name_words(s):
+    s = "".join(ch for ch in unicodedata.normalize("NFKD", s or "") if not unicodedata.combining(ch)).casefold()
+    return [w for t in re.split(r"[\W_]+", s) for w in NAME_ABBREV.get(t, t).split()]
+
+
+def name_tokens(s):
+    """(distinctive words, station numbers) of a station name."""
+    dist, nums = set(), set()
+    for t in name_words(s):
+        digits = re.findall(r"\d+", t)
+        if digits:
+            nums.update(int(x) for x in digits)
+            rest = re.sub(r"\d+", "", t)
+            if len(rest) > 3 and rest not in GENERIC_WORDS:  # a name written without spaces keeps its text
+                dist.add(rest)
+        elif t in NAME_ORDINAL:
+            nums.add(NAME_ORDINAL[t])
+        elif len(t) > 1 and t not in GENERIC_WORDS:
+            dist.add(t)
+    return dist, nums
+
+
+@functools.lru_cache(maxsize=None)
+def name_signature(s):
+    return name_tokens(s) + (" " + " ".join(name_words(s)) + " ",)
+
+
+def similar_names(a, b, strict_numbers=False):
+    """Probably one station: the distinctive words (generic fire words aside) of one name are all in the other
+    ("Feuerwehr Rohrbach", "Feuerwehrgeratehaus Rohrbach"; not "Ternitz-Doppling", "Ternitz-Rohrbach"), or one name
+    is contained in the other ("Fire Station" in "Central Police and Fire Station"), and they carry no different
+    station numbers. strict_numbers: a number on one side only also counts as different."""
+    if not a or not b:
+        return False
+    (da, na, wa), (db, nb, wb) = name_signature(a), name_signature(b)
+    if (na or nb) and not (na & nb) and (strict_numbers or (na and nb)):
+        return False
+    return bool(da and db and (da <= db or db <= da)) or (len(wa) > 2 and len(wb) > 2 and (wa in wb or wb in wa))
+
+
+def union_find(n, pairs):
+    parent = np.arange(n)
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i, j in pairs:
+        a, b = find(i), find(j)
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+    return np.array([find(i) for i in range(n)])
+
+
+def same_pairs(lon_a, lat_a, names_a, lon_b=None, lat_b=None, names_b=None, near_m=SAME_M, name_m=SAME_NAME_M,
+               exact_m=SAME_EXACT_M):
+    """Pairs (i in a, j in b) that are one station: within near_m, within name_m with similar names, or within
+    exact_m with the same name (one with a distinctive word). Without b: pairs within a (i < j), where a station
+    number on one name only keeps two places apart (so that "X Fire Department" does not chain "X Fire Station 4"
+    and "X Fire Station 7" into one)."""
+    ta = cKDTree(unit(lon_a, lat_a))
+    tb = ta if lon_b is None else cKDTree(unit(lon_b, lat_b))
+    nb = names_a if lon_b is None else names_b
+
+    def within(m):
+        if lon_b is None:
+            return ta.query_pairs(m / 1000 / R_KM, output_type="ndarray")
+        return np.array([(i, j) for i, js in enumerate(ta.query_ball_tree(tb, m / 1000 / R_KM)) for j in js],
+                        int).reshape(-1, 2)
+    near, far, farther = within(near_m), within(name_m), within(exact_m)
+    strict = lon_b is None
+    far = far[[similar_names(names_a[i], nb[j], strict) for i, j in far]] if len(far) else far
+    farther = farther[[bool(name_tokens(names_a[i])[0]) and name_key(names_a[i]) == name_key(nb[j])
+                       for i, j in farther]] if len(farther) else farther
+    return np.unique(np.concatenate([near, far, farther]).reshape(-1, 2), axis=0)
+
+
+def add_overture(osm, ov, min_conf=OVERTURE_MIN_CONF, near_m=SAME_M):
+    """osm: merged OSM sites (type, id, lat, lon, name, operator). ov: fetch_overture rows. Overture places kept
+    (confidence >= min_conf, not closed, a name that may be a fire station: overture_drop) are first merged among
+    themselves (Overture often lists one station twice, from two sources), keeping the most confident; a group with
+    any place within near_m of an OSM site, within SAME_NAME_M with a similar name, or within SAME_EXACT_M with the
+    same name, is that station: the OSM record is kept and marked 'both'. Of the rest, names repeated OVERTURE_REPEAT
+    or more times with no fire word are dropped (chains). Returns rows (type, id, lat, lon, name, operator, source,
+    overture id), with type 'o' and id = Overture id for the Overture-only stations, and counts."""
+    why = Counter(overture_drop(r, min_conf) for r in ov)
+    keep = [r for r in ov if not overture_drop(r, min_conf)]
+    stats = {"overture_places": len(ov), "kept": len(keep),
+             "dropped": {k: why[k] for k in ("low_confidence", "closed", "whole_degree", "name")}}
+    keep.sort(key=lambda r: (-r[4], r[0]))  # the first of a group is the most confident
+    olon, olat = np.array([r[2] for r in keep]), np.array([r[1] for r in keep])
+    oname = [r[3] for r in keep]
+    root = union_find(len(keep), same_pairs(olon, olat, oname, near_m=near_m))
+    groups = defaultdict(list)
+    for i, g in enumerate(root):
+        groups[g].append(i)
+    stats["overture_sites"] = len(groups)
+    slon, slat = np.array([s[3] for s in osm]), np.array([s[2] for s in osm])
+    hit = same_pairs(olon, olat, oname, slon, slat, [s[4] for s in osm], near_m=near_m)
+    match = {}  # Overture place -> nearest matched OSM site
+    if len(hit):
+        dkm = haversine_km(olon[hit[:, 0]], olat[hit[:, 0]], slon[hit[:, 1]], slat[hit[:, 1]])
+        for (i, j), d in sorted(zip(map(tuple, hit), dkm), key=lambda t: t[1], reverse=True):
+            match[i] = j
+    both = {}  # OSM site -> Overture id of its most confident match
+    out_ov = []
+    for g, members in groups.items():
+        hits = [match[i] for i in members if i in match]
+        if hits:
+            for i in members:
+                if i in match:
+                    both.setdefault(match[i], keep[i][0])
+            continue
+        r = keep[members[0]]
+        out_ov.append(("o", r[0], r[1], r[2], r[3], "", "overture", r[0]))
+    stats["matched_sites"] = len(groups) - len(out_ov)
+    rep = Counter(name_key(r[4]) for r in out_ov if not fire_word(r[4]))
+    chain = {k for k, n in rep.items() if k and n >= OVERTURE_REPEAT}
+    stats["dropped_repeated_names"] = {k: rep[k] for k in sorted(chain)}
+    out_ov = [r for r in out_ov if name_key(r[4]) not in chain or fire_word(r[4])]
+    out = [s + (("both", both[i]) if i in both else ("osm", "")) for i, s in enumerate(osm)]
+    stats["osm_also_in_overture"] = len(both)
+    stats["overture_only"] = len(out_ov)
+    return out + out_ov, stats
 
 
 # ---------------------------------------------------------------- geometry
@@ -752,12 +1136,13 @@ class V2Fire:
                              "static_years": static_years, "remaining": cn}}
 
 
-def build_country(key, name, d, st, comp, source_note, base, v2=None):
-    """st: list of (type, id, lat, lon, name, operator) in this country. v2: a V2Fire, or None for v1."""
+def build_country(key, name, d, st, comp, source_note, base, v2=None, ver=None):
+    """st: list of (type, id, lat, lon, name, operator) in this country, plus (source, Overture id) in v3.
+    v2: a V2Fire (v2 and v3), or None for v1."""
     nc = len(d["cells"]) // 2
     clon, clat, la_c, lo_c = decode_cells(d)
     fire = v2.country(key, d, la_c, lo_c) if v2 else v1_fire(d, nc, base, la_c, lo_c)
-    ver = 2 if v2 else 1
+    ver = ver or (2 if v2 else 1)
     years, persistent = fire["years"], fire["masked"]
     ny = Y_TO - Y_FROM + 1
     n = len(st)
@@ -792,11 +1177,14 @@ def build_country(key, name, d, st, comp, source_note, base, v2=None):
     ops = Counter(st[i][5] for i in used if st[i][5])
     op_list = [o for o, _ in ops.most_common()]
     op_ix = {o: i for i, o in enumerate(op_list)}
-    stations, osm = [], []
+    stations, osm, overture = [], [], []
     for i in used:
-        t, oid, la_, lo_, nm, op = st[i]
+        t, oid, la_, lo_, nm, op = st[i][:6]
         stations.append([round(lo_, COORD_DECIMALS), round(la_, COORD_DECIMALS), nm, op_ix.get(op, -1)])
-        osm.append(f"{t}{oid}")
+        osm.append("" if t == "o" else f"{t}{oid}")
+        if ver >= 3:
+            stations[-1].append(st[i][6])
+            overture.append(st[i][7])
     rows = []
     for c in range(nc):
         r = [c] + [int(remap[i]) if i >= 0 else -1 for i in idx[c]]
@@ -809,7 +1197,7 @@ def build_country(key, name, d, st, comp, source_note, base, v2=None):
         gap_cells = sorted(np.nonzero(gap)[0].tolist(), key=lambda c: (o1[c], o2[c], -km[c, 0]))
     ranking = [[int(remap[i]), round(float(credit[i]), 1), int(ncell[i])] for i in order]
     level = comp["level"]
-    gap_note = {
+    gap_note = GAP_NOTE_V3[level] if ver >= 3 else {
         "fair": "OpenStreetMap is mapped about as densely here as in peer countries, but it is never complete: "
                 "a gap means no station is mapped within %g km, not that none exists." % GAP_KM,
         "patchy": "OpenStreetMap fire stations look patchy here (fewer than peer countries per person): many "
@@ -825,9 +1213,11 @@ def build_country(key, name, d, st, comp, source_note, base, v2=None):
         f"up to {OFFSHORE_KM:g} km offshore go to the nearest outline). Fire cells: the {d['cell']:g} degree "
         f"cells of summary/v2/{key}.json. km: great-circle distance from the cell centre to the {K_NEAR} "
         f"nearest stations in this country (stations across a border are not searched). ")
+    mapped = ("OSM stations" if ver < 3 else
+              "mapped stations (OpenStreetMap and Overture, a station in both counted once)")
     tail = (
         f"Straight-line distance "
-        f"is not drive time, and a detection is not a fire. Mapping completeness ({level}): OSM stations per "
+        f"is not drive time, and a detection is not a fire. Mapping completeness ({level}): {mapped} per "
         f"million people, against the median of countries in the same income group and against fixed floors "
         f"({THIN_ABS:g} and {FAIR_ABS:g} per million); 'fair' does not mean complete. {gap_note}")
     if ver == 1:
@@ -840,6 +1230,26 @@ def build_country(key, name, d, st, comp, source_note, base, v2=None):
             f"or ranked. Ranking: each other cell's mean yearly harmonized detections {Y_FROM}-{Y_TO} credited to "
             f"its nearest station. ") + tail
     else:
+        if ver >= 3:
+            head = (
+                f"Fire stations: every OpenStreetMap object tagged amenity=fire_station (nodes; centroids of ways and "
+                f"relations), {source_note.split('; ')[0]}, objects within {MERGE_M} m merged into one site; plus every "
+                f"Overture Maps Places place (release {OVERTURE_RELEASE}) whose primary category is "
+                f"{OVERTURE_CATEGORY}, with confidence {OVERTURE_MIN_CONF:g} or more and not marked closed, less "
+                f"names that are not a station (extinguisher, sprinkler and equipment firms, shops, union locals, "
+                f"schools, academies and training grounds, museums; security firms, police and Red Cross posts unless "
+                f"the name also says fire service), places only business directories list whose name does not say "
+                f"fire service, places at whole-degree coordinates, and names repeated {OVERTURE_REPEAT}+ times among "
+                f"the added stations without a fire word. Overture places within {SAME_M} m of each other, within "
+                f"{SAME_NAME_M / 1000:g} km with similar names (the distinctive words of one name all in the other, or "
+                f"one name inside the other, and no different station numbers), or within {SAME_EXACT_M / 1000:g} km "
+                f"with the same name, are one station; one that close to an OpenStreetMap station, by the same tests, "
+                f"is that station, and the OpenStreetMap record is kept (source 'both'). Overture places come partly "
+                f"from business listings and web pages, so some may be misplaced, closed or not a station. Stations "
+                f"are assigned to this country by its simplified Natural Earth outline (stations up to "
+                f"{OFFSHORE_KM:g} km offshore go to the nearest outline). Fire cells: the "
+                f"{d['cell']:g} degree cells of summary/v2/{key}.json. km: great-circle distance from the cell centre "
+                f"to the {K_NEAR} nearest stations in this country (stations across a border are not searched). ")
         method = head + (
             f"Fire: VIIRS Suomi NPP detections that FIRMS types as presumed vegetation fire (type 0), nominal or "
             f"high confidence, {Y_FROM}-{Y_TO}, after removing static sources: detections within about 1 km of a "
@@ -889,7 +1299,13 @@ def build_country(key, name, d, st, comp, source_note, base, v2=None):
         "persistent": [int(c) for c in np.nonzero(persistent)[0]],
         "completeness": comp, "gap_note": gap_note, "method": method,
     }
-    if ver == 2:
+    if ver >= 3:
+        out["attribution"], out["licence"] = ATTRIBUTION_V3, LICENCE_V3
+        out["overture"] = overture
+        srcs = Counter(st[i][6] for i in range(n))
+        out["station_sources"] = {"osm": srcs["osm"], "both": srcs["both"], "overture": srcs["overture"]}
+        out["source_codes"] = SOURCE_CODES
+    if ver >= 2:
         out["fire"] = ("VIIRS Suomi NPP type 0, confidence n/h, static sources removed")
         out["persistent_why"] = [int(fire["why"][c]) for c in np.nonzero(persistent)[0]]
         out["why_codes"] = {str(k): v for k, v in MASK_WHY.items()}
@@ -910,8 +1326,9 @@ def main():
     ap.add_argument("--cache", type=Path, default=ROOT / "build" / "stations_cache")
     ap.add_argument("--ne", type=Path, default=ROOT / "build" / "ne", help="Natural Earth download folder")
     ap.add_argument("--source", choices=["qlever", "overpass"], default="qlever")
-    ap.add_argument("--version", type=int, choices=[1, 2], default=2,
-                    help="1: the published v1 method; 2: FIRMS-typed static-source mask (default)")
+    ap.add_argument("--version", type=int, choices=[1, 2, 3], default=2,
+                    help="1: the published v1 method; 2: FIRMS-typed static-source mask (default); "
+                         "3: v2 with Overture Maps Places fire stations added")
     ap.add_argument("--out", type=Path, default=None, help="default build/hf/stations/v<version>")
     ap.add_argument("--report", type=Path, default=None, help="optional per-country CSV report")
     args = ap.parse_args()
@@ -927,6 +1344,16 @@ def main():
     n_obj = len(st)
     st, merged = merge_sites(st)
     print(f"{len(st):,} sites after merging {merged:,} objects within {MERGE_M} m of another")
+    n_osm_sites = len(st)
+    if ver >= 3:
+        ov = fetch_overture(args.cache)
+        st, ov_stats = add_overture(st, ov)
+        print(f"Overture {OVERTURE_RELEASE}: {ov_stats['overture_places']:,} {OVERTURE_CATEGORY} places, "
+              f"{ov_stats['kept']:,} kept (dropped: {ov_stats['dropped']}), "
+              f"{ov_stats['overture_sites']:,} sites; {ov_stats['matched_sites']:,} are OSM stations "
+              f"({ov_stats['osm_also_in_overture']:,} OSM sites marked both), {ov_stats['overture_only']:,} added; "
+              f"chain names dropped: {ov_stats['dropped_repeated_names']}")
+        source_note = f"{source_note}; Overture Maps Places release {OVERTURE_RELEASE}"
 
     world = load_world()
     keys = [c["k"] for c in world]
@@ -939,15 +1366,15 @@ def main():
     for s, o in zip(st, owner):
         if o >= 0:
             per[keys[o]].append(s)
-    for k in per:  # stable order: by OSM type and id
-        per[k].sort(key=lambda s: (s[0], s[1]))
+    for k in per:  # stable order: by OSM type and id (v3: then the Overture-only stations by Overture id)
+        per[k].sort(key=lambda s: (s[0], s[1]) if ver < 3 else (s[0] == "o", s[0], s[1]))
     n_st = {k: len(per[k]) for k in keys}
     land = {k: float(land_arr[i]) for i, k in enumerate(keys)}
     popinc = population_and_income(args.ne, keys)
     comp = completeness(keys, n_st, land, popinc)
     base = persistent_base_cells(args.cache)
     print(f"persistent base cells: {(base[3] > 0).sum():,}, {base[3].sum() / base[2].sum():.1%} of VIIRS detections")
-    v2 = V2Fire(args.cache, base) if ver == 2 else None
+    v2 = V2Fire(args.cache, base) if ver >= 2 else None
     if v2:
         ft = v2.flag_totals
         print("Suomi NPP n/h detections 2012-2025: " + ", ".join(
@@ -960,7 +1387,7 @@ def main():
     for k in keys:
         sf = HF / "summary" / "v2" / f"{k}.json"
         d = json.loads(sf.read_text("utf-8"))
-        o, stats = build_country(k, d.get("name") or names[k], d, per[k], comp[k], source_note, base, v2)
+        o, stats = build_country(k, d.get("name") or names[k], d, per[k], comp[k], source_note, base, v2, ver)
         body = dumps(o)
         (args.out / f"{k}.json").write_text(body, "utf-8")
         c = comp[k]
@@ -970,9 +1397,15 @@ def main():
                       "cells": stats["cells"], "burn_cells": stats["burn_cells"], "gaps": stats["gaps"],
                       "persistent": stats["persistent"],
                       "median_km_burn": stats["median_km_burn"]})
-        if ver == 2:
+        if ver >= 2:
             index[-1]["persistent_why"] = stats["why"]
-    idx = {"v": ver, "attribution": ATTRIBUTION, "licence": LICENCE, "source": source_note, "snapshot": snapshot,
+        if ver >= 3:
+            ss = o["station_sources"]
+            index[-1]["stations_osm"] = ss["osm"] + ss["both"]
+            index[-1]["stations_overture_only"] = ss["overture"]
+            index[-1]["stations_both"] = ss["both"]
+    idx = {"v": ver, "attribution": ATTRIBUTION if ver < 3 else ATTRIBUTION_V3,
+           "licence": LICENCE if ver < 3 else LICENCE_V3, "source": source_note, "snapshot": snapshot,
            "built": time.strftime("%Y-%m-%d"), "objects": n_obj, "merged_within_m": MERGE_M,
            "stations": int((owner >= 0).sum()),
            "stations_dropped": int((owner < 0).sum()), "years": [Y_FROM, Y_TO],
@@ -983,7 +1416,28 @@ def main():
                               f"{MIN_STATIONS} stations with {MIN_STATIONS_POP:,}+ people",
                       "unpopulated": f"population under {UNPOP:,}", "no_data": "no population figure"},
            "countries": index}
-    if ver == 2:
+    if ver >= 3:
+        idx["objects_osm"] = idx.pop("objects")
+        idx["sites_osm"] = n_osm_sites
+        idx["overture"] = {
+            "release": OVERTURE_RELEASE, "theme": "places", "type": "place", "category": OVERTURE_CATEGORY,
+            "category_field": "taxonomy.primary", "min_confidence": OVERTURE_MIN_CONF,
+            "dropped_status": list(OVERTURE_DROP_STATUS), "same_station_m": SAME_M,
+            "same_name_m": SAME_NAME_M, "same_name_rule": "similar names: the distinctive words of one name (generic "
+            "fire words and abbreviations aside) all in the other, or one name inside the other, and no different "
+            "station numbers", "same_exact_name_m": SAME_EXACT_M,
+            "name_filter": "dropped: names that are never a station (extinguisher, sprinkler and equipment firms, "
+            "shops, union locals, schools, academies, training grounds, museums, ...); security firms, police, Red "
+            "Cross posts and similar unless the name also says fire service; places only business directories "
+            f"({', '.join(sorted(OVERTURE_DIRECTORIES))}) list unless the name says fire service; whole-degree "
+            f"coordinates; names repeated {OVERTURE_REPEAT}+ times among the Overture-only stations without a fire "
+            "word", "directories": sorted(OVERTURE_DIRECTORIES), "repeat_limit": OVERTURE_REPEAT,
+            "licence": "CDLA-Permissive-2.0 (Foursquare-sourced places: Apache-2.0)",
+            "licence_files": OVERTURE_LICENCE_FILES, **ov_stats}
+        idx["source_codes"] = SOURCE_CODES
+        idx["levels_note"] = ("Same thresholds as v1 and v2, applied to the merged count (OpenStreetMap plus "
+                              "Overture-only stations); peer medians are recomputed from the merged counts.")
+    if ver >= 2:
         idx["fire"] = "VIIRS Suomi NPP type 0, confidence n/h, static sources removed (see method)"
         idx["why_codes"] = {str(k): v for k, v in MASK_WHY.items()}
         idx["mask"] = {"static_spot_years": STATIC_SPOT_YEARS, "recur_years": RECUR_YEARS,
@@ -1005,6 +1459,12 @@ def main():
                        "flare_wide_max_cell": FLARE_WIDE_MAX_CELL, "gap_often_years": GAP_OFTEN_YEARS}
         idx["countries"] = [dict(r, persistent_why=dict(zip(MASK_WHY.values(), r["persistent_why"])))
                             for r in index]
+    if ver >= 3:
+        for name_, url in OVERTURE_LICENCE_FILES.items():
+            f = args.cache / name_
+            if not f.exists():
+                f.write_text(page_text(http(url, timeout=60)), "utf-8")
+            (args.out / name_).write_bytes(f.read_bytes())
     (args.out / "index.json").write_text(dumps(idx), "utf-8")
     if args.report:
         import csv
