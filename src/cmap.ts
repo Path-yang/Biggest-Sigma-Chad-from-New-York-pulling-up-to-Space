@@ -242,6 +242,11 @@ interface Live {
   all: [number, number, number, number];
 }
 let L: Live | null = null;
+/** called with the map each time a country's map has its squares on: the area tools add their layers then */
+const readyFns: ((map: any) => void)[] = [];
+export const onMapReady = (f: (map: any) => void) => readyFns.push(f);
+/** close the square popup, e.g. when a drawing on the map starts or ends */
+export const hideCellPopup = () => L?.popup?.remove();
 
 export function destroyMap() {
   if (!L) return;
@@ -456,6 +461,7 @@ function addLayers(map: any, d: CountrySummary, live: Live) {
   );
   live.ready = true;
   live.next = null;
+  for (const f of readyFns) f(map);
   const host = map.getContainer() as HTMLElement;
   /* start with the attribution folded to its (i) button; it opens on a tap */
   const fold = () => host.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");

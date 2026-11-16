@@ -471,6 +471,182 @@ th{color:var(--muted);font-weight:400}
   #bigYear{font-size:56px;top:120px}
 }
 @media (prefers-reduced-motion:reduce){#hero,#app,#country{transition:none}#sheet{animation:none}}
+/* ---------- country map view (#g/...): the dark middle step between the globe and the full record ---------- */
+#glance{position:fixed;inset:0;background:#05070c;opacity:0;transition:opacity .45s ease;z-index:4}
+#glance.in{opacity:1}
+#gMap{position:absolute;inset:0}
+.gMapMsg{position:absolute;left:16px;right:16px;top:45%;text-align:center;color:var(--ink2);margin:0}
+.gTop{right:auto}
+#gCard{position:absolute;right:16px;top:16px;width:368px;max-height:calc(100% - 32px);overflow:auto;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;z-index:2}
+/* firmer glass here than elsewhere: the card and the bar sit over bright squares */
+#glance .glass{background:rgba(9,13,22,.86)}
+/* the way on stays in reach however far the card scrolls */
+#gOpen{position:sticky;bottom:0;z-index:1;box-shadow:0 -10px 18px rgba(9,13,22,.9)}
+#gCard .gPick{scroll-margin-bottom:64px}
+#gCard>*{flex-shrink:0}
+#gCard h2{font:800 34px/1 var(--font-d);letter-spacing:-.025em;margin:4px 0 0;overflow-wrap:anywhere}
+#gCard .mini dt small,#gCard .mini dd small{display:block;font:400 11.5px var(--font-b);color:var(--muted)}
+#gCard .mini dd small{text-align:right}
+#gRetry{align-self:flex-start}
+.gPick{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.03)}
+.gPick h3{margin:0;font:700 18px/1.2 var(--font-d)}
+.gPickHead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gPickHead .link{font-size:13px}
+.gNames{margin:0;font-size:14.5px;line-height:1.5}
+.gTone{display:inline-block;width:12px;height:12px;border:2px dashed var(--t);border-radius:2px;margin-right:6px;vertical-align:-1px}
+.gTone.solid{border-style:solid}
+.gGap{display:inline-block;font:600 11px var(--font-m);letter-spacing:.08em;text-transform:uppercase;color:var(--ember-ink);background:var(--hot);border-radius:999px;padding:1px 7px;margin-left:4px;vertical-align:1px}
+.gStates .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.gBar{position:absolute;left:16px;bottom:16px;width:min(440px,calc(100% - 432px));min-width:280px;border-radius:14px;padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.gYearHead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font:700 16px var(--font-d)}
+.gYearHead .link{font:500 13px var(--font-b)}
+#gYear{width:100%;accent-color:var(--ember);margin:2px 0;min-height:24px}
+.gBar.all #gYear{opacity:.55}
+.gLeg{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.gLegT{font-weight:600;color:var(--ink)}
+.gKey{display:flex;align-items:flex-start;min-width:0;padding-right:10px}
+.gStep{display:flex;flex-direction:column;gap:3px;width:30px;flex:0 0 auto}
+.gStep i{display:block;height:8px}
+.gStep small{font:500 10.5px/1 var(--font-m);color:var(--ink2);white-space:nowrap;transform:translateX(-50%)}
+.gStep:first-child small{transform:none}
+.gStep.gEnd{width:1px}
+#glance .maplibregl-ctrl-top-right{top:72px}
+@media (min-width:761px){#glance .maplibregl-ctrl-top-right{top:0;right:392px}}
+#glance .maplibregl-ctrl-group{background:rgba(9,13,22,.86);border:1px solid var(--line);box-shadow:none}
+#glance .maplibregl-ctrl-group button+button{border-top-color:var(--line)}
+#glance .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1)}
+#glance .maplibregl-ctrl-attrib{background:rgba(9,13,22,.7);color:var(--muted);font-size:11px}
+#glance .maplibregl-ctrl-attrib a{color:var(--ink2)}
+#glance .maplibregl-ctrl-attrib-button{filter:invert(1)}
+/* the map credit (OpenStreetMap's licence asks for it) sits above the copilot's button, clear of the card */
+#glance .maplibregl-ctrl-bottom-right{bottom:50px}
+body[data-ask-view="glance"] #gCard{max-height:calc(100% - 104px)}
+/* the same test as isSheet() in src/glance.ts: phones, and tablets held upright */
+@media (max-width:760px), (max-width:900px) and (orientation:portrait){
+  #gCard{left:0;right:0;top:auto;bottom:0;width:auto;max-height:46dvh;border-radius:18px 18px 0 0;padding:14px 16px 18px;border-left:0;border-right:0;border-bottom:0}
+  #gCard::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto -4px}
+  #gCard h2{font-size:28px}
+  .gBar{left:12px;right:12px;top:64px;bottom:auto;width:auto;min-width:0;padding:8px 12px 10px}
+  .gLeg{gap:2px 10px}
+  .gLegT{flex:1 1 100%;font-size:11.5px}
+  #glance .maplibregl-ctrl-top-right{display:none}
+  #glance .maplibregl-ctrl-bottom-right{bottom:calc(var(--gSheet,0px) + 50px)}
+  body[data-ask-view="glance"] #gCard{max-height:46dvh}
+  body[data-ask-view="glance"] .askLaunch{bottom:calc(var(--gSheet,0px) + 12px)}
+}
+@media (prefers-reduced-motion:reduce){#glance{transition:none}}
+
+/* ---------- area tools on the country map: toolbar, map with a panel beside it, the panel under the map on narrow or short screens ---------- */
+.aBar:empty{display:none}
+#cMapTitle{scroll-margin-top:72px}
+#cMap{scroll-margin-top:60px}
+.aTools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;margin:14px 0 10px}
+.aGroup{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.aLbl{font:600 14px/1.2 var(--sans);color:var(--cink2);margin-right:4px}
+.aBtn{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:5px 11px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;color:var(--cink);font:600 14px/1.2 var(--sans);cursor:pointer;white-space:nowrap}
+.aBtn:hover{border-color:var(--cink)}
+.aBtn[aria-pressed="true"],.aBtn[aria-expanded="true"]{background:var(--cink);border-color:var(--cink);color:var(--paper)}
+.aBtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.aSmallText{font-size:14px}
+.aCoords,.aTime{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 14px;margin:0 0 10px;padding:10px 12px;background:var(--tint);border:1px solid var(--hair)}
+.aCoords[hidden],.aTime[hidden]{display:none}
+.aFields{display:flex;flex-wrap:wrap;gap:8px 12px}
+.aFields[hidden]{display:none}
+.aField{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--cink2)}
+#country .aField input{width:92px;min-height:32px;padding:4px 7px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;color:var(--cink);font:15px var(--sans);font-variant-numeric:tabular-nums}
+#country .aField select{min-height:32px}
+.aMsg{font-size:14px;color:var(--cink2);margin:0}
+.aMsg:empty{display:none}
+.aTime{align-items:center}
+.aTime select{font-size:15px}
+.aTKey{flex:1 1 260px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--cink2);min-width:0}
+.aTSteps{max-width:320px}
+.aTWhen{font-weight:600;color:var(--cink)}
+.aHint{margin:0 0 8px;font-size:14px;color:var(--cink)}
+.aHint:empty{display:none}
+.aWork.on{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:0;border:1px solid var(--hair)}
+.aWork.on .cpMap{height:max(420px,min(660px,calc(100vh - 200px)));border:0}
+.aPanel{background:var(--paper);min-width:0}
+.aWork.on .aPanel{height:max(420px,min(660px,calc(100vh - 200px)));overflow-y:auto;overscroll-behavior:contain;border-left:1px solid var(--hair);padding:14px 16px 24px}
+.aDrawing,.aDrawing canvas{cursor:crosshair!important;touch-action:none}
+/* no square popup over a drawing in progress */
+.aDrawing~.maplibregl-popup{display:none}
+.aHead{display:flex;align-items:flex-start;gap:10px}
+.aHeadT{flex:1;min-width:0}
+.aHead .cpPart{margin:0 0 2px}
+.aName{margin:0;font:600 20px/1.25 var(--serif);font-optical-sizing:auto;overflow-wrap:anywhere;text-wrap:balance}
+.aX{flex:none;width:34px;height:34px;border:1px solid var(--hair);border-radius:2px;background:#fffefa;font:400 22px/1 var(--sans);color:var(--cink);cursor:pointer}
+.aX:hover{border-color:var(--cink)}
+.aNote{margin:6px 0 0;font-size:14px;line-height:1.45;color:var(--cink2)}
+.aActs{display:flex;flex-wrap:wrap;align-items:center;gap:6px 6px;margin:12px 0 0}
+.aActs .aBtn{min-height:32px;padding:4px 10px}
+.aPanel>.aMsg{margin-top:8px}
+.aLink{width:100%;margin-top:4px;padding:4px 6px;border:1px solid var(--hair);font:13px var(--sans);background:#fffefa;color:var(--cink)}
+.aState{margin:18px 0 0;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.aState[hidden]{display:none}
+.aState p{margin:0;font:400 17px/1.45 var(--serif)}
+.aKpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:16px 0 0;border-top:1px solid var(--cink)}
+.aKpis div{padding:10px 12px 12px 0;border-bottom:1px solid var(--hair);min-width:0}
+.aKpis div:nth-child(2n){padding-left:12px;padding-right:0;border-left:1px solid var(--hair)}
+.aKpis dt{font:600 13px/1.3 var(--sans);color:var(--cink)}
+.aKpis dd{margin:3px 0 0;font-size:13px;line-height:1.4;color:var(--cink2)}
+.aKpis .aFig{margin:4px 0 4px;font:600 22px/1.1 var(--serif);font-optical-sizing:auto;color:var(--cink);overflow-wrap:anywhere}
+.aFig .hi{color:var(--cred)}.aFig .lo{color:var(--cblue)}
+.aFig small{display:block;font:400 14px/1.3 var(--serif);color:var(--cink2);margin-top:2px}
+.aNone{margin:16px 0 0;font:400 17px/1.45 var(--serif)}
+.aBlock{margin:22px 0 0;padding-top:12px;border-top:1px solid var(--hair)}
+.aBlock[hidden]{display:none}
+.aBH{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
+.aBH h4{margin:0;font:600 17px/1.3 var(--serif);font-optical-sizing:auto}
+.aBH.aSub{margin-top:12px;font-size:14px;font-weight:600}
+.aSeg{gap:12px}
+.aSeg button{font-size:13px;padding:2px 0}
+.aKey{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 12px;margin:10px 0 4px;font-size:12px;color:var(--cink2)}
+.aKey:empty{display:none}
+.aKey>div{flex:1 1 220px;min-width:0}
+.aKey b{display:block;margin-bottom:4px;font-weight:600;color:var(--cink)}
+.aKey .cpStep span{font-size:12px}
+.aKey .cpNone{padding-bottom:12px}
+.aKey .cpRamp{grid-template-columns:auto minmax(80px,1fr) auto;flex:1 1 auto}
+.aCap{margin:8px 0 0;font-size:13px;line-height:1.45;color:var(--cink2)}
+.aBlock .cpPlot{margin-top:8px}
+.aCmpT{width:100%;table-layout:fixed;font-size:13px!important}
+#country .aCmpT th,#country .aCmpT td{padding:4px 5px;font-size:13px;white-space:normal;vertical-align:top}
+#country .aCmpT th{font-weight:600;line-height:1.25}
+.aCmpT th:first-child,.aCmpT td:first-child{width:18%}
+.aCmpT th:nth-child(2){width:26%}
+#country .aCmpT tr.aCmpA td{padding:8px 0 0;border-bottom:0;text-align:left}
+.aCmpH{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.aCmpL{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aCmpT small{display:block;color:var(--cink2);font-weight:400}
+.aCmpN{color:var(--cink2)}
+.aSw{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle;background:var(--c)}
+.aChk{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--cink2);cursor:pointer}
+.aWList{list-style:none;margin:10px 0 0;padding:0;border-top:1px solid var(--cink)}
+.aWList li{border-bottom:1px solid var(--hair)}
+.aWList button{display:grid;grid-template-columns:22px minmax(0,1fr) auto 52px;gap:2px 10px;align-items:baseline;width:100%;padding:7px 0;border:0;background:none;text-align:left;cursor:pointer;font:14px/1.35 var(--sans);color:var(--cink)}
+.aWList button:hover{background:var(--tint)}
+.aWRank{font-weight:600}
+.aWPlace small,.aWN small{display:block;font-size:12px;color:var(--cink2)}
+.aWN{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.aWLv{justify-self:end;font-size:12px;font-weight:600;color:var(--cink2)}
+.aWLv.high{color:var(--cred)}
+.aMark{display:flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 4px;border-radius:2px;font:600 12px/1 var(--sans);color:#fff;background:var(--cred);box-shadow:0 0 0 1.5px #fffefa;pointer-events:none}
+.aMarkP{background:var(--c);transform-origin:bottom left}
+/* narrow or short screens: the map full width, the panel under it in the page */
+@media (max-width:900px),(max-height:560px){
+  .aWork.on{display:block;border:0}
+  .aWork.on .cpMap{height:max(300px,min(62vh,calc(100vh - 120px)));border:1px solid var(--hair)}
+  .aWork.on .aPanel{height:auto;overflow:visible;border:0;border-top:1px solid var(--cink);margin-top:14px;padding:12px 0 0}
+}
+@media (max-width:760px){
+  .aTools{gap:8px 12px}
+  .aGroup{gap:6px}
+  .aLbl{flex:1 1 100%}
+  .aBtn{min-height:40px}
+  .aKpis .aFig{font-size:20px}
+  .aCoords .aGo{flex:1 1 100%}
+}
 /* ---------- the fire copilot: a launcher and a chat window, dark glass over the maps, paper on country pages ---------- */
 .askLaunch,.ask{
   --a-bg:rgba(10,14,23,.94); --a-ink:var(--ink); --a-ink2:var(--ink2); --a-muted:var(--muted); --a-line:var(--line); --a-field:#131a28; --a-soft:rgba(255,255,255,.055);
@@ -742,7 +918,8 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
 
 <section id="country" hidden>
   <header class="cpTop">
-    <button class="cpBack" id="cBack" type="button">← Globe</button>
+    <button class="cpBack" id="cUp" type="button">← Map view</button>
+    <button class="cpBack" id="cBack" type="button">Globe</button>
     <span class="cpBrand">Burn Calendar</span>
     <div class="cpYears" id="cCtl" hidden><label for="cFrom">Years</label> <select id="cFrom" aria-label="From year"></select> <span>to</span> <select id="cTo" aria-label="To year"></select></div>
   </header>
@@ -813,7 +990,11 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
         <h2 class="cpH" id="cMapTitle">Where it burns</h2>
         <p class="cpSub" id="cMapSub"></p>
         <div class="cpLegend" id="cMapLegend"></div>
-        <div class="cpMap" id="cMap" role="region" aria-label="Map of hotspots by grid square"></div>
+        <div class="aBar" id="aBar"></div>
+        <div class="aWork" id="aWork">
+          <div class="cpMap" id="cMap" role="region" aria-label="Map of hotspots by grid square"></div>
+          <aside class="aPanel" id="aPanel" aria-label="Selected area" hidden></aside>
+        </div>
         <p class="cpCap" id="cMapNote"></p>
       </section>
 
@@ -893,6 +1074,27 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
       </footer>
     </div>
   </main>
+</section>
+
+<section id="glance" hidden aria-label="Country map">
+  <div id="gMap"></div>
+  <div class="ov tl gTop"><button class="btn" id="gBack" type="button">← Globe</button></div>
+  <div class="gBar glass all" id="gBar" hidden>
+    <div class="gYearHead"><span id="gYearLabel"></span><button class="link" id="gAll" type="button" hidden>All years</button></div>
+    <input type="range" id="gYear" min="2001" max="2026" step="1" value="2026" aria-label="Year shown on the map">
+    <div class="gLeg" id="gLeg"></div>
+  </div>
+  <aside id="gCard" class="glass" aria-labelledby="gName">
+    <div><p class="eyebrow" id="gCrumb">Country</p><h2 id="gName"></h2></div>
+    <p class="lead" id="gLead"></p>
+    <button class="link" id="gRetry" type="button" hidden>Try again</button>
+    <dl class="mini" id="gRows"></dl>
+    <div class="gPick" id="gNote" hidden></div>
+    <div class="gPick" id="gPick" hidden></div>
+    <div class="gStates" id="gStates" hidden><p class="hint">New York and California have county-by-county maps:</p><div class="row"><button class="btn" type="button" data-st="NY"></button><button class="btn" type="button" data-st="CA"></button></div></div>
+    <button class="btn primary big" id="gOpen" type="button">Open the full record</button>
+    <p class="hint" id="gHint"></p>
+  </aside>
 </section>
 
 <section id="app" hidden>
@@ -1089,6 +1291,6 @@ body.askVoiceOK .ask .askForm textarea::placeholder{white-space:nowrap;overflow:
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

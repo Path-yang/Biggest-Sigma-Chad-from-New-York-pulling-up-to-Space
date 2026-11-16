@@ -13,6 +13,7 @@ import { loadIndex } from "./hf";
 import { WORLD, lonSpan, shapeOf, slugOf } from "./world";
 import { respReset } from "./respui";
 import { extrasReady, loadExtras } from "./extras";
+import { closeGlance, openGlance } from "./glance";
 
 /* =====================================================================
    VIEWS AND WIRING
@@ -78,9 +79,9 @@ export function go(st: StateCode) {
     location.hash = SLUG[st];
   }
 }
-/** open a country by its FIRMS name; from the globe, fly there first */
-export function goCountry(k: string) {
-  const h = "#c/" + slugOf(k);
+/** open a country by its FIRMS name: its map view (#g/), or with `full` its full record (#c/); from the globe, fly there first */
+export function goCountry(k: string, full = false) {
+  const h = (full ? "#c/" : "#g/") + slugOf(k);
   if (location.hash !== h) {
     G.pending = h;
     location.hash = h;
@@ -99,7 +100,8 @@ function leaveForCountry() {
 /** a country address: find the country by its slug (in world.js, else in the dataset's index), then fly or open */
 async function routeCountry(hash: string) {
   /* any spelling that folds to the same slug opens the country: "#c/United_States", "#c/cote-d'ivoire" */
-  let raw = hash.slice(3);
+  /* "#c/brazil/area=..." : the country is the first part; the area tools read the rest */
+  let raw = hash.slice(3).split("/")[0];
   try {
     raw = decodeURIComponent(raw);
   } catch {
@@ -121,21 +123,38 @@ async function routeCountry(hash: string) {
     G.flyTo!(aimAt(shape.c[0], shape.c[1], Math.min(lonSpan(shape), 180) * Math.cos((shape.c[1] * Math.PI) / 180) + (b[3] - b[1])), () => {
       if (location.hash !== hash) return;
       leaveForCountry();
-      openCountry(key);
+      openOne(hash, key);
     });
     return;
   }
   G.pending = null;
   leaveForCountry();
-  if (k) openCountry(k);
-  else countryMissing(slug);
+  if (k) openOne(hash, k);
+  else {
+    closeGlance();
+    countryMissing(slug, hash.slice(0, 3));
+    /* nothing to go up to */
+    $("cUp").hidden = true;
+  }
+}
+/** "#g/": the country's map view; "#c/": its full record */
+function openOne(hash: string, k: string) {
+  if (hash.startsWith("#g/")) {
+    closeCountry();
+    openGlance(k);
+  } else {
+    closeGlance();
+    $("cUp").hidden = false;
+    openCountry(k);
+  }
 }
 export function route() {
-  if (location.hash.startsWith("#c/")) {
+  if (location.hash.startsWith("#c/") || location.hash.startsWith("#g/")) {
     routeCountry(location.hash);
     return;
   }
   closeCountry();
+  closeGlance();
   const st = STS.find(k => "#" + SLUG[k] === location.hash);
   if (!st) {
     closeSheet(true);

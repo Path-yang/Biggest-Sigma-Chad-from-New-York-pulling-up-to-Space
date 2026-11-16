@@ -2,10 +2,13 @@ import type { StateCode } from "./types";
 import type { Action, Card, Context, Inbound, Outbound, Place, Turn } from "./askproto";
 import type { Box, MapMark } from "./cmap";
 import { NAME, SLUG, STS } from "./data";
-import { WORLD, countryAt, nameOf, slugOf, theName } from "./world";
+import { WORLD, countryAt, nameOf, near, slugOf, theName } from "./world";
 import { countryKey } from "./country";
 import { mapCountry, mapFocus, mapMarks, mapView } from "./cmap";
+import { glanceCountry, glanceFocus, glanceKey, glanceMarks, glanceView } from "./glance";
+import { stateCounty } from "./drill";
 import { go, goCountry } from "./views";
+import { areaForCopilot } from "./areas";
 import { parseInbound } from "./askproto";
 import { cardEl, h, prose } from "./askcards";
 import { voiceAnswer, voiceBusy, voiceInit, voiceStop } from "./voice";
@@ -31,20 +34,25 @@ const HONESTY =
   "Answers come from the HotSpotters copilot (DeepSeek), which counts all FIRMS heat detections, gas flares included. Its totals often run higher than this page's, so compare trends, not exact counts.";
 
 /* ---------- where the reader is ---------- */
+/** a country is on screen as its map view (#g/, dark) or its full record (#c/, paper) */
 type Here =
-  { kind: "globe" } | { kind: "compare" } | { kind: "state"; st: StateCode } | { kind: "country"; k: string | null; name: string };
+  | { kind: "globe" }
+  | { kind: "compare" }
+  | { kind: "state"; st: StateCode }
+  | { kind: "country"; k: string | null; name: string; full: boolean };
 
 function here(): Here {
   const hash = location.hash;
-  if (hash.startsWith("#c/")) {
+  if (hash.startsWith("#c/") || hash.startsWith("#g/")) {
+    const full = hash.startsWith("#c/");
     let slug = hash.slice(3);
     try {
       slug = slugOf(decodeURIComponent(slug));
     } catch {
       slug = slugOf(slug);
     }
-    const k = WORLD.find(c => slugOf(c.k) === slug)?.k ?? countryKey();
-    return { kind: "country", k, name: k ? nameOf(k) : "" };
+    const k = WORLD.find(c => slugOf(c.k) === slug)?.k ?? (full ? countryKey() : glanceKey());
+    return { kind: "country", k, name: k ? nameOf(k) : "", full };
   }
   const st = STS.find(s => "#" + SLUG[s] === hash);
   if (st) return { kind: "state", st };
@@ -60,12 +68,14 @@ function whereLabel(at: Here) {
 }
 /** the plain note added after a question that names no place, so the agent knows what "here" is */
 function placeNote(at: Here) {
+  const a = at.kind === "country" ? areaForCopilot() : null;
+  if (a) return `(I've selected an area on the map: ${a.name}. "Here" means that area.)`;
   if (at.kind === "country" && at.name) return `(I'm looking at ${theName(at.name)}.)`;
   if (at.kind === "state") return `(I'm looking at ${stateName(at.st)}.)`;
   if (at.kind === "compare") return "(I'm comparing New York State and California.)";
   return "";
 }
-const NOTE_RE = /\s*\(I'm (?:looking at|comparing) [^()]*\.\)$/;
+const NOTE_RE = /\s*\((?:I'm (?:looking at|comparing)|I've selected) [^()]*\.\)$/;
 
 const fold = (t: string) =>
   t
@@ -139,7 +149,7 @@ type Dest = { kind: "state"; st: StateCode } | { kind: "country"; k: string } | 
 function destOf(p: Place): Dest {
   const parts = p.label.split(",").map(t => t.trim()),
     country = p.level === 0 ? p.name : parts.length > 1 ? parts[parts.length - 1] : "";
-  const k = countryNamed(country) ?? (p.b ? (countryAt((p.b[0] + p.b[2]) / 2, (p.b[1] + p.b[3]) / 2)?.k ?? null) : null);
+  const k = countryNamed(country) ?? (p.b ? (countryAt(near((p.b[0] + p.b[2]) / 2, 0), (p.b[1] + p.b[3]) / 2)?.k ?? null) : null);
   if (k === "United_States" && p.level >= 1) {
     const stName = p.level === 1 ? p.name : (parts[parts.length - 2] ?? "");
     const st = STS.find(s => NAME[s] === stName);
@@ -168,6 +178,8 @@ type Live = {
   offered: string[];
   /** the question was spoken, not typed */
   said: boolean;
+  /** the note of this answer's last page change, dropped if a later action moves the page on before it is seen */
+  moved: HTMLElement | null;
 };
 const UI = {
   launch: null as HTMLButtonElement | null,
@@ -258,7 +270,19 @@ function post(msg: Outbound) {
   ws?.send(JSON.stringify(msg));
 }
 function context(): Context {
-  return { selection: null, view: here().kind === "country" ? mapView() : null, layer: null };
+  const a = here().kind === "country" ? areaForCopilot() : null;
+  return {
+    selection: a ? { kind: "custom", name: a.name, bbox: a.bbox, series: a.series } : null,
+    view: here().kind === "country" ? onMap().view() : null,
+    layer: null,
+  };
+}
+/** the map of the country on screen: the map view's, or the full record's */
+function onMap() {
+  const at = here();
+  return at.kind === "country" && !at.full
+    ? { host: "gMap", country: glanceCountry, view: glanceView, focus: glanceFocus, marks: glanceMarks }
+    : { host: "cMap", country: mapCountry, view: mapView, focus: mapFocus, marks: mapMarks };
 }
 
 /* ---------- conversation ---------- */
@@ -270,6 +294,8 @@ function nextMonth() {
 }
 function starters(at: Here): string[] {
   const m = nextMonth();
+  if (at.kind === "country" && areaForCopilot())
+    return ["Was 2025 unusual for this area?", "When is the fire season here?", `What should we expect here in ${m}?`];
   if (at.kind === "country" && at.name) {
     const n = theName(at.name);
     return [
@@ -314,7 +340,9 @@ function welcome() {
   return box;
 }
 const hooks = {
-  go: (p: Place) => gotoPlace(p, true),
+  /* the drawn area is already on the page: bring its map into view instead of opening anything */
+  go: (p: Place) =>
+    p.id === "custom" ? document.getElementById("cMap")?.scrollIntoView({ behavior: "smooth", block: "center" }) : gotoPlace(p, true),
   focus: (name: string, b: Box) => gotoPlace({ id: "", name, label: name, level: 2, b, g: null }, true),
 };
 function botBlock(cards: Card[], text: string) {
@@ -363,7 +391,7 @@ const seeIt = (): NoteButton | undefined => (innerWidth <= 600 ? { label: "See i
 /** a quiet line in the answer saying what the page did, so a moved map or a new page is never a surprise */
 function noteDid(text: string, button?: NoteButton) {
   const target = turn ? turn.box : UI.log?.lastElementChild;
-  if (!(target instanceof HTMLElement)) return;
+  if (!(target instanceof HTMLElement)) return null;
   const p = target.appendChild(h("p", "askDid", text));
   if (button) {
     const b = p.appendChild(h("button", "askSee", button.label));
@@ -371,6 +399,14 @@ function noteDid(text: string, button?: NoteButton) {
     b.onclick = button.run;
   }
   scroll();
+  return p;
+}
+/** a note that the page moved: a later move in the same answer replaces it, so "Opened California" never stays up
+    when the answer went straight on to Kenya */
+function noteMoved(text: string) {
+  turn?.moved?.remove();
+  const p = noteDid(text, seeIt());
+  if (turn) turn.moved = p;
 }
 
 function ask(raw: string, said = false) {
@@ -400,6 +436,7 @@ function ask(raw: string, said = false) {
     frame: 0,
     offered: [],
     said,
+    moved: null,
   };
   box.append(status, live.cards, live.text);
   log.appendChild(box);
@@ -523,7 +560,9 @@ const UNREACHABLE = "Can't reach the copilot at hotspotters.compare. It may be d
 function newConversation() {
   if (turn) return;
   voiceStop();
+  pendingMap = null;
   mapMarks([]);
+  glanceMarks([]);
   UI.log!.textContent = "";
   UI.log!.appendChild(welcome());
   shown = true;
@@ -543,7 +582,7 @@ function newConversation() {
 function mapPad() {
   const pad = { right: 0, bottom: 0 },
     root = UI.root,
-    host = document.getElementById("cMap");
+    host = document.getElementById(onMap().host);
   if (!root || root.hidden || !host) return pad;
   const r = root.getBoundingClientRect(),
     m = host.getBoundingClientRect();
@@ -552,6 +591,8 @@ function mapPad() {
   return pad;
 }
 function showMapSection() {
+  const at = here();
+  if (at.kind === "country" && !at.full) return;
   const host = document.getElementById("cMap");
   if (!host) return;
   const r = host.getBoundingClientRect();
@@ -563,14 +604,15 @@ function marksFor(list: Place[]): MapMark[] {
 /** frame places on the country map now, or once the map of country k is ready (after a page change) */
 function frame(k: string, list: Place[], focus: Box | null) {
   const run = () => {
-    if (mapCountry() !== k) return;
+    const M = onMap();
+    if (M.country() !== k) return;
     const drawn = list.filter(p => p.b || p.g);
-    mapMarks(marksFor(drawn));
+    M.marks(marksFor(drawn));
     const b = focus ?? union(drawn.map(p => p.b).filter((x): x is Box => x !== null));
-    if (b) mapFocus(b, mapPad(), 8);
+    if (b) M.focus(b, mapPad(), 8);
     showMapSection();
   };
-  if (mapCountry() === k) run();
+  if (onMap().country() === k) run();
   else {
     pendingMap = { k, run, until: Date.now() + 25000 };
     tickPending();
@@ -579,11 +621,15 @@ function frame(k: string, list: Place[], focus: Box | null) {
 function tickPending() {
   const p = pendingMap;
   if (!p) return;
-  if (mapCountry() === p.k) {
+  if (onMap().country() === p.k) {
     pendingMap = null;
     setTimeout(p.run, 300);
-  } else if (Date.now() > p.until || here().kind !== "country") pendingMap = null;
-  else setTimeout(tickPending, 400);
+  } else if (Date.now() > p.until || here().kind !== "country") {
+    pendingMap = null;
+    /* still on that country, but its map never became ready (its record did not load): say nothing was drawn */
+    const at = here();
+    if (at.kind === "country" && at.k === p.k) noteDid(`${nameOf(p.k)}'s map did not load, so nothing was framed on it.`);
+  } else setTimeout(tickPending, 400);
 }
 function union(bs: Box[]): Box | null {
   if (!bs.length) return null;
@@ -604,29 +650,54 @@ function gotoPlace(p: Place, byHand = false, shapes: Place[] = [], focus: Box | 
     return;
   }
   if (dest.kind === "state") {
-    if (at.kind === "state" && at.st === dest.st) {
-      if (byHand) scrollTo({ top: 0, behavior: "smooth" });
+    const here0 = at.kind === "state" && at.st === dest.st,
+      counties = shapes.filter(s => s.level === 2),
+      /* a county (from a goto, or the first county of an outline): zoom the state view to it */
+      county = p.level === 2 ? p : counties.length && !focus ? counties[0] : null;
+    if (!here0) {
+      go(dest.st);
+      followed();
+    }
+    const cname = county ? stateCounty(dest.st, countyName(county.name), location.hash) : "";
+    if (cname) {
+      /* the state view selects one county at a time: name the others rather than drop them without a word */
+      const others = counties.filter(c => c.label !== county!.label).map(c => `${countyName(c.name)} County`),
+        also = others.length ? ` It shows one county at a time; also named: ${others.join(", ")}.` : "";
+      if (here0) noteDid(`Zoomed to ${cname} County.${also}`, seeIt());
+      else noteMoved(`Opened ${NAME[dest.st]} and zoomed to ${cname} County.${also}`);
       return;
     }
-    noteDid(`Opened ${NAME[dest.st]}.`, seeIt());
-    go(dest.st);
-    followed();
+    if (!here0) noteMoved(`Opened ${NAME[dest.st]}.`);
+    else if (byHand) scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
-  const onIt = at.kind === "country" && at.k === dest.k;
+  const onIt = at.kind === "country" && at.k === dest.k,
+    list = shapes.length ? shapes : p.level >= 1 && p.b ? [p] : [];
   if (!onIt) {
-    noteDid(`Opened ${nameOf(dest.k)}.`, seeIt());
+    const name = theName(nameOf(dest.k));
+    noteMoved(
+      list.length === 1
+        ? `Opened ${name} and framed ${list[0].name}.`
+        : list.length
+          ? `Opened ${name} and framed ${list.length} places.`
+          : `Opened ${name}.`,
+    );
     goCountry(dest.k);
     followed();
   }
-  const list = shapes.length ? shapes : p.level >= 1 && p.b ? [p] : [];
   if (list.length || focus) {
     if (onIt) noteDid(outlined(list), seeIt());
     frame(dest.k, list, focus);
   } else if (onIt && byHand) showMapSection();
 }
+/** "Los Angeles County" or "Los Angeles" as the state data names it: "Los Angeles" */
+const countyName = (name: string) => name.replace(/\s+County$/i, "").trim();
 const outlined = (list: Place[]) =>
-  list.length === 1 ? `Outlined ${list[0].name} on the map.` : list.length ? `Outlined ${list.length} places on the map.` : "Moved the map.";
+  list.length === 1
+    ? `Outlined ${list[0].name} on the map.`
+    : list.length
+      ? `Outlined ${list.length} places on the map.`
+      : "Moved the map.";
 /** the reader went to another page while the agent worked: offer the agent's place instead of pulling them back */
 function offerPlace(p: Place, t: Live, run: () => void) {
   const dest = destOf(p);
@@ -645,10 +716,30 @@ const countryOf = (p: Place) => {
 /** the country whose map is on screen, ready for shapes, or null */
 function mapHere() {
   const at = here();
-  return at.kind === "country" && at.k && mapCountry() === at.k ? at.k : null;
+  return at.kind === "country" && at.k && onMap().country() === at.k ? at.k : null;
 }
+/** a country's map view (#g/) and its full record (#c/) are the same place for the copilot: going between them
+    mid-answer is not moving away */
+const placeOf = (hash: string) => hash.replace(/^#[cg]\//, "#k/");
+const stateOf = (p: Place) => {
+  const d = destOf(p);
+  return d?.kind === "state" ? d.st : null;
+};
 function act(a: Action, t: Live) {
-  const moved = location.hash !== t.hash;
+  const moved = placeOf(location.hash) !== placeOf(t.hash);
+  /* the agent's "custom" place is the area drawn on this page: it is already on the map */
+  if (a.type === "goto" && a.place.id === "custom") return;
+  if (a.type === "outline") {
+    const places = a.places.filter(p => p.id !== "custom");
+    if (!places.length) return;
+    a = { ...a, places };
+  } else if (a.type === "mark") {
+    const places = a.places.filter(p => p.id !== "custom"),
+      focus = a.focus?.id === "custom" ? null : a.focus;
+    if (!places.length && !focus) return;
+    a = { ...a, places, focus };
+  }
+
   switch (a.type) {
     case "goto":
       if (moved) return offerPlace(a.place, t, () => gotoPlace(a.place, true));
@@ -670,7 +761,12 @@ function act(a: Action, t: Live) {
       const lead = (a.type === "mark" ? a.focus : null) ?? a.places[0];
       if (!lead) return;
       const dest = countryOf(lead),
-        shapes = dest ? a.places.filter(p => p.level >= 1 && countryOf(p) === dest) : [],
+        st = stateOf(lead),
+        shapes = dest
+          ? a.places.filter(p => p.level >= 1 && countryOf(p) === dest)
+          : st
+            ? a.places.filter(p => p.level === 2 && stateOf(p) === st)
+            : [],
         focus = dest && focusPlace && countryOf(focusPlace) === dest ? focusPlace.b : null;
       if (moved) return offerPlace(lead, t, () => gotoPlace(lead, true, shapes, focus));
       return gotoPlace(lead, false, shapes, focus);
@@ -679,7 +775,7 @@ function act(a: Action, t: Live) {
       /* the watch areas' outlines live in the agent's own files, which this page cannot read: frame the area */
       const p = a.parent,
         k = moved ? null : mapHere();
-      if (p && p.level >= 1 && p.b && k && countryOf(p) === k) mapFocus(p.b, mapPad(), 8);
+      if (p && p.level >= 1 && p.b && k && countryOf(p) === k) onMap().focus(p.b, mapPad(), 8);
       return;
     }
   }
@@ -688,9 +784,9 @@ function act(a: Action, t: Live) {
 /* ---------- open, close, follow the page ---------- */
 function syncPlace() {
   const at = here(),
-    paper = at.kind === "country";
+    paper = at.kind === "country" && at.full;
   for (const el of [UI.launch, UI.root]) el?.classList.toggle("paper", paper);
-  document.body.dataset.askView = at.kind;
+  document.body.dataset.askView = at.kind === "country" && !at.full ? "glance" : at.kind;
   if (UI.where) UI.where.textContent = whereLabel(at);
   /* the starter questions follow the page while nothing has been asked */
   const w = UI.log?.querySelector(".askWelcome");
@@ -755,7 +851,20 @@ const MARK = () => {
   m.append(h("i"), h("i"), h("i"));
   return m;
 };
+/** "Ask the copilot" on the area panel: open the chat with questions about the drawn area */
+function askAboutArea() {
+  open();
+  const log = UI.log;
+  if (!log || turn) return;
+  if (!log.querySelector(".askWelcome")) {
+    log.querySelectorAll(".askChips.area").forEach(x => x.remove());
+    log.appendChild(chips(starters(here()), "area"));
+    scroll();
+  }
+  if (innerWidth > 600) UI.input?.focus();
+}
 export function copilotInit() {
+  window.addEventListener("ask-area", askAboutArea);
   const launch = h("button", "askLaunch");
   launch.type = "button";
   launch.id = "askLaunch";

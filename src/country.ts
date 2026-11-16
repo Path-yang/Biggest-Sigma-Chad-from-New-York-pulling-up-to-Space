@@ -9,6 +9,7 @@ import { olClose, olEventsWorld, olOpen } from "./wolui";
 import { loadFonts, loadMapLib, loadPlotLib } from "./libs";
 import { classColours, destroyMap, fitAll, mapData, showMap } from "./cmap";
 import { annual, calendar, calendarClasses, cumulative, seam, seasonal, sensorLines } from "./cplot";
+import { areasReset, areasStart } from "./areas";
 import { fcClose, fcEvents, fcOpen, fcResize, fcStart } from "./cfore";
 import { stClose, stEvents, stOpen, stStart } from "./cstn";
 
@@ -43,7 +44,7 @@ const esc = (t: string) => t.replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`)
 const pc = (x: number | null) => (x == null ? "n/a" : Math.round(x * 100) + "%");
 /** "1 hotspot", "2 hotspots", "0.4 hotspots" */
 const nHot = (n: number) => `${fmt(n)} hotspot${fmt(n) === "1" ? "" : "s"}`;
-const epochs = (d: CountrySummary): Epochs => ({
+export const epochs = (d: CountrySummary): Epochs => ({
   vi0: (d.viirs_from[0] - d.y0) * 12 + d.viirs_from[1] - 1,
   aq0: (d.aqua_from[0] - d.y0) * 12 + d.aqua_from[1] - 1,
   bins: d.bins,
@@ -54,9 +55,9 @@ const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th
 const the = theName;
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 /** months with data in a summary: v3 stops at the partial month, v2 runs to December */
-const nMonths = (d: CountrySummary) => d.n_months ?? (d.y1 - d.y0 + 1) * 12;
+export const nMonths = (d: CountrySummary) => d.n_months ?? (d.y1 - d.y0 + 1) * 12;
 /** the partial last month of a v3 summary, 0-based month, or null */
-const partOf = (d: CountrySummary) => (d.partial ? { i: d.partial.i, y: d.partial.y, m: d.partial.m - 1, day: d.partial.day1 } : null);
+export const partOf = (d: CountrySummary) => (d.partial ? { i: d.partial.i, y: d.partial.y, m: d.partial.m - 1, day: d.partial.day1 } : null);
 /** "14 Nov 2026" */
 const lastWords = (d: CountrySummary) => {
   const p = partOf(d);
@@ -69,7 +70,7 @@ const yrs = () => {
   return CV.yFrom === CV.yTo ? String(CV.yFrom) : `${CV.yFrom}–${CV.yTo}`;
 };
 /** the partial month against the same days of 2012-2025 (gap-filled like 2026), from v3 */
-function sameDays(d: CountrySummary): SameDays | null {
+export function sameDays(d: CountrySummary): SameDays | null {
   const y = d.y2026,
     p = partOf(d);
   if (!y || !p) return null;
@@ -79,7 +80,7 @@ function sameDays(d: CountrySummary): SameDays | null {
   return { span: partSpan(p.m, p.day), cur: sd.cur, lo: sd.cur_lo, hi: sd.cur_hi, years, past: sd.V, med: sd.V_stats.median };
 }
 /** 2026 to date against 1 January to the same day of 2012-2025 (gap-filled like 2026), from v3 */
-function ytdOf(d: CountrySummary): YearToDate | null {
+export function ytdOf(d: CountrySummary): YearToDate | null {
   const y = d.y2026,
     p = partOf(d);
   if (!y || !p) return null;
@@ -126,7 +127,7 @@ const longDate = (iso: string) => {
   return y && m && d ? `${d} ${MONL[m - 1]} ${y}` : iso.slice(0, 10);
 };
 /** places where most hotspots are lava, not burning vegetation; the satellites cannot tell them apart */
-const VOLCANIC = new Set(["Iceland"]);
+export const VOLCANIC = new Set(["Iceland"]);
 const coarse = () => matchMedia("(pointer: coarse)").matches;
 /** a stepped legend: one swatch per class, the class edges written under the joins */
 function stepped(title: string, cols: string[], breaks: number[], max: number) {
@@ -141,7 +142,7 @@ function stepped(title: string, cols: string[], breaks: number[], max: number) {
   );
 }
 /** a run of months as a range when they are next to each other: "Jul–Sep", else "Aug, Jul, Sep" */
-function monthRun(ms: number[]) {
+export function monthRun(ms: number[]) {
   const s = ms.slice().sort((a, b) => a - b);
   if (s.length > 1 && s.every((m, i) => i === 0 || m === s[i - 1] + 1)) return `${MON[s[0]]}–${MON[s[s.length - 1]]}`;
   /* December to February counts as a run too */
@@ -154,6 +155,7 @@ export const countryOpen = () => CV.k !== null;
 export const countryKey = () => CV.k || null;
 export function openCountry(k: string) {
   if (CV.k === k && CV.d) return;
+  areasReset();
   CV.k = k;
   CV.d = CV.R = null;
   CV.mapKey = "";
@@ -173,6 +175,7 @@ export function closeCountry() {
   if (CV.k === null) return;
   CV.k = null;
   CV.mapKey = "";
+  areasReset();
   olClose();
   fcClose();
   stClose();
@@ -182,9 +185,10 @@ export function closeCountry() {
   el.hidden = true;
 }
 /** a country address that matched nothing */
-export function countryMissing(slug: string) {
+export function countryMissing(slug: string, at = "#c/") {
   CV.k = "";
   CV.d = CV.R = null;
+  areasReset();
   olClose();
   fcClose();
   stClose();
@@ -198,7 +202,7 @@ export function countryMissing(slug: string) {
   $("cBody").hidden = $("cCtl").hidden = true;
   $("cStatus").hidden = false;
   $("cBar").parentElement!.hidden = $("cRetry").hidden = true;
-  $("cMsg").textContent = `Nothing lives at "#c/${slug}". Go back to the globe and pick a country there, or search for one by name.`;
+  $("cMsg").textContent = `Nothing lives at "${at}${slug}". Go back to the globe and pick a country there, or search for one by name.`;
 }
 
 function load() {
@@ -251,6 +255,7 @@ function start(d: CountrySummary) {
   $("cBody").hidden = $("cCtl").hidden = false;
   $("cName").textContent = d.name;
   renderCountry();
+  areasStart(d);
   /* the forecast and the fire stations are fetched only now, so they never compete with the summary */
   fcStart(d);
   stStart(d);
@@ -259,7 +264,7 @@ function start(d: CountrySummary) {
 const FILL_SRC = "VIIRS Suomi NPP + NOAA-20 on days Suomi NPP missed, converted";
 /** the harmonized month, with the days Suomi NPP missed filled from NOAA-20: in 2026 (already in monthly.V, with the
  * range of the conversion) and in past outages from 2018 (y2026.hist_gaps; the file keeps v2's value in monthly.V) */
-function harmFilled(d: CountrySummary, ep: Epochs) {
+export function harmFilled(d: CountrySummary, ep: Epochs) {
   const y26 = d.y2026,
     p = partOf(d),
     gaps = new Map((y26?.hist_gaps ?? []).map(g => [g.i, g])),
