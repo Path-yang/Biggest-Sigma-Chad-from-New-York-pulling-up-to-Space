@@ -11,6 +11,7 @@ import { render } from "./render";
 import { save } from "./downloads";
 import { pctP } from "./forecast";
 import { RARE, olData, olLoad, olOn, olRun } from "./outlook";
+import { popSuffix } from "./pop";
 
 /* =====================================================================
    THE 14-DAY OUTLOOK on the page: the "Next 14 days" map layer and its bar,
@@ -234,7 +235,7 @@ export function renderOutlookSheet() {
     $("olList").innerHTML = shown
       .map(
         ({ o, ci }, i) =>
-          `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc(D.states[st].counties[ci].name)}</b><span class="pc">${pct(o.p)}</span><small>Usual for these dates ${pct(o.base)}${o.base >= RARE ? ` · ${weatherCue(o)}` : " · fire is rare here now"}</small></button>`,
+          `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc(D.states[st].counties[ci].name)}</b><span class="pc">${pct(o.p)}</span><small>Usual for these dates ${pct(o.base)}${o.base >= RARE ? ` · ${weatherCue(o)}` : " · fire is rare here now"}${popSuffix(st, ci)}</small></button>`,
       )
       .join("");
     $("olMore").textContent = showAll ? "Show the top 9" : `Show all ${list.length}`;

@@ -26,6 +26,7 @@ import { closeSheet, openSheet } from "./sheet";
 import { stopPlay } from "./play";
 import { render } from "./render";
 import { fcOn, isFc, pctP } from "./forecast";
+import { popSentence } from "./pop";
 
 /* =====================================================================
    FIRE RESPONSE TOOLS on the page: the card panel, the lists in the sheet,
@@ -49,6 +50,16 @@ const THR: [number, string][] = [
   [0.5, "1 year in 2"],
 ];
 const thrLabel = (t: number) => (THR.find(x => Math.abs(x[0] - t) < 1e-6) || THR[1])[1];
+/** "Kern County" or "3 counties (Kern, Fresno and Tulare)" */
+const inCounties = (n: number, names: string) => (n === 1 ? `${names} County` : `${n} counties (${names})`);
+/** the people living in the counties of the listed gap hexagons, as a sentence ("" before pop.js arrives) */
+const gapPop = (st: StateCode, ks: number[]) =>
+  popSentence(
+    st,
+    ks.map(k => hexState(st).c[k]),
+    (n, names) => `${ks.length === 1 ? "This place lies" : `The ${ks.length} places lie`} in ${inCounties(n, names)}, which`,
+    ks.length === 1 ? "not the people living in this remote place" : "not the people living in these remote places",
+  );
 
 /* ---------- what the current choices produce, worked out once per change ---------- */
 let memo: { key: string; risk: ReturnType<typeof monthRisk>; gaps: ReturnType<typeof gapList>; staff: ReturnType<typeof staffUp> } | null =
@@ -200,9 +211,11 @@ function gapHtml(st: StateCode, mo: string) {
     .slice(0, 6)
     .map(k => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k]))
     .join("");
+  const pop = gapPop(st, gaps.list);
   return (
     `${srcLine(risk, mo)}<p class="big"><b>${n}</b> ${n === 1 ? "place" : "places"} to watch in ${when}</p><p class="hint"><i class="gk"></i>Outlined on the map: hexagons with ${rule}.</p><div class="nl">${rows}</div>` +
-    (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "")
+    (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "") +
+    (pop ? `<p class="hint">${esc(pop)}</p>` : "")
   );
 }
 /** the gap rule in words */
@@ -307,11 +320,16 @@ export function renderStaff() {
         : `These 8 stations are first by road to ${pct(top8)} of the state's ${mo} fire; ${fmt(staff.stations)} stations are first to some. Each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire.`) +
       (oneYear ? ` ${oneYear} of them ${oneYear === 1 ? "rests" : "rest"} on fire in a single year.` : "") +
       (staff.noneShare > 0.0005 ? ` ${pct(staff.noneShare)} of it falls where no station has a road link.` : "") +
-      " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed."
+      " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed." +
+      staffPop(
+        st,
+        staff.rows.slice(0, 8).map(w => w.i),
+      )
     : "";
   const n = gaps.list.length,
     r = respOf(st)!;
   $("gapTitle").textContent = `Far from a station in ${mo}${risk.fc ? " " + risk.fc : ""}: ${n} ${n === 1 ? "place" : "places"}`;
+  const pop = n ? gapPop(st, gaps.list) : "";
   $("gapNote").textContent =
     `Hexagons with ${gapRule(risk, mo)}. ` +
     (n
@@ -319,6 +337,7 @@ export function renderStaff() {
       : gaps.far
         ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but none of them ${risk.fc ? "has that high a forecast chance" : "burns that often"} in ${mo}.`
         : "") +
+    (pop ? " " + pop : "") +
     " Change the rule under Fire response on the map.";
   $("gapList").innerHTML = gaps.list.map(k => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k])).join("");
   $("gapList")
@@ -332,6 +351,18 @@ export function renderStaff() {
         }),
     );
   $("respMethod").innerHTML = methodHtml(st);
+}
+/** the people living in the counties the listed stations stand in, as a sentence with a leading space ("" before pop.js arrives) */
+function staffPop(st: StateCode, stations: number[]) {
+  const c = hexState(st).stn.cp,
+    k = stations.length,
+    p = popSentence(
+      st,
+      stations.map(i => c[i]),
+      (n, names) => `${k === 1 ? "This station stands" : `These ${k} stations stand`} in ${inCounties(n, names)}, which`,
+      k === 1 ? "not the people this station serves" : "not the people these stations serve",
+    );
+  return p ? " " + p : "";
 }
 function showStation(i: number) {
   closeSheet();

@@ -114,6 +114,51 @@
   var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   var ease = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
+  // src/world.ts
+  var WORLD = window.WORLD ? window.WORLD.countries : [];
+  var BY_KEY = new Map(WORLD.map((c) => [c.k, c]));
+  var slugOf = (k) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  var shapeOf = (k) => BY_KEY.get(k);
+  var nameOf = (k) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
+  function theName(name) {
+    return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
+      name
+    ) ? "the " + name : name;
+  }
+  function inRing(r, lon, lat) {
+    let inside = false;
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
+      if (yi > lat !== yj > lat && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  var boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
+  function countryAt(lon, lat) {
+    let best = null;
+    for (const c of WORLD) {
+      const b = c.b;
+      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
+      if (best && boxArea(b) >= boxArea(best.b)) continue;
+      if (c.r.some((r) => inRing(r, lon, lat))) best = c;
+    }
+    return best;
+  }
+  var cutEdge = (k, a0, b0, a1, b1) => a0 === a1 && (Math.abs(a0) === 180 || k === "Antarctica" && a0 % 60 === 0) || b0 < -89.9 && b1 < -89.9;
+  var near = (lon, lon02) => lon - 360 * Math.round((lon - lon02) / 360);
+  function lonSpan(c) {
+    let a = Infinity, z = -Infinity;
+    for (const r of c.r) {
+      const off = near(r[0], c.c[0]) - r[0];
+      for (let i = 0; i < r.length; i += 2) {
+        const lon = r[i] + off;
+        if (lon < a) a = lon;
+        if (lon > z) z = lon;
+      }
+    }
+    return Math.min(360, z - a);
+  }
+
   // src/model.ts
   var STATE_EPOCHS = { vi0: VI0, aq0: AQ0, bins: D.meta.bins };
   function harmWith(s2, e, i, T, A2, V4) {
@@ -197,14 +242,43 @@
     o.roads = dt.roads;
     const pl = D.places[st];
     o.towns = pl.towns.map((t) => ({ n: t[0], lat: t[1], lon: t[2], pop: t[3], X: t[2] * K, Y: t[1] }));
-    const sn = pl.stn.length, stn = o.stn = { n: sn, X: new Float32Array(sn), Y: new Float32Array(sn), c: new Int16Array(sn), names: pl.stn };
+    const sn = pl.stn.length, stn = o.stn = {
+      n: sn,
+      X: new Float32Array(sn),
+      Y: new Float32Array(sn),
+      c: new Int16Array(sn),
+      cp: new Int16Array(sn),
+      names: pl.stn
+    };
     for (let i = 0; i < sn; i++) {
       stn.X[i] = pl.stn_xy[2 * i] * K;
       stn.Y[i] = pl.stn_xy[2 * i + 1];
       const k = o.key.get(hexKey(stn.X[i], stn.Y[i], R));
       stn.c[i] = k === void 0 ? -1 : o.c[k];
     }
+    stn.cp.set(countiesAt(st, o.geo, pl.stn_xy, stn.c));
     return HX[st] = o;
+  }
+  function countiesAt(st, geo, lonLat, fallback) {
+    const ciOf = new Map(D.states[st].counties.map((c, ci) => [c.fips, ci])), shapes = geo.map((g) => {
+      const b = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const r of g.r)
+        for (let i = 0; i < r.length; i += 2) {
+          b[0] = Math.min(b[0], r[i]);
+          b[1] = Math.min(b[1], r[i + 1]);
+          b[2] = Math.max(b[2], r[i]);
+          b[3] = Math.max(b[3], r[i + 1]);
+        }
+      return { ci: ciOf.get(g.f) ?? -1, r: g.r, b };
+    }), out = new Int16Array(fallback.length);
+    for (let i = 0; i < out.length; i++) {
+      const lon = lonLat[2 * i], lat = lonLat[2 * i + 1];
+      const hit = shapes.find(
+        ({ ci, r, b }) => ci >= 0 && lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3] && r.reduce((ins, ring2) => ins !== inRing(ring2, lon, lat), false)
+      );
+      out[i] = hit ? hit.ci : fallback[i];
+    }
+    return out;
   }
   function maskFor(st, sel) {
     const hx = hexState(st), m = new Uint8Array(hx.n);
@@ -1193,6 +1267,48 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     };
   }
 
+  // src/pop.ts
+  var P = () => window.POPULATION?.states ?? null;
+  var popWhen = (short2 = false) => window.POPULATION ? `Census${short2 ? "" : " estimate"}, ${window.POPULATION.label}` : "";
+  function popCounty(st, ci) {
+    const fips = D.states[st].counties[ci]?.fips;
+    return fips ? P()?.[st]?.counties[fips] ?? null : null;
+  }
+  var popState = (st) => P()?.[st]?.total ?? null;
+  function fmtPop(n) {
+    if (n < 1e4) return n.toLocaleString("en-US");
+    const r = Number(n.toPrecision(3));
+    return r >= 1e6 ? Number((r / 1e6).toPrecision(3)) + " million" : r.toLocaleString("en-US");
+  }
+  var peoplePop = (n) => fmtPop(n) + (n === 1 ? " person" : " people");
+  function popSuffix(st, ci) {
+    const p = popCounty(st, ci);
+    return p == null ? "" : ` \xB7 ${fmtPop(p)} ${p === 1 ? "resident" : "residents"}`;
+  }
+  var exactPop = (n) => `${n.toLocaleString("en-US")} people (US Census Bureau estimate for 1 ${window.POPULATION?.label ?? ""})`;
+  function popOf(st, cis) {
+    if (!P()) return null;
+    const seen = [...new Set(cis)].filter((ci) => ci >= 0);
+    let people = 0;
+    for (const ci of seen) {
+      const p = popCounty(st, ci);
+      if (p == null) return null;
+      people += p;
+    }
+    return { counties: seen, people };
+  }
+  function countyNames(st, cis, max = 4) {
+    const names = cis.map((ci) => D.states[st].counties[ci].name);
+    if (names.length > max + 1) return names.slice(0, max).join(", ") + ` and ${names.length - max} more`;
+    return names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0] ?? "";
+  }
+  function popSentence(st, cis, lead2, notWho = "not only the people near fire") {
+    const p = popOf(st, cis);
+    if (!p || !p.counties.length) return "";
+    const n = p.counties.length;
+    return `${lead2(n, countyNames(st, p.counties))} ${n === 1 ? "is" : "are"} home to ${peoplePop(p.people)}${n === 1 ? "" : " in all"} (${popWhen()}). That counts everyone living in ${n === 1 ? "the county" : "those counties"}, ${notWho}.`;
+  }
+
   // src/respui.ts
   var GAP_C = "#4fe3ff";
   var STN_C = "#7fd8ff";
@@ -1210,6 +1326,13 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     [0.5, "1 year in 2"]
   ];
   var thrLabel = (t) => (THR.find((x) => Math.abs(x[0] - t) < 1e-6) || THR[1])[1];
+  var inCounties = (n, names) => n === 1 ? `${names} County` : `${n} counties (${names})`;
+  var gapPop = (st, ks) => popSentence(
+    st,
+    ks.map((k) => hexState(st).c[k]),
+    (n, names) => `${ks.length === 1 ? "This place lies" : `The ${ks.length} places lie`} in ${inCounties(n, names)}, which`,
+    ks.length === 1 ? "not the people living in this remote place" : "not the people living in these remote places"
+  );
   var memo = null;
   function cur() {
     const st = S.st, [a, b] = riskYears(), fc = isFc() && fcOn(st) ? S.odds : 0, key = [st, S.rm, a, b, RT.gapMin, fc].join("|");
@@ -1306,7 +1429,8 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     if (!n)
       return `${srcLine(risk, mo)}<p class="big"><b>None</b> in ${when}.</p><p class="hint">No place in ${NAME[st]} has ${rule}. ${gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but ${risk.fc ? `none has that high a forecast chance in ${when}` : `they burn less often than that in ${mo}`}.` : `Every hexagon has a station within ${GAP_KM} km.`}</p>`;
     const rows = gaps.list.slice(0, 6).map((k) => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k])).join("");
-    return `${srcLine(risk, mo)}<p class="big"><b>${n}</b> ${n === 1 ? "place" : "places"} to watch in ${when}</p><p class="hint"><i class="gk"></i>Outlined on the map: hexagons with ${rule}.</p><div class="nl">${rows}</div>` + (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "");
+    const pop2 = gapPop(st, gaps.list);
+    return `${srcLine(risk, mo)}<p class="big"><b>${n}</b> ${n === 1 ? "place" : "places"} to watch in ${when}</p><p class="hint"><i class="gk"></i>Outlined on the map: hexagons with ${rule}.</p><div class="nl">${rows}</div>` + (n > 6 ? `<button class="link" type="button" data-act="allGaps">See all ${n} in the full data</button>` : "") + (pop2 ? `<p class="hint">${esc(pop2)}</p>` : "");
   }
   var gapRule = (risk, mo) => (risk.fc ? `a forecast chance of fire in ${mo} ${risk.fc} of at least ${Math.round(RT.gapMin * 100)}%` : `fire in ${mo} in at least ${thrLabel(RT.gapMin)} (${risk.a}\u2013${risk.b})`) + ` and every station more than ${GAP_KM} km away in a straight line`;
   function gapRow(st, k, risk, crow, min10, top) {
@@ -1352,10 +1476,14 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
     ).join("") : `<p class="note small">${risk.fc ? `No forecast fire risk in ${mo} ${risk.fc}.` : `No hotspots in ${mo}, ${risk.a}\u2013${risk.b}.`}</p>`;
     $("staff").querySelectorAll("[data-stn]").forEach((b) => b.onclick = () => showStation(+b.dataset.stn));
     const top8 = staff.rows.slice(0, 8).reduce((a, w) => a + w.share, 0), oneYear = !risk.fc && staff.rows.slice(0, 8).filter((w) => w.k === 1).length;
-    $("staffNote").textContent = staff.rows.length ? (risk.fc ? `These 8 stations are first by road to ${pct(top8)} of the state's forecast fire risk for ${mo} ${risk.fc}: each hexagon counts by its chance of fire, split among stations the way its ${mo} fire fell since 2012.` : `These 8 stations are first by road to ${pct(top8)} of the state's ${mo} fire; ${fmt(staff.stations)} stations are first to some. Each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire.`) + (oneYear ? ` ${oneYear} of them ${oneYear === 1 ? "rests" : "rest"} on fire in a single year.` : "") + (staff.noneShare > 5e-4 ? ` ${pct(staff.noneShare)} of it falls where no station has a road link.` : "") + " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed." : "";
+    $("staffNote").textContent = staff.rows.length ? (risk.fc ? `These 8 stations are first by road to ${pct(top8)} of the state's forecast fire risk for ${mo} ${risk.fc}: each hexagon counts by its chance of fire, split among stations the way its ${mo} fire fell since 2012.` : `These 8 stations are first by road to ${pct(top8)} of the state's ${mo} fire; ${fmt(staff.stations)} stations are first to some. Each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire.`) + (oneYear ? ` ${oneYear} of them ${oneYear === 1 ? "rests" : "rest"} on fire in a single year.` : "") + (staff.noneShare > 5e-4 ? ` ${pct(staff.noneShare)} of it falls where no station has a road link.` : "") + " Hotspots are what satellites saw burning, mostly in a few big wildfires: they are not calls or incidents, and this says nothing about how a station is staffed." + staffPop(
+      st,
+      staff.rows.slice(0, 8).map((w) => w.i)
+    ) : "";
     const n = gaps.list.length, r = respOf(st);
     $("gapTitle").textContent = `Far from a station in ${mo}${risk.fc ? " " + risk.fc : ""}: ${n} ${n === 1 ? "place" : "places"}`;
-    $("gapNote").textContent = `Hexagons with ${gapRule(risk, mo)}. ` + (n ? "Tap one to see it on the map. The drive time is to the fastest station by road." : gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but none of them ${risk.fc ? "has that high a forecast chance" : "burns that often"} in ${mo}.` : "") + " Change the rule under Fire response on the map.";
+    const pop2 = n ? gapPop(st, gaps.list) : "";
+    $("gapNote").textContent = `Hexagons with ${gapRule(risk, mo)}. ` + (n ? "Tap one to see it on the map. The drive time is to the fastest station by road." : gaps.far ? `${fmt(gaps.far)} hexagons are over ${GAP_KM} km from a station (the farthest ${km1(gaps.maxCrow)} km), but none of them ${risk.fc ? "has that high a forecast chance" : "burns that often"} in ${mo}.` : "") + (pop2 ? " " + pop2 : "") + " Change the rule under Fire response on the map.";
     $("gapList").innerHTML = gaps.list.map((k) => gapRow(st, k, risk, r.crow10[k] / 10, r.min10[3 * k], r.top[3 * k])).join("");
     $("gapList").querySelectorAll("[data-go]").forEach(
       (b) => b.onclick = () => {
@@ -1365,6 +1493,15 @@ ${r.src}`) + (r.i < vi0 || nd && r.hi - r.lo >= 1 ? `, likely ${fmt(r.lo)} to ${
       }
     );
     $("respMethod").innerHTML = methodHtml(st);
+  }
+  function staffPop(st, stations) {
+    const c = hexState(st).stn.cp, k = stations.length, p = popSentence(
+      st,
+      stations.map((i) => c[i]),
+      (n, names) => `${k === 1 ? "This station stands" : `These ${k} stations stand`} in ${inCounties(n, names)}, which`,
+      k === 1 ? "not the people this station serves" : "not the people these stations serve"
+    );
+    return p ? " " + p : "";
   }
   function showStation(i) {
     closeSheet();
@@ -2117,7 +2254,7 @@ Usual for these dates: ${pct2(o.base)}
       $("olTitle").textContent = `Counties to watch in the next 14 days: ${olRange(st)}`;
       $("olNoteS").textContent = `Each county's chance of at least one VIIRS hotspot from ${dayName(r.today)} through ${dayName(r.end)}, from its usual odds for these dates and Open-Meteo's weather forecast. The weather raises the chance in ${up} of ${n} counties and lowers it in ${down}, against the model's chance with no weather. ` + (r.missing ? `${r.missing} ${r.missing === 1 ? "county has" : "counties have"} no forecast this time${r.err ? " (" + r.err.charAt(0).toLowerCase() + r.err.slice(1).replace(/\.$/, "") + ")" : ""}; Retry asks again. ` : "") + (sortBy === "p" ? "Ranked by chance. " : `Ranked by how much the weather raises the chance; counties where fire is usually under ${Math.round(RARE * 100)}% at this time of year are left out, since there the effect is mostly noise. `) + "A hotspot is a satellite detection, often a farm or prescribed burn: this is not a fire-danger rating. Tap a county to see it on the map.";
       $("olList").innerHTML = shown2.map(
-        ({ o, ci }, i) => `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc2(D.states[st].counties[ci].name)}</b><span class="pc">${pct2(o.p)}</span><small>Usual for these dates ${pct2(o.base)}${o.base >= RARE ? ` \xB7 ${weatherCue(o)}` : " \xB7 fire is rare here now"}</small></button>`
+        ({ o, ci }, i) => `<button type="button" class="w" data-ci="${ci}"><span class="rk">${i + 1}</span><b>${esc2(D.states[st].counties[ci].name)}</b><span class="pc">${pct2(o.p)}</span><small>Usual for these dates ${pct2(o.base)}${o.base >= RARE ? ` \xB7 ${weatherCue(o)}` : " \xB7 fire is rare here now"}${popSuffix(st, ci)}</small></button>`
       ).join("");
       $("olMore").textContent = showAll ? "Show the top 9" : `Show all ${list4.length}`;
       $("olMore").hidden = list4.length <= 9;
@@ -2224,21 +2361,28 @@ Usual for these dates: ${pct2(o.base)}
     $("a4").textContent = rk.n ? `${Math.round(rk.p * 100)}%` : "No data";
     $("a4n").textContent = rk.n ? `Fire was detected here in ${rk.k} of the ${rk.n} ${mo}s from ${rk.a} to ${rk.b}.` + (rk.k ? ` When it burns, typically ${fmt(rk.typical)} hotspots; the worst was ${fmt(rk.worst.h)} in ${rk.worst.y}. Most recent: ${rk.last}.` : "") + " History, not a forecast." + notFireNote(S.st, selMask()) + forecastLine(S.st) : "";
     const share2 = (x) => x >= 0.095 ? Math.round(x * 100) + "%" : x >= 1e-3 ? (x * 100).toFixed(1) + "%" : x > 0 ? "<0.1%" : "0%", who = window.RESPONSE ? "Counties, and the stations that reach each place first by road," : "Counties";
+    let watched;
     if (isFc() && fcOn(S.st)) {
       const yr = S.odds;
       $("watchTitle").textContent = `Where to watch in ${mo} ${yr}: forecast`;
       $("watchNote").textContent = `${who} ranked by their share of ${NAME[S.st]}'s forecast fire risk for ${mo} ${yr}: each hexagon counts by its chance of at least one hotspot. The forecast is built from fire history alone, not weather, and says nothing about how each station is staffed. Tap one to see it on the map.`;
-      $("watch").innerHTML = countyRiskFc(S.st, S.rm, yr).slice(0, 8).map(
-        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn</small></button>`
+      const wl = countyRiskFc(S.st, S.rm, yr).slice(0, 8);
+      watched = wl.map((w) => w.ci);
+      $("watch").innerHTML = wl.map(
+        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Chance of fire somewhere in the county ${pctP(w.p)} \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons expected to burn${popSuffix(S.st, w.ci)}</small></button>`
       ).join("");
     } else {
       const wl = countyRisk(S.st, S.rm).slice(0, 8);
+      watched = wl.map((w) => w.ci);
       $("watchTitle").textContent = `Where to watch in ${mo}: past odds`;
       $("watchNote").textContent = `${who} ranked by how often fire comes to their hexagons in ${mo}, ${rk.a}\u2013${rk.b}: each hexagon counts by its share of years with a hotspot, so a place that burns most years outweighs one huge fire. The percentage is their share of ${NAME[S.st]}'s. This is the historical pattern, not a forecast for this year. Hotspots are what satellites saw burning, not calls or incidents, and this says nothing about how a station is staffed. Tap one to see it on the map.`;
       $("watch").innerHTML = wl.map(
-        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} \xB7 about ${fmt(w.mean)} hotspots</small></button>`
+        (w, i) => `<button type="button" class="w" data-ci="${w.ci}"><span class="rk">${i + 1}</span><b>${w.name}</b><span class="pc">${share2(w.share)}</span><small>Fire in ${w.k} of ${w.n} ${mo}s \xB7 about ${w.e < 10 ? w.e.toFixed(1) : fmt(w.e)} of its hexagons burn in an average ${mo} \xB7 about ${fmt(w.mean)} hotspots${popSuffix(S.st, w.ci)}</small></button>`
       ).join("");
     }
+    const wp = popSentence(S.st, watched, (n) => n === 1 ? "This county" : `These ${n} counties`), sp = popState(S.st);
+    $("watchPop").hidden = !wp;
+    $("watchPop").textContent = wp + (wp && sp != null ? ` ${NAME[S.st]} as a whole has ${fmtPop(sp)}.` : "");
     renderForecastSheet();
     renderStaff();
     renderOutlookSheet();
@@ -2390,6 +2534,8 @@ Raw counts: ${fmt(fy[i].naive)}`
       ],
       ["Most active county", (c) => c.county, null, (c) => `${Math.round(c.countyShare * 100)}% of the state's hotspots`]
     ];
+    if (STS.every((st) => popState(st) != null))
+      rowsDef.push(["Population", (c) => fmtPop(popState(c.st)), (c) => popState(c.st), () => popWhen()]);
     if (C.every((c) => c.ytd))
       rowsDef.push([
         `${C[0].ytd.y} so far (${C[0].ytd.span})`,
@@ -2735,11 +2881,34 @@ Fire came in ${pctP(b.o, true)}`)}"/>`;
     $("c3q").textContent = `${MON[S.focus[1]]} ${S.focus[0]}` + (v?.same ? ` (${v.same.span})` : "");
     $("c3").innerHTML = v ? `<span class="pill ${v.cls}" style="margin:0">${v.label}</span>` : future ? `No data yet` : "Outside these years";
     $("c3").parentElement.title = v?.same ? `${v.same.span} ${S.focus[0]} so far, against the same days of ${v.same.years[0]}\u2013${v.same.years[v.same.years.length - 1]}` : v?.noSame ? `The month is not over: the record runs to ${LAST_WORDS}. Choose the state or a county to compare its first days with the same days of past years.` : "";
+    const pr = popCard(hx.c);
+    $("popRow").hidden = !pr;
+    if (pr) {
+      $("c6q").textContent = pr.q;
+      $("c6").textContent = pr.v;
+      $("popRow").title = pr.title;
+    }
     const cc = olCard() || chanceCard(R);
     $("c4q").textContent = cc.q;
     $("c4").textContent = cc.v;
     $("c4").parentElement.title = cc.title;
     $("openCmp").textContent = "Compare with " + NAME[STS.find((k) => k !== S.st)];
+  }
+  function popCard(hexCounty) {
+    const st = S.st, sl = S.sel, ci = sl.type === "county" ? sl.ci : sl.type === "hex" ? hexCounty[sl.k] : -1, n = sl.type === "state" ? popState(st) : ci >= 0 ? popCounty(st, ci) : null;
+    if (n == null) return null;
+    const county2 = ci >= 0 ? D.states[st].counties[ci].name + " County" : "";
+    if (sl.type === "hex")
+      return {
+        q: `${county2} population`,
+        v: fmtPop(n),
+        title: `Everyone living in ${county2}, which this hexagon is in, not the people in the hexagon: ${exactPop(n)}.`
+      };
+    return {
+      q: `Population (${popWhen(true)})`,
+      v: fmtPop(n),
+      title: `${exactPop(n)}. Everyone living in ${sl.type === "state" ? NAME[st] : county2}, not only the people near fire.`
+    };
   }
   function renderTimeline(R) {
     const ys = R.years, n = ys.length, W = 600, bw = W / n, mx = Math.max(1, ...ys.map((y) => y.h)), cur2 = S.show.t === "year" && S.layer === "count" ? S.show.y : null;
@@ -3556,51 +3725,6 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     return p;
   }
 
-  // src/world.ts
-  var WORLD = window.WORLD ? window.WORLD.countries : [];
-  var BY_KEY = new Map(WORLD.map((c) => [c.k, c]));
-  var slugOf = (k) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  var shapeOf = (k) => BY_KEY.get(k);
-  var nameOf = (k) => BY_KEY.get(k)?.n ?? k.replace(/_/g, " ");
-  function theName(name) {
-    return /^(United|Republic|Democratic|Dominican|Central African|Czech|Federated|Russian|Holy)|Islands$|^(Netherlands|Philippines|Bahamas|Gambia|Maldives|Comoros|Seychelles|Gaza Strip|West Bank)$/.test(
-      name
-    ) ? "the " + name : name;
-  }
-  function inRing(r, lon, lat) {
-    let inside = false;
-    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
-      const xi = r[i], yi = r[i + 1], xj = r[j], yj = r[j + 1];
-      if (yi > lat !== yj > lat && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
-    }
-    return inside;
-  }
-  var boxArea = (b) => (b[2] - b[0]) * (b[3] - b[1]);
-  function countryAt(lon, lat) {
-    let best = null;
-    for (const c of WORLD) {
-      const b = c.b;
-      if (lon < b[0] || lon > b[2] || lat < b[1] || lat > b[3]) continue;
-      if (best && boxArea(b) >= boxArea(best.b)) continue;
-      if (c.r.some((r) => inRing(r, lon, lat))) best = c;
-    }
-    return best;
-  }
-  var cutEdge = (k, a0, b0, a1, b1) => a0 === a1 && (Math.abs(a0) === 180 || k === "Antarctica" && a0 % 60 === 0) || b0 < -89.9 && b1 < -89.9;
-  var near = (lon, lon02) => lon - 360 * Math.round((lon - lon02) / 360);
-  function lonSpan(c) {
-    let a = Infinity, z = -Infinity;
-    for (const r of c.r) {
-      const off = near(r[0], c.c[0]) - r[0];
-      for (let i = 0; i < r.length; i += 2) {
-        const lon = r[i] + off;
-        if (lon < a) a = lon;
-        if (lon > z) z = lon;
-      }
-    }
-    return Math.min(360, z - a);
-  }
-
   // src/fireglobe.ts
   var FIRE_YEARS = 25;
   var R_KM = 6371.0088;
@@ -3773,11 +3897,11 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
   };
   var isOdd = (r) => r.zMax > ODD_Z;
   function sumUp(cells) {
-    const total2 = cells.reduce((a, c) => a + c.share, 0) || 1, live = cells.filter((c) => c.r && !isOdd(c.r)), sw = live.reduce((a, c) => a + c.share, 0), w = sw || 1, P = live.reduce((a, c) => a + c.share * c.r.p, 0) / w, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / w;
+    const total2 = cells.reduce((a, c) => a + c.share, 0) || 1, live = cells.filter((c) => c.r && !isOdd(c.r)), sw = live.reduce((a, c) => a + c.share, 0), w = sw || 1, P2 = live.reduce((a, c) => a + c.share * c.r.p, 0) / w, N = live.reduce((a, c) => a + c.share * c.r.norm, 0) / w;
     return {
-      P,
+      P: P2,
       N,
-      D: P - N,
+      D: P2 - N,
       liveShare: sw / total2,
       nLive: live.length,
       nOdd: cells.filter((c) => c.r && isOdd(c.r)).length,
@@ -4114,7 +4238,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
       return;
     }
     state(run.err ? `${run.err} ${run.missing} region${run.missing === 1 ? " has" : "s have"} no outlook and show white.` : "", !!run.err);
-    const L2 = place(O2, k), used = L2.cells.filter((c) => !c.minor), S3 = sumUp(used), live = used.filter((c) => c.r && !c.odd), odd = used.filter((c) => c.r && c.odd), thin = S3.liveShare < MIN_SHARE, { P, N, D: D2 } = S3, sw = live.reduce((a, c) => a + c.share, 0) || 1, up = live.filter((c) => change(c.r) >= REGION_STEP), down = live.filter((c) => change(c.r) <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share2) => {
+    const L2 = place(O2, k), used = L2.cells.filter((c) => !c.minor), S3 = sumUp(used), live = used.filter((c) => c.r && !c.odd), odd = used.filter((c) => c.r && c.odd), thin = S3.liveShare < MIN_SHARE, { P: P2, N, D: D2 } = S3, sw = live.reduce((a, c) => a + c.share, 0) || 1, up = live.filter((c) => change(c.r) >= REGION_STEP), down = live.filter((c) => change(c.r) <= -REGION_STEP), upShare = up.reduce((a, c) => a + c.share, 0) / sw, downShare = down.reduce((a, c) => a + c.share, 0) / sw, many = live.length > 2, where = (sub, share2) => {
       if (!many) return "";
       if (share2 >= 0.6) return S3.liveShare >= 0.95 ? " across most of the country" : " across most of the regions forecast";
       const w = compass(live, sub);
@@ -4136,7 +4260,7 @@ ${showLabel()}`) + notFireTip(k) + (respTip(k) || "\nClick to zoom in")
     $("cOlTitle").textContent = head;
     $("cOlSub").textContent = `The chance that each region sees more satellite fire detections over ${span2(run.today, run.end)} than in a usual fortnight for ${halfName(hm)}, against its chance with average weather. Weather: Open-Meteo forecast; trained on NASA POWER.` + (odd.length && oddShare >= 0.1 ? ` In ${odd.length} of ${odd.length + live.length} regions, holding ${Math.round(oddShare * 100)}% of the fire, the forecast weather is outside anything in the 2012\u20132025 record for the date, so the model would be extrapolating. That may be unusual weather or a gap between the two weather sources; we cannot tell which. They are shown in grey and left out of the summaries.` : "");
     const m = O2.metrics.by_country[k], verdict2 = D2 >= COUNTRY_STEP ? ["hi", "Busier than usual"] : D2 <= -COUNTRY_STEP ? ["lo", "Quieter than usual"] : ["", "About usual"], regionsWord = live.length === 1 ? "its one forecast region" : live.length === 2 ? "its two forecast regions" : `its ${live.length} forecast regions`;
-    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
+    $("cOlFigs").innerHTML = `<div class="cpAns"><h2>The whole country</h2><p class="cpFig"><span class="${verdict2[0]}">${verdict2[1]}</span><small>${pct3(P2)} chance of a busier fortnight than usual, against ${pct3(N)} with average weather</small></p><p>Averaged over ${regionsWord}${live.length > 1 ? `, each weighted by its share of ${esc4(poss(tn))} fire` : ""}.` + (odd.length ? ` ${odd.length === 1 ? "One region is" : `${odd.length} regions are`} left out: ${odd.length === 1 ? "its" : "their"} forecast weather is outside the 2012\u20132025 record for the date.` : "") + `</p></div><div class="cpAns"><h2>Regions the weather pushes up</h2><p class="cpFig">${up.length} of ${live.length}</p><p>The weather raises the chance by 5 points or more in ${up.length === 0 ? "none" : up.length === 1 ? "one region" : `${up.length} regions`}, and lowers it as much in ${down.length === 0 ? "none" : down.length === 1 ? "one" : down.length}. A region is about 280 km across.</p></div><div class="cpAns"><h2>Track record</h2><p class="cpFig">${signed(m[5])}<small>against the usual odds</small></p><p>Brier skill in the regions covering ${esc4(tn)}, 2012\u20132025, with errors the size of the gap between the two weather sources added to the weather that happened (${signed(m[0])} with that weather as it was). Never tested on real forecasts, which are worse still.</p></div>`;
     legend2(L2);
     drawMap(L2, k, run.missing);
     list(O2, L2, tn, D2);
@@ -8602,7 +8726,7 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
   }
 
   // src/extras.ts
-  var FILES = ["response.js?v=1", "forecast.js?v=3", "outlook.js?v=1"];
+  var FILES = ["response.js?v=1", "forecast.js?v=3", "outlook.js?v=1", "pop.js?v=1"];
   var loading2 = null;
   var ready = false;
   var extrasReady = () => ready;
@@ -9506,7 +9630,13 @@ Click to test ${MONL[CV.focus[1]]} ${y.y}`;
     if (!st) {
       closeSheet(true);
       openHero();
-      if (location.hash === "#compare") openSheet("compare");
+      if (location.hash === "#compare") {
+        openSheet("compare");
+        if (!extrasReady())
+          loadExtras().then(() => {
+            if (S.sheet === "compare") render();
+          });
+      }
       return;
     }
     loadExtras();

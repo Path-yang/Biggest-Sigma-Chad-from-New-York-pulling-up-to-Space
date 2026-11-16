@@ -1094,6 +1094,7 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
       <div><dt id="c3q"></dt><dd id="c3"></dd></div>
       <div><dt id="c4q"></dt><dd id="c4"></dd></div>
       <div><dt id="c5q"></dt><dd id="c5"></dd></div>
+      <div id="popRow" hidden><dt id="c6q"></dt><dd id="c6"></dd></div>
     </dl>
     <button class="btn primary big" id="openData" type="button">Open the full data</button>
     <button class="btn big" id="openCmp" type="button"></button>
@@ -1147,7 +1148,7 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
       <section class="sec s12"><span class="num">02</span><div class="row between"><h3 id="watchTitle"></h3><div class="seg sm" id="oddsSheet" role="group" aria-label="Rank by past odds or the forecast"><button type="button" data-odds="past">Past odds</button><button type="button" data-odds="2026">Forecast 2026</button><button type="button" data-odds="2027">Forecast 2027</button></div></div>
         <p class="note" id="watchNote"></p>
         <div class="twoCal">
-          <div><h4>Counties to watch</h4><div class="watch one" id="watch"></div></div>
+          <div><h4>Counties to watch</h4><div class="watch one" id="watch"></div><p class="note small" id="watchPop" style="margin-top:8px" hidden></p></div>
           <div id="staffBox"><h4>Stations first to the most fire</h4><div class="watch one" id="staff"></div><p class="note small" id="staffNote" style="margin-top:8px"></p></div>
         </div></section>
       <section class="sec s12" id="olSec" hidden><span class="num">03</span><div class="row between"><h3 id="olTitle">Counties to watch in the next 14 days</h3><div class="seg sm" id="olSort" role="group" aria-label="Rank counties by"><button type="button" data-sort="p">Highest chance</button><button type="button" data-sort="ratio">Weather raises most</button></div></div>
@@ -1238,6 +1239,6 @@ body.askOverSheet .ask{top:auto;bottom:16px;right:16px;height:min(640px,calc(100
 <script src="data.js?v=4"></script>
 <script src="world.js?v=1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
